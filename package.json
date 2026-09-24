@@ -1,0 +1,46 @@
+{
+  "name": "msagent.js",
+  "version": "0.1.0",
+  "description": "Play Microsoft Agent (.acs) and Office 97 Assistant (.act) characters in the browser",
+  "type": "module",
+  "main": "./dist/msagent.js",
+  "module": "./dist/msagent.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/msagent.js"
+    }
+  },
+  "unpkg": "./dist/msagent.iife.js",
+  "jsdelivr": "./dist/msagent.iife.js",
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "keywords": [
+    "msagent",
+    "microsoft-agent",
+    "acs",
+    "clippy",
+    "office-assistant",
+    "canvas",
+    "animation"
+  ],
+  "author": "Argynnini",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/argynnini/msagent.js.git"
+  },
+  "scripts": {
+    "dev": "vite example",
+    "build": "vite build && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0"
+  }
+}

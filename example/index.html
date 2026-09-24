@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>msagent.js example</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 16px; background: #f4f4f4; color: #222; }
+      main { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+      #stage { min-width: 200px; min-height: 200px; display: grid; place-items: center; }
+      canvas { image-rendering: pixelated; }
+      #balloon { max-width: 280px; padding: 8px 12px; background: #ffffe1; border: 1px solid #333; border-radius: 8px; }
+      #balloon:empty { display: none; }
+      #list { max-height: 60vh; overflow: auto; margin: 0; padding-left: 1.2em; }
+      button.link { background: none; border: 0; padding: 0; color: #06c; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <h1>msagent.js</h1>
+    <p><input type="file" id="file" accept=".acs,.act" /> <label><input type="checkbox" id="sound" checked /> 効果音</label></p>
+    <form id="speak"><input id="text" value="こんにちは。何かお手伝いしましょうか？" size="40" /> <button>しゃべる</button></form>
+    <main>
+      <div>
+        <div id="balloon"></div>
+        <div id="stage"></div>
+      </div>
+      <ol id="list"></ol>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
