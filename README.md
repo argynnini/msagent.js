@@ -79,7 +79,7 @@ clippy.js と同じく、`play` / `speak` / `moveTo` / `gestureAt` / `delay` は
 
 msagent.js で足したもの: `name`、`sound`、`voice`、`hitTest(clientX, clientY)`、`destroy()`、`element`、`canvas`、`character`、`player`
 
-キャラクターはドラッグで動かせ、ダブルクリックで `animate()` します。
+キャラクターはドラッグで動かせ、ダブルクリックで `animate()` します。透明な部分 (キャラクターの周り) は押せず、クリックは下のページにそのまま届きます。
 見た目は CSS で変えられます。クラス名は `.msagent` (キャラクター)、`.msagent-balloon` (吹き出し)、`.msagent-tip` (しっぽ)、`.msagent-content` (文) と、吹き出しの向きの `.msagent-top-left` / `.msagent-top-right` / `.msagent-bottom-left` / `.msagent-bottom-right` です。
 
 ### clippy.js との違い

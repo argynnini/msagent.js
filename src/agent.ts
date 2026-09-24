@@ -419,28 +419,58 @@ export class Agent {
     });
   }
 
-  /** ドラッグで動かす (透明な部分をつかんだときは動かさない) */
+  /**
+   * 透明な部分は押せない (下のページに通す) ようにし、絵の部分だけドラッグで動かせるようにする。
+   * 要素はふだん pointer-events: none で、ポインターが絵の上にあるときだけ .msagent-hit で押せるようにする。
+   * タッチは押すまで位置が分からないので、押した時点で絵の上なら、そのままドラッグを始める
+   */
   private setupDrag() {
     let offset: { x: number; y: number } | undefined;
-    this.listen(this.element, "pointerdown", (e) => {
-      const ev = e as PointerEvent;
-      if (ev.button !== 0 || !this.hitTest(ev.clientX, ev.clientY)) return;
-      const r = this.element.getBoundingClientRect();
-      offset = { x: ev.clientX - r.left, y: ev.clientY - r.top };
-      this.element.setPointerCapture(ev.pointerId);
-      ev.preventDefault();
-    });
-    this.listen(this.element, "pointermove", (e) => {
-      const ev = e as PointerEvent;
-      if (offset) this.setPosition(ev.clientX - offset.x, ev.clientY - offset.y);
-    });
+    const setHit = (hit: boolean) => this.element.classList.toggle("msagent-hit", hit);
+    this.listen(
+      document,
+      "pointermove",
+      (e) => {
+        const ev = e as PointerEvent;
+        if (offset) this.setPosition(ev.clientX - offset.x, ev.clientY - offset.y);
+        else setHit(this.hitTest(ev.clientX, ev.clientY));
+      },
+      true,
+    );
+    this.listen(
+      document,
+      "pointerdown",
+      (e) => {
+        const ev = e as PointerEvent;
+        if (ev.button !== 0 || !this.hitTest(ev.clientX, ev.clientY)) return;
+        setHit(true);
+        const r = this.element.getBoundingClientRect();
+        offset = { x: ev.clientX - r.left, y: ev.clientY - r.top };
+        this.element.setPointerCapture(ev.pointerId);
+        // 文字の選択や、画像のドラッグを始めない
+        ev.preventDefault();
+      },
+      true,
+    );
+    // タッチで絵をつかんだときは、ページをスクロールさせない
+    this.listen(
+      document,
+      "touchstart",
+      (e) => {
+        const touch = (e as TouchEvent).touches[0];
+        if (touch && this.hitTest(touch.clientX, touch.clientY)) e.preventDefault();
+      },
+      { capture: true, passive: false },
+    );
     const end = () => (offset = undefined);
     this.listen(this.element, "pointerup", end);
     this.listen(this.element, "pointercancel", end);
+    this.listen(this.element, "lostpointercapture", end);
   }
 
-  private listen(target: EventTarget, type: string, handler: (e: Event) => void, capture = false) {
-    target.addEventListener(type, handler, capture);
-    this.cleanups.push(() => target.removeEventListener(type, handler, capture));
+
+  private listen(target: EventTarget, type: string, handler: (e: Event) => void, options: boolean | AddEventListenerOptions = false) {
+    target.addEventListener(type, handler, options);
+    this.cleanups.push(() => target.removeEventListener(type, handler, options));
   }
 }

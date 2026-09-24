@@ -4,7 +4,9 @@
  */
 const CSS = `
 .msagent, .msagent-balloon { position: fixed; z-index: 1000; }
-.msagent { cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none; }
+/* 透明な部分は、下のページをそのまま押せるように。絵の上にあるときだけ .msagent-hit で押せるようにする */
+.msagent { pointer-events: none; user-select: none; -webkit-user-select: none; }
+.msagent.msagent-hit { pointer-events: auto; cursor: pointer; touch-action: none; }
 .msagent canvas { display: block; }
 .msagent-balloon {
   box-sizing: border-box; padding: 8px; border: 1px solid #000; border-radius: 5px;
