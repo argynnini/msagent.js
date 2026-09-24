@@ -227,7 +227,10 @@ export class Agent {
     return this.play(this.hasAnimation(`Gesture${d}`) ? `Gesture${d}` : `Look${d}`);
   }
 
-  /** (x, y) へ移動する (Move〜 のアニメーションがあれば、それを再生しながら)。duration が 0 なら、すぐ移る */
+  /**
+   * (x, y) へ移動する。Move〜 のアニメーションがあれば、Microsoft Agent と同じく
+   * 移動前の動き → 最後のコマのまま移動 → 移動後の動き (戻りアニメか終了分岐) の順にする。duration が 0 なら、すぐ移る
+   */
   moveTo(x: number, y: number, duration = 1000): void {
     this.addToQueue(async (complete) => {
       if (duration === 0) {
@@ -235,12 +238,9 @@ export class Agent {
         return complete();
       }
       const name = findAnimation(this.character, `Move${this.direction(x, y)}`);
-      const playing = name ? this.player.play(name) : undefined;
+      if (name) await this.player.play(name, { hold: true });
       await this.slide(x, y, duration);
-      if (playing) {
-        void this.player.release();
-        await playing;
-      }
+      if (name) await this.player.playReturn();
       complete();
     });
   }

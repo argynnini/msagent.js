@@ -35,6 +35,8 @@ export class AcsPlayer {
   private paused = false;
   /** 再生中の playFrames() を終わらせる (stop() や別の再生で止められても、play() の Promise が解決するように) */
   private settle: (() => void) | undefined;
+  /** play(name, { hold: true }) で最後のコマのまま止めたアニメーション (playReturn() で戻りの動きを再生する) */
+  private held: { name: string; anim: Animation; frame: number } | undefined;
   /** 再生要求ごとに増やし、古い再生ループを無効化する */
   private token = 0;
   /** release() が呼ばれた: 分岐で繰り返さず、終了分岐をたどって終わらせる */
@@ -87,6 +89,7 @@ export class AcsPlayer {
     if (this.timer !== undefined) window.clearTimeout(this.timer);
     this.timer = undefined;
     this.pendingStep = undefined;
+    this.held = undefined;
     const settle = this.settle;
     this.settle = undefined;
     settle?.();
@@ -122,8 +125,12 @@ export class AcsPlayer {
     }, ms);
   }
 
-  /** アニメーションを再生する。終了 (戻りアニメ含む) か、別の再生・stop() で resolve */
-  play(name: string): Promise<void> {
+  /**
+   * アニメーションを再生する。終了 (戻りアニメ含む) か、別の再生・stop() で resolve。
+   * hold なら、戻りの動きをせずに最後のコマのまま止め、playReturn() を待つ
+   * (移動: 移動前の動き → 最後のコマのまま移動 → 移動後の動き、の順にするため)
+   */
+  play(name: string, options: { hold?: boolean } = {}): Promise<void> {
     this.stop();
     this.releasing = false;
     this.current = name;
@@ -133,8 +140,12 @@ export class AcsPlayer {
       let current: Animation | undefined = this.character.animations.get(name);
       // 戻りアニメの連鎖は念のため上限を設ける
       for (let depth = 0; current && depth < 4; depth++) {
-        await this.playFrames(current, token);
+        const last = await this.playFrames(current, token);
         if (token !== this.token) return;
+        if (options.hold) {
+          this.held = { name, anim: current, frame: last };
+          break;
+        }
         if (current.transitionType !== 0 || !current.returnAnimation) break;
         current = this.character.animations.get(current.returnAnimation);
       }
@@ -156,11 +167,45 @@ export class AcsPlayer {
     return this.running ?? Promise.resolve();
   }
 
-  private playFrames(anim: Animation, token: number): Promise<void> {
-    return new Promise<void>((done) => {
+  /**
+   * play(name, { hold: true }) で止めたアニメーションの、戻りの動きを再生する。
+   * 戻りアニメを使うもの (transitionType 0) はそれを、終了分岐を使うもの (1) は止めたコマから終了分岐をたどる。
+   * 止めたアニメーションが無い・戻りの動きが無ければ、すぐ resolve
+   */
+  playReturn(): Promise<void> {
+    const held = this.held;
+    this.held = undefined;
+    if (!held) return Promise.resolve();
+    const { anim, frame } = held;
+    if (anim.transitionType === 0) {
+      return anim.returnAnimation && this.character.animations.has(anim.returnAnimation)
+        ? this.play(anim.returnAnimation)
+        : Promise.resolve();
+    }
+    const start = anim.transitionType === 1 ? (anim.frames[frame]?.exitFrame ?? -1) : -1;
+    if (start < 0) return Promise.resolve();
+    this.stop();
+    this.releasing = true;
+    this.current = held.name;
+    this.setActive(true);
+    const token = this.token;
+    const run = async () => {
+      await this.playFrames(anim, token, start);
+      if (token === this.token) {
+        this.current = undefined;
+        this.setActive(false);
+      }
+    };
+    return (this.running = run());
+  }
+
+  /** start のコマから再生する。最後に描いたコマの番号 (描かなければ -1) で resolve */
+  private playFrames(anim: Animation, token: number, start = 0): Promise<number> {
+    return new Promise<number>((done) => {
+      let last = -1;
       const resolve = () => {
         if (this.settle === resolve) this.settle = undefined;
-        done();
+        done(last);
       };
       this.settle = resolve;
       let releasedSteps = 0;
@@ -172,12 +217,15 @@ export class AcsPlayer {
         if (this.releasing && ++releasedSteps > anim.frames.length * 3) return resolve();
         // 画像なし・0 秒のフレームは、描かずにすぐ次へ (ACT の分岐・効果音の命令。描くと一瞬消えてちらつく)
         const drawn = frame.images.length > 0 || frame.duration > 0;
-        if (drawn) this.draw(frame);
+        if (drawn) {
+          this.draw(frame);
+          last = index;
+        }
         if (frame.soundIndex >= 0) void this.playSound(frame.soundIndex);
         const next = this.nextIndex(frame, index);
         this.schedule(() => step(next), drawn ? Math.max(frame.duration, 10) : 0);
       };
-      step(0);
+      step(start);
     });
   }
 

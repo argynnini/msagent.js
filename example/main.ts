@@ -13,6 +13,8 @@ $<HTMLInputElement>("file").addEventListener("change", (e) => {
   // clippy.js と同じ呼び方 (名前の代わりに File も渡せる)
   msagent.load(file, (a) => {
     agent = a;
+    // コンソールから試せるように (例: agent.moveTo(100, 100))
+    (window as unknown as { agent: Agent }).agent = a;
     a.sound = sound.checked;
     a.voice = voice.checked;
     a.show();

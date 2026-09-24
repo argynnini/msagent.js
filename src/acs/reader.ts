@@ -219,6 +219,10 @@ export class AcsCharacter {
       const resolved = names.map((n) => byUpper.get(n.toUpperCase())).filter((n): n is string => n !== undefined);
       if (resolved.length > 0) this.states.set(state.toUpperCase(), resolved);
     }
+    // 戻りアニメの名前も大文字で入っていることがある (例: フィンフィンの MoveLeft → "MOVELEFTRETURN") ので、同じく直す
+    for (const anim of this.animations.values()) {
+      if (anim.returnAnimation) anim.returnAnimation = byUpper.get(anim.returnAnimation.toUpperCase()) ?? anim.returnAnimation;
+    }
   }
 
   /** 状態 (例: "IdlingLevel1"、大文字小文字は問わない) に割り当てられたアニメーション名。無ければ空 */
