@@ -66,7 +66,8 @@ function showCharacter(a: Agent, fileName: string) {
   const badge = document.createElement("span");
   badge.className = "format";
   badge.textContent = format;
-  nameLabel.append(strong, badge, ` · ${a.animations().length} アニメーション`);
+  nameLabel.append(strong, badge, ` · ${a.character.width}×${a.character.height} · ${a.animations().length} アニメーション`);
+  nameLabel.title = `${fileName} (画像 ${a.character.width}×${a.character.height} px)`;
 
   const icon = a.character.trayIcon && imageToDataUrl(a.character.trayIcon);
   pickIcon.hidden = !icon;
@@ -163,8 +164,16 @@ visibleButton.onclick = () => {
 };
 $<HTMLFormElement>("speak").onsubmit = (e) => {
   e.preventDefault();
-  agent?.speak($<HTMLInputElement>("text").value.trim() || "こんにちは！");
+  if (!agent) return;
+  agent.speak($<HTMLInputElement>("text").value.trim() || selfIntroduction(agent));
 };
+
+/** 空欄のまま「話す」を押したときの自己紹介: キャラクターファイルの紹介文 (無ければ名前だけ) */
+function selfIntroduction(a: Agent): string {
+  const description = a.character.description?.trim();
+  if (description) return description;
+  return `こんにちは、${a.name ?? nameLabel.title.replace(/\.ac[st].*$/i, "")}です。`;
+}
 $("animate").onclick = () => agent?.animate();
 $("stop").onclick = () => agent?.stop();
 filter.oninput = renderList;
