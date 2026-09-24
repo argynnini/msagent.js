@@ -9,6 +9,14 @@
       button, input { font: inherit; }
       .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; align-items: center; }
       #list { display: flex; flex-wrap: wrap; gap: 4px; max-width: 720px; }
+      #duration { width: 6em; }
+      .hint { opacity: 0.8; font-size: 0.9em; }
+      /* クリックした場所の目印 */
+      .marker {
+        position: fixed; width: 16px; height: 16px; margin: -8px 0 0 -8px; border: 2px solid #ff0; border-radius: 50%;
+        pointer-events: none; animation: marker 1s ease-out forwards;
+      }
+      @keyframes marker { to { transform: scale(2.5); opacity: 0; } }
     </style>
   </head>
   <body>
@@ -22,11 +30,17 @@
       <input id="text" value="こんにちは。何かお手伝いしましょうか？" size="40" />
       <button>speak</button>
       <button type="button" id="animate">animate</button>
-      <button type="button" id="move">moveTo</button>
-      <button type="button" id="gesture">gestureAt</button>
       <button type="button" id="stop">stop</button>
       <button type="button" id="toggle">hide / show</button>
     </form>
+    <fieldset class="row" id="click-mode">
+      <legend>画面をクリックすると</legend>
+      <label><input type="radio" name="click" value="move" checked /> そこへ移動 (moveTo)</label>
+      <label>かける時間 <input type="number" id="duration" value="1000" min="0" step="100" /> ms</label>
+      <label><input type="radio" name="click" value="gesture" /> そこを指す (gestureAt)</label>
+      <label><input type="radio" name="click" value="none" /> 何もしない</label>
+      <span class="hint">ボタンなどの上は除く</span>
+    </fieldset>
     <div id="list"></div>
     <script type="module" src="./main.ts"></script>
   </body>

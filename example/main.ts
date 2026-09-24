@@ -36,8 +36,6 @@ $<HTMLFormElement>("speak").onsubmit = (e) => {
   agent?.speak($<HTMLInputElement>("text").value);
 };
 $("animate").onclick = () => agent?.animate();
-$("move").onclick = () => agent?.moveTo(Math.random() * (innerWidth - 150), Math.random() * (innerHeight - 150));
-$("gesture").onclick = () => agent?.gestureAt(0, 0);
 $("stop").onclick = () => agent?.stop();
 $("toggle").onclick = () => {
   if (!agent) return;
@@ -45,3 +43,29 @@ $("toggle").onclick = () => {
   else agent.show();
   visible = !visible;
 };
+
+// 画面をクリックした場所へ移動する / そこを指す (ボタン・入力欄・キャラクターの上は除く)
+document.addEventListener("click", (e) => {
+  if (!agent || !visible) return;
+  const target = e.target as Element;
+  if (target.closest("button, input, label, fieldset, .msagent, .msagent-balloon")) return;
+  const mode = document.querySelector<HTMLInputElement>('input[name="click"]:checked')?.value;
+  if (mode === "none") return;
+  showMarker(e.clientX, e.clientY);
+  if (mode === "move") {
+    // moveTo はキャラクターの左上の位置なので、キャラクターの真ん中がクリックした場所に来るようにずらす
+    const { width, height } = agent.element.getBoundingClientRect();
+    agent.moveTo(e.clientX - width / 2, e.clientY - height / 2, Number($<HTMLInputElement>("duration").value) || 0);
+  } else {
+    agent.gestureAt(e.clientX, e.clientY);
+  }
+});
+
+function showMarker(x: number, y: number) {
+  const marker = document.createElement("div");
+  marker.className = "marker";
+  marker.style.left = `${x}px`;
+  marker.style.top = `${y}px`;
+  marker.addEventListener("animationend", () => marker.remove());
+  document.body.append(marker);
+}
