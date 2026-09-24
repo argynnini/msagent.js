@@ -1,6 +1,6 @@
 import { decompress } from "./decompress";
 import { decodeTrayIcon } from "./icon";
-import type { BalloonStyle } from "../character";
+import type { BalloonStyle, VoiceSettings } from "../character";
 import { languageTag, pickLanguage, type Language } from "../language";
 
 export interface Location {
@@ -71,6 +71,13 @@ class Cursor {
   u32() { const v = this.view.getUint32(this.pos, true); this.pos += 4; return v; }
   skip(n: number) { this.pos += n; }
   bytes(n: number) { const v = new Uint8Array(this.buf, this.pos, n); this.pos += n; return v; }
+  /** GUID ("{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}" の形) */
+  guid(): string {
+    const hex = (v: number, n: number) => v.toString(16).padStart(n, "0");
+    const d1 = hex(this.u32(), 8), d2 = hex(this.u16(), 4), d3 = hex(this.u16(), 4);
+    const d4 = [...this.bytes(8)].map((b) => hex(b, 2)).join("");
+    return `{${d1}-${d2}-${d3}-${d4.slice(0, 4)}-${d4.slice(4)}}`.toUpperCase();
+  }
   location(): Location { return { offset: this.u32(), size: this.u32() }; }
   /** DWORD 文字数 + UTF-16LE (文字数 > 0 のとき終端 NUL 付き) */
   string(): string {
@@ -99,7 +106,9 @@ export class AcsCharacter {
    * 読み上げの声の設定 (Microsoft Agent の音声合成 = SAPI 4 の値)。音声の設定が無い (Office アシスタントなど)、
    * またはエンジン任せ (-1) の項目は undefined
    */
-  readonly voice: { /** 1 分あたりの単語数 */ speed?: number; /** 声の高さ (Hz) */ pitch?: number } = {};
+  readonly voice: VoiceSettings = {};
+  /** キャラクターの GUID */
+  readonly guid: string;
   /** [r, g, b] の配列 */
   readonly palette: [number, number, number][] = [];
   /**
@@ -130,24 +139,34 @@ export class AcsCharacter {
     c.pos = charLoc.offset;
     c.skip(4); // version
     const localizedLoc = c.location();
-    c.skip(16); // GUID
+    this.guid = c.guid();
     this.width = c.u16();
     this.height = c.u16();
     this.transparentIndex = c.u8();
     const style = c.u32();
     c.skip(4);
     if (style & STYLE_VOICE) {
-      c.skip(32); // engine / mode GUID
+      this.voice.engine = c.guid();
+      this.voice.mode = c.guid();
       // 速さ・高さ。すべてのビットが 1 (-1) ならエンジン任せ
       const speed = c.u32();
       const pitch = c.u16();
       if (speed !== 0xffffffff && speed > 0) this.voice.speed = speed;
       if (pitch !== 0xffff && pitch > 0) this.voice.pitch = pitch;
       if (c.u8() !== 0) {
-        c.skip(2); // lang id
-        c.string(); // dialect
-        c.skip(4); // gender / age
-        c.string(); // style
+        const langId = c.u16();
+        const dialect = c.string();
+        const gender = c.u16(); // SAPI 4: 0 どちらでもない, 1 女性, 2 男性
+        const age = c.u16();
+        const style = c.string();
+        if (langId) {
+          this.voice.languageId = langId;
+          this.voice.language = languageTag(langId);
+        }
+        if (dialect) this.voice.dialect = dialect;
+        this.voice.gender = gender === 1 ? "female" : gender === 2 ? "male" : "neutral";
+        if (age) this.voice.age = age;
+        if (style) this.voice.style = style;
       }
     }
     if (style & STYLE_BALLOON) {

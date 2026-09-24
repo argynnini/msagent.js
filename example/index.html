@@ -130,6 +130,20 @@
       .anim:hover { border-color: var(--muted); }
       .anim[aria-current="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
       .anim-empty { color: var(--muted); font-size: 12px; padding: 4px 2px; }
+      /* 大きさ (agent.scale) */
+      .size { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+      .size input { flex: 1; max-width: 220px; accent-color: var(--accent); }
+      .size output { min-width: 7.5em; font-variant-numeric: tabular-nums; }
+      .size[hidden] { display: none; }
+      /* キャラクターの設定 (character.voice / balloon など) */
+      .info { border-top: 1px solid var(--border); padding: 8px 12px; font-size: 12px; }
+      .info summary { color: var(--muted); cursor: pointer; }
+      .info dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 8px 0 2px; }
+      .info dt { color: var(--muted); }
+      .info dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+      .info code { font-size: 11px; }
+      .swatch { display: inline-block; width: 11px; height: 11px; margin-right: 3px; border: 1px solid var(--border); border-radius: 3px; vertical-align: -1px; }
+      .info[hidden] { display: none; }
       /* 言語の切り替え */
       .lang { flex: none; max-width: 120px; padding: 5px 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: inherit; font: inherit; font-size: 12px; }
       .lang[hidden] { display: none; }
@@ -246,6 +260,15 @@
             <button id="animate" class="btn small" type="button" title="agent.animate()">🎲 おまかせ</button>
             <button id="stop" class="btn small" type="button" title="agent.stop()">■ 止める</button>
           </div>
+          <label class="size needs-agent" hidden>
+            大きさ
+            <input id="scale" type="range" min="50" max="300" step="25" value="100" title="agent.scale" />
+            <output id="scale-value" for="scale">100%</output>
+          </label>
+          <details class="info needs-agent" hidden>
+            <summary>キャラクターの設定 (agent.character)</summary>
+            <dl id="info"></dl>
+          </details>
           <div class="events needs-agent" hidden>
             <div class="events-head"><span>イベント (agent.on)</span><span>新しい順</span></div>
             <ol id="events" aria-live="off"></ol>

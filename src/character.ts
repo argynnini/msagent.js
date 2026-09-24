@@ -1,6 +1,27 @@
 import type { AcsImage, Animation } from "./acs/reader";
 import type { Language } from "./language";
 
+/** キャラクターファイルに入っている、読み上げの声の設定 (Microsoft Agent の音声合成 = SAPI 4 の値)。無い項目は undefined */
+export interface VoiceSettings {
+  /** 速さ (1 分あたりの単語数) */
+  speed?: number;
+  /** 高さ (Hz) */
+  pitch?: number;
+  /** 言語 (BCP 47。例: "en-US") と、その Windows の言語 ID (例: 0x0409) */
+  language?: string;
+  languageId?: number;
+  /** 方言 (空なら undefined) */
+  dialect?: string;
+  gender?: "neutral" | "female" | "male";
+  /** 年齢 */
+  age?: number;
+  /** 話し方 (例: "Business") */
+  style?: string;
+  /** 音声合成エンジンと、その声の GUID (例: L&H TruVoice) */
+  engine?: string;
+  mode?: string;
+}
+
 /** キャラクターファイルに入っている、吹き出しの見た目 (Microsoft Agent の Character Editor で決めたもの) */
 export interface BalloonStyle {
   /** 行数 */
@@ -42,7 +63,9 @@ export interface Character {
   /** タスクトレイ用の小さなアイコン (無ければ undefined) */
   readonly trayIcon: AcsImage | undefined;
   /** 読み上げの声の設定 (無い項目は undefined) */
-  readonly voice: { speed?: number; pitch?: number };
+  readonly voice: VoiceSettings;
+  /** キャラクターの GUID (例: "{4E574F44-B521-11D0-9E9A-00C04FD7081F}")。無ければ undefined */
+  readonly guid: string | undefined;
   readonly imageCount: number;
   /** 状態 (例: "IdlingLevel1"、大文字小文字は問わない) に割り当てられたアニメーション名。無ければ空 */
   stateAnimations(state: string): string[];

@@ -57,6 +57,7 @@ const agent = await msagent.load(name); // Promise でも受け取れる
 - `voice`: `speak()` で声に出して読むか (既定: `true`。`false` なら吹き出しと口の動きだけ)
 - `idle`: 待機動作 (既定: `true`)
 - `language`: `name` / `description` の言語 (下の「言語」を参照。既定: ブラウザの言語)
+- `scale`: 表示の倍率 (既定: `1`)
 
 ### Agent
 
@@ -78,7 +79,7 @@ clippy.js と同じく、`play` / `speak` / `moveTo` / `gestureAt` / `delay` は
 | `pause()` / `resume()` | 一時停止・再開 |
 | `reposition()` | 画面の中に収める |
 
-msagent.js で足したもの: `name`、`description`、`language`、`sound`、`voice`、`on()` / `off()` (イベント)、`hitTest(clientX, clientY)`、`destroy()`、`element`、`canvas`、`character`、`player`
+msagent.js で足したもの: `name`、`description`、`language`、`scale` / `width` / `height` (大きさ)、`sound`、`voice`、`on()` / `off()` (イベント)、`hitTest(clientX, clientY)`、`destroy()`、`element`、`canvas`、`character`、`player`
 
 キャラクターはドラッグで動かせ、ダブルクリックで `animate()` します。透明な部分 (キャラクターの周り) は押せず、クリックは下のページにそのまま届きます。
 ### イベント
@@ -99,6 +100,7 @@ agent.on("animationend", (e) => console.log(e.detail.name));
 | `show` / `hide` | 出た / 消えた | なし |
 | `animationstart` / `animationend` | アニメーションが始まった / 終わった | `name`, `idle` (待機動作か) |
 | `speakstart` / `speakend` | しゃべり始めた / 終えた (途中でやめたときも) | `text` |
+| `resize` | 大きさが変わった | `width`, `height`, `scale` |
 
 ### 言語
 
@@ -113,6 +115,29 @@ agent.character.languages;               // 入っている言語 (例: ["en", "
 ```
 
 指定した言語が無ければ、同じ言語の別の地域 → 英語 → 最初に入っているもの、の順に選びます。`.act` には言語ごとの名前が無いので、いつも同じ名前です。
+
+### 大きさ
+
+```js
+agent.scale = 2;     // 2 倍 (拡大はドット絵のまま)
+agent.width = 64;    // 幅を 64px に (縦横の比は保つ。本家の Width と同じ)
+agent.height;        // いまの表示の高さ (px)
+```
+
+大きさを変えても、足もと (下端の真ん中) の位置は変わりません。
+
+### キャラクターの設定
+
+`agent.character` から、キャラクターファイルに入っている設定を読めます。
+
+```js
+agent.character.width, agent.character.height; // 元の大きさ (px)
+agent.character.guid;     // "{4E574F44-B521-11D0-9E9A-00C04FD7081F}"
+agent.character.voice;    // { speed: 156, pitch: 50, language: "en-US", gender: "male", age: 30, style: "Business", engine: "{…}", mode: "{…}" }
+agent.character.balloon;  // { background: "#ffffe1", foreground: "#000000", border: "#000000", fontFamily: "MS Sans Serif", fontSize: 13, lines: 2, charsPerLine: 32, … }
+```
+
+声の `speed` (1 分あたりの単語数) と `pitch` (Hz) は、`speak()` の読み上げの速さ・高さにも使います。入っていない項目は `undefined` です (Office のアシスタントには声の設定が無いものが多い)。
 
 ### 見た目
 

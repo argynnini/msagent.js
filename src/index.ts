@@ -5,7 +5,7 @@ export { msagent, load } from "./load";
 export type { CharacterSource, LoadOptions } from "./load";
 export { Agent, parseCharacter } from "./agent";
 export type { AgentEventListener, AgentEventMap, AgentOptions } from "./agent";
-export type { BalloonStyle, Character } from "./character";
+export type { BalloonStyle, Character, VoiceSettings } from "./character";
 export { defaultLanguages, languageTag, pickLanguage } from "./language";
 export type { Language } from "./language";
 export { AcsCharacter } from "./acs/reader";

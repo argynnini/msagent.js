@@ -19,6 +19,8 @@ export interface AgentOptions {
   idle?: boolean;
   /** name / description の言語 (BCP 47 の "ja" など、または Windows の言語 ID)。省略時はブラウザの言語 */
   language?: Language | readonly Language[];
+  /** 表示の倍率 (既定: 1 = キャラクターファイルのままの大きさ) */
+  scale?: number;
 }
 
 /** agent.on() で受け取れるイベントと、その detail */
@@ -32,6 +34,8 @@ export interface AgentEventMap {
   dragend: { x: number; y: number };
   /** ドラッグか moveTo() で、別の場所に移った */
   move: { x: number; y: number; by: "drag" | "moveTo" };
+  /** 大きさが変わった (scale / width / height)。width, height は表示の大きさ (px) */
+  resize: { width: number; height: number; scale: number };
   /** show() で出た / hide() で消えた */
   show: Record<string, never>;
   hide: Record<string, never>;
@@ -88,6 +92,7 @@ export class Agent extends EventTarget {
   /** name / description の言語 (BCP 47 か Windows の言語 ID)。undefined ならブラウザの言語 */
   language: Language | readonly Language[] | undefined;
 
+  private currentScale = 1;
   private queue: Task[] = [];
   private running = false;
   /** stop() / hide() で順番待ちを捨てるたびに増やし、捨てたものの complete を無視する */
@@ -116,6 +121,7 @@ export class Agent extends EventTarget {
     this.voice = options.voice ?? true;
     this.language = options.language;
     this.balloon = new Balloon(this.element, character.balloon);
+    this.applyScale(options.scale ?? 1);
     this.speaker = new Speaker(() => this.player);
     (options.container ?? document.body).append(this.element, this.balloon.element);
 
@@ -343,6 +349,43 @@ export class Agent extends EventTarget {
 
   // --- msagent.js で足したもの ---
 
+  /**
+   * 表示の倍率 (1 = キャラクターファイルのままの大きさ)。変えても、足もと (下端の真ん中) の位置は変わらない。
+   * 拡大するときは、ドット絵がぼけないように、ぼかさずに引き伸ばす
+   */
+  get scale(): number {
+    return this.currentScale;
+  }
+
+  set scale(value: number) {
+    if (!(value > 0) || value === this.currentScale) return;
+    const before = this.element.getBoundingClientRect();
+    this.applyScale(value);
+    if (this.element.style.display !== "none" && before.width > 0) {
+      // 足もとをそろえる
+      this.setPosition(before.left + before.width / 2 - this.width / 2, before.bottom - this.height);
+    }
+    this.emit("resize", { width: this.width, height: this.height, scale: value });
+  }
+
+  /** 表示の幅 (px)。代入すると、縦横の比を保ったまま大きさを変える (本家の Width と同じ) */
+  get width(): number {
+    return Math.round(this.character.width * this.currentScale);
+  }
+
+  set width(px: number) {
+    this.scale = px / this.character.width;
+  }
+
+  /** 表示の高さ (px)。代入すると、縦横の比を保ったまま大きさを変える (本家の Height と同じ) */
+  get height(): number {
+    return Math.round(this.character.height * this.currentScale);
+  }
+
+  set height(px: number) {
+    this.scale = px / this.character.height;
+  }
+
   /** 名前 (language の言語。省略時はブラウザの言語) */
   get name(): string | undefined {
     return this.character.getName(this.language);
@@ -392,6 +435,15 @@ export class Agent extends EventTarget {
   }
 
   // --- 内部 ---
+
+  private applyScale(scale: number) {
+    this.currentScale = scale;
+    this.canvas.style.width = `${this.character.width * scale}px`;
+    this.canvas.style.height = `${this.character.height * scale}px`;
+    // 拡大はドット絵のまま、縮小はなめらかに
+    this.canvas.style.imageRendering = scale > 1 ? "pixelated" : "auto";
+    this.balloon.reposition();
+  }
 
   /** イベントを出す。cancelable で preventDefault() されたら false */
   private emit<K extends keyof AgentEventMap>(type: K, detail: AgentEventMap[K], cancelable = false): boolean {

@@ -94,6 +94,7 @@ export class ActCharacter implements Character {
   readonly animations = new Map<string, Animation>();
   readonly trayIcon = undefined;
   readonly voice = {};
+  readonly guid = undefined;
   /** ACT には言語ごとの名前も、吹き出しの見た目も入っていない */
   readonly languages: readonly string[] = [];
   readonly balloon = undefined;

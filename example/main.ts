@@ -15,6 +15,9 @@ const filter = $<HTMLInputElement>("filter");
 const list = $("anim-list");
 const langSelect = $<HTMLSelectElement>("lang");
 const eventList = $("events");
+const scaleInput = $<HTMLInputElement>("scale");
+const scaleValue = $("scale-value");
+const infoList = $("info");
 
 let agent: Agent | undefined;
 let names: string[] = [];
@@ -33,6 +36,7 @@ function open(file: File) {
   nameLabel.textContent = `${file.name} を読み込み中…`;
   msagent.load({
     name: file,
+    scale: Number(scaleInput.value) / 100,
     sound: pressed(soundButton),
     voice: pressed(voiceButton),
     successCb: (a) => {
@@ -77,6 +81,8 @@ function showCharacter(a: Agent, fileName: string) {
   // 言語ごとの名前が無いキャラクター (ACT など) は、言語を選べない
   langSelect.hidden = a.character.languages.length < 2;
   eventList.replaceChildren();
+  renderScale(a);
+  renderInfo(a);
 
   names = a.animations().sort((x, y) => x.localeCompare(y));
   filter.value = "";
@@ -94,6 +100,76 @@ function renderName(a: Agent, fileName: string) {
   nameLabel.append(strong, badge, ` · ${a.character.width}×${a.character.height} · ${a.animations().length} アニメーション`);
   nameLabel.title = `${fileName} (画像 ${a.character.width}×${a.character.height} px)`;
   nameLabel.dataset.file = fileName;
+}
+
+function renderScale(a: Agent) {
+  scaleValue.textContent = `${Math.round(a.scale * 100)}% (${a.width}×${a.height})`;
+}
+
+scaleInput.oninput = () => {
+  if (!agent) return;
+  agent.scale = Number(scaleInput.value) / 100;
+  renderScale(agent);
+};
+
+/** キャラクターファイルに入っている設定を並べる */
+function renderInfo(a: Agent) {
+  const c = a.character;
+  const v = c.voice;
+  const b = c.balloon;
+  const gender = { neutral: "指定なし", female: "女性", male: "男性" } as const;
+  const rows: [string, string | (string | Node)[]][] = [
+    ["画像", `${c.width}×${c.height} px · ${c.imageCount} 枚`],
+    ["GUID", c.guid ? [code(c.guid)] : "なし"],
+    [
+      "声",
+      Object.keys(v).length === 0
+        ? "設定なし"
+        : [
+            v.speed ? `${v.speed} 語/分` : "速さ: エンジン任せ",
+            v.pitch ? `${v.pitch} Hz` : "高さ: エンジン任せ",
+            v.language,
+            v.gender && gender[v.gender],
+            v.age && `${v.age} 歳`,
+            v.style,
+          ].filter(Boolean).join(" · "),
+    ],
+    ["音声エンジン", v.engine ? [code(v.engine)] : "なし"],
+    [
+      "吹き出し",
+      b
+        ? [
+            swatch(b.background), `背景 ${b.background}  `, swatch(b.foreground), `文字 ${b.foreground}  `, swatch(b.border), `縁 ${b.border}`,
+            document.createElement("br"),
+            `${b.fontFamily} ${b.fontSize}px${b.fontWeight >= 700 ? " 太字" : ""}${b.italic ? " 斜体" : ""} · ${b.lines} 行 × ${b.charsPerLine} 文字`,
+          ]
+        : "設定なし",
+    ],
+    ["言語", c.languages.length ? `${c.languages.length} 言語` : "1 つだけ"],
+  ];
+  infoList.replaceChildren(
+    ...rows.flatMap(([k, v]) => {
+      const dt = document.createElement("dt");
+      dt.textContent = k;
+      const dd = document.createElement("dd");
+      if (typeof v === "string") dd.textContent = v;
+      else dd.append(...v);
+      return [dt, dd];
+    }),
+  );
+}
+
+function code(text: string) {
+  const el = document.createElement("code");
+  el.textContent = text;
+  return el;
+}
+
+function swatch(color: string) {
+  const el = document.createElement("span");
+  el.className = "swatch";
+  el.style.background = color;
+  return el;
 }
 
 /** 名前・紹介文の言語の選択肢: 「ブラウザの言語」+ キャラクターファイルにある言語 */
@@ -123,7 +199,7 @@ langSelect.onchange = () => {
 /** 届いたイベントを、プレイヤーの下に新しい順で出す */
 function watchEvents(a: Agent) {
   const types: (keyof AgentEventMap)[] = [
-    "click", "dblclick", "dragstart", "dragend", "move", "show", "hide",
+    "click", "dblclick", "dragstart", "dragend", "move", "resize", "show", "hide",
     "animationstart", "animationend", "speakstart", "speakend",
   ];
   for (const type of types) {
