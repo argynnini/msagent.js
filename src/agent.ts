@@ -192,7 +192,15 @@ export class Agent {
    * hold なら、読み終えても吹き出しを閉じず、closeBalloon() まで次の命令に進まない
    */
   speak(text: string, hold?: boolean): void {
-    this.addToQueue((complete) => {
+    this.addToQueue(async (complete) => {
+      // 口の画像が無いコマ (待機動作の終わりなど) では口が動かないので、Microsoft Agent と同じく、
+      // しゃべるとき用のアニメーション (Speaking の状態。多くは RestPose) に切り替えてから
+      if (!this.player.hasMouth) {
+        const speaking = this.speakingAnimation();
+        const gen = this.generation;
+        if (speaking) await this.player.play(speaking, { hold: true });
+        if (gen !== this.generation) return; // 切り替えの間に stop() された
+      }
       window.clearTimeout(this.balloonTimer);
       this.hold = !!hold;
       this.speechComplete = complete;
@@ -353,6 +361,14 @@ export class Agent {
     const complete = this.speechComplete;
     this.speechComplete = undefined;
     complete?.();
+  }
+
+  /** しゃべるとき用のアニメーション (Speaking の状態、無ければ RestPose)。口の画像があるものだけ */
+  private speakingAnimation(): string | undefined {
+    const candidates = [...this.character.stateAnimations("Speaking"), "RestPose"];
+    return candidates
+      .map((n) => findAnimation(this.character, n))
+      .find((n) => n !== undefined && this.character.animations.get(n)!.frames.some((f) => f.overlays.length > 0));
   }
 
   /** 止まっているときの絵 (RestPose、無ければ Show の最後のコマ) を描く */

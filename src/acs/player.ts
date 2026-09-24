@@ -172,6 +172,11 @@ export class AcsPlayer {
     return this.running ?? Promise.resolve();
   }
 
+  /** いま出しているコマに口の画像があるか (無ければ、しゃべっても口が動かない) */
+  get hasMouth(): boolean {
+    return (this.lastFrame?.overlays.length ?? 0) > 0;
+  }
+
   /** hold で止めているアニメーションがあるか (次の再生の前に、戻りの動きが入る) */
   get isHolding(): boolean {
     return this.held !== undefined;
