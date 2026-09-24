@@ -30,6 +30,11 @@ export class AcsPlayer {
   private audioCtx: AudioContext | undefined;
   private readonly buffers = new Map<number, AudioBuffer | null>();
   private timer: number | undefined;
+  /** 次のフレームへ進む処理 (pause() 中は、resume() まで取っておく) */
+  private pendingStep: (() => void) | undefined;
+  private paused = false;
+  /** 再生中の playFrames() を終わらせる (stop() や別の再生で止められても、play() の Promise が解決するように) */
+  private settle: (() => void) | undefined;
   /** 再生要求ごとに増やし、古い再生ループを無効化する */
   private token = 0;
   /** release() が呼ばれた: 分岐で繰り返さず、終了分岐をたどって終わらせる */
@@ -81,6 +86,40 @@ export class AcsPlayer {
     this.token++;
     if (this.timer !== undefined) window.clearTimeout(this.timer);
     this.timer = undefined;
+    this.pendingStep = undefined;
+    const settle = this.settle;
+    this.settle = undefined;
+    settle?.();
+  }
+
+  /** 再生を一時停止する (いまのフレームのまま止まる) */
+  pause() {
+    if (this.paused) return;
+    this.paused = true;
+    if (this.timer !== undefined) window.clearTimeout(this.timer);
+    this.timer = undefined;
+  }
+
+  /** 一時停止をやめて、次のフレームから続ける */
+  resume() {
+    if (!this.paused) return;
+    this.paused = false;
+    const step = this.pendingStep;
+    this.pendingStep = undefined;
+    step?.();
+  }
+
+  get isPaused(): boolean {
+    return this.paused;
+  }
+
+  private schedule(step: () => void, ms: number) {
+    this.pendingStep = step;
+    if (this.paused) return;
+    this.timer = window.setTimeout(() => {
+      this.pendingStep = undefined;
+      step();
+    }, ms);
   }
 
   /** アニメーションを再生する。終了 (戻りアニメ含む) か、別の再生・stop() で resolve */
@@ -118,7 +157,12 @@ export class AcsPlayer {
   }
 
   private playFrames(anim: Animation, token: number): Promise<void> {
-    return new Promise<void>((resolve) => {
+    return new Promise<void>((done) => {
+      const resolve = () => {
+        if (this.settle === resolve) this.settle = undefined;
+        done();
+      };
+      this.settle = resolve;
       let releasedSteps = 0;
       const step = (index: number) => {
         if (token !== this.token) return resolve();
@@ -131,7 +175,7 @@ export class AcsPlayer {
         if (drawn) this.draw(frame);
         if (frame.soundIndex >= 0) void this.playSound(frame.soundIndex);
         const next = this.nextIndex(frame, index);
-        this.timer = window.setTimeout(() => step(next), drawn ? Math.max(frame.duration, 10) : 0);
+        this.schedule(() => step(next), drawn ? Math.max(frame.duration, 10) : 0);
       };
       step(0);
     });

@@ -1,5 +1,10 @@
+import { msagent } from "./load";
+
+export default msagent;
+export { msagent, load } from "./load";
+export type { CharacterSource, LoadOptions } from "./load";
 export { Agent, parseCharacter } from "./agent";
-export type { AgentOptions, CharacterSource, SpeakOptions } from "./agent";
+export type { AgentOptions } from "./agent";
 export type { Character } from "./character";
 export { AcsCharacter } from "./acs/reader";
 export type { AcsImage, Animation, Branch, Frame, FrameImage, Overlay } from "./acs/reader";

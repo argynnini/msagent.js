@@ -1,39 +1,47 @@
-import { Agent } from "../src";
+import msagent, { type Agent } from "../src";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const stage = $("stage");
-const list = $("list");
-const balloon = $("balloon");
 const sound = $<HTMLInputElement>("sound");
+const voice = $<HTMLInputElement>("voice");
 let agent: Agent | undefined;
+let visible = false;
 
-$<HTMLInputElement>("file").addEventListener("change", async (e) => {
+$<HTMLInputElement>("file").addEventListener("change", (e) => {
   const file = (e.target as HTMLInputElement).files?.[0];
   if (!file) return;
   agent?.destroy();
-  agent = await Agent.load(file, { sound: sound.checked });
-  stage.replaceChildren(agent.canvas);
-  list.replaceChildren(
-    ...agent.animations.sort().map((name) => {
-      const li = document.createElement("li");
-      const b = document.createElement("button");
-      b.className = "link";
-      b.textContent = name;
-      b.onclick = () => void agent?.play(name);
-      li.append(b);
-      return li;
-    }),
-  );
-  await agent.show();
+  // clippy.js と同じ呼び方 (名前の代わりに File も渡せる)
+  msagent.load(file, (a) => {
+    agent = a;
+    a.sound = sound.checked;
+    a.voice = voice.checked;
+    a.show();
+    visible = true;
+    a.speak(`${a.name ?? "キャラクター"}です。ダブルクリックすると、何か動きます。`);
+    $("list").replaceChildren(
+      ...a.animations().sort().map((name) => {
+        const b = document.createElement("button");
+        b.textContent = name;
+        b.onclick = () => a.play(name);
+        return b;
+      }),
+    );
+  }, (err) => alert(err));
 });
 
-sound.addEventListener("change", () => {
-  if (agent) agent.sound = sound.checked;
-});
-
-$<HTMLFormElement>("speak").addEventListener("submit", async (e) => {
+sound.onchange = () => agent && (agent.sound = sound.checked);
+voice.onchange = () => agent && (agent.voice = voice.checked);
+$<HTMLFormElement>("speak").onsubmit = (e) => {
   e.preventDefault();
+  agent?.speak($<HTMLInputElement>("text").value);
+};
+$("animate").onclick = () => agent?.animate();
+$("move").onclick = () => agent?.moveTo(Math.random() * (innerWidth - 150), Math.random() * (innerHeight - 150));
+$("gesture").onclick = () => agent?.gestureAt(0, 0);
+$("stop").onclick = () => agent?.stop();
+$("toggle").onclick = () => {
   if (!agent) return;
-  await agent.speak($<HTMLInputElement>("text").value, { onProgress: (shown) => (balloon.textContent = shown) });
-  setTimeout(() => (balloon.textContent = ""), 2000);
-});
+  if (visible) agent.hide();
+  else agent.show();
+  visible = !visible;
+};

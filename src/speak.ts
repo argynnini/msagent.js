@@ -137,14 +137,17 @@ export class Speaker {
     return this.handlers !== undefined;
   }
 
-  /** params: 読み上げの速さ・高さ (ブラウザの値。標準 = 1。voiceParams() で ACS の設定から作る) */
-  speak(text: string, handlers: SpeakHandlers, params = { rate: 1, pitch: 1 }) {
+  /**
+   * params: 読み上げの速さ・高さ (ブラウザの値。標準 = 1。voiceParams() で ACS の設定から作る)。
+   * aloud が false なら声を出さず、見積もった時間だけ口を動かす
+   */
+  speak(text: string, handlers: SpeakHandlers, params = { rate: 1, pitch: 1 }, aloud = true) {
     this.cancel();
     this.handlers = handlers;
     this.text = text;
     handlers.onProgress("");
 
-    const synth = typeof speechSynthesis === "undefined" ? undefined : speechSynthesis;
+    const synth = !aloud || typeof speechSynthesis === "undefined" ? undefined : speechSynthesis;
     if (!synth) {
       handlers.onProgress(text);
       const steps = mouthSteps(text, MORA_MS / params.rate, PAUSE_MS / params.rate);

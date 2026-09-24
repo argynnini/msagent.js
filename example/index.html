@@ -5,27 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>msagent.js example</title>
     <style>
-      body { font-family: system-ui, sans-serif; margin: 16px; background: #f4f4f4; color: #222; }
-      main { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
-      #stage { min-width: 200px; min-height: 200px; display: grid; place-items: center; }
-      canvas { image-rendering: pixelated; }
-      #balloon { max-width: 280px; padding: 8px 12px; background: #ffffe1; border: 1px solid #333; border-radius: 8px; }
-      #balloon:empty { display: none; }
-      #list { max-height: 60vh; overflow: auto; margin: 0; padding-left: 1.2em; }
-      button.link { background: none; border: 0; padding: 0; color: #06c; cursor: pointer; }
+      body { font-family: system-ui, sans-serif; margin: 16px; background: #3a6ea5; color: #fff; min-height: 100vh; }
+      button, input { font: inherit; }
+      .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; align-items: center; }
+      #list { display: flex; flex-wrap: wrap; gap: 4px; max-width: 720px; }
     </style>
   </head>
   <body>
     <h1>msagent.js</h1>
-    <p><input type="file" id="file" accept=".acs,.act" /> <label><input type="checkbox" id="sound" checked /> 効果音</label></p>
-    <form id="speak"><input id="text" value="こんにちは。何かお手伝いしましょうか？" size="40" /> <button>しゃべる</button></form>
-    <main>
-      <div>
-        <div id="balloon"></div>
-        <div id="stage"></div>
-      </div>
-      <ol id="list"></ol>
-    </main>
+    <div class="row">
+      <input type="file" id="file" accept=".acs,.act" />
+      <label><input type="checkbox" id="sound" checked /> 効果音</label>
+      <label><input type="checkbox" id="voice" checked /> 読み上げ</label>
+    </div>
+    <form class="row" id="speak">
+      <input id="text" value="こんにちは。何かお手伝いしましょうか？" size="40" />
+      <button>speak</button>
+      <button type="button" id="animate">animate</button>
+      <button type="button" id="move">moveTo</button>
+      <button type="button" id="gesture">gestureAt</button>
+      <button type="button" id="stop">stop</button>
+      <button type="button" id="toggle">hide / show</button>
+    </form>
+    <div id="list"></div>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

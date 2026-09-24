@@ -34,7 +34,7 @@
   },
   "scripts": {
     "dev": "vite example",
-    "build": "vite build && tsc -p tsconfig.build.json",
+    "build": "vite build && vite build --mode global && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run typecheck && npm run build"
   },
