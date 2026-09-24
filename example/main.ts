@@ -1,4 +1,4 @@
-import msagent, { ActCharacter, imageToDataUrl, type Agent } from "../src";
+import msagent, { ActCharacter, imageToDataUrl, type Agent, type AgentEventMap } from "../src";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const stage = $("drop");
@@ -13,6 +13,8 @@ const voiceButton = $("voice");
 const visibleButton = $("visible");
 const filter = $<HTMLInputElement>("filter");
 const list = $("anim-list");
+const langSelect = $<HTMLSelectElement>("lang");
+const eventList = $("events");
 
 let agent: Agent | undefined;
 let names: string[] = [];
@@ -37,6 +39,7 @@ function open(file: File) {
       agent = a;
       // コンソールから試せるように (例: agent.moveTo(100, 100))
       (window as unknown as { agent: Agent }).agent = a;
+      watchEvents(a);
       placeOnStage(a);
       a.show();
       toggle(visibleButton, true);
@@ -59,15 +62,8 @@ function placeOnStage(a: Agent) {
 }
 
 function showCharacter(a: Agent, fileName: string) {
-  const format = a.character instanceof ActCharacter ? "ACT" : "ACS";
-  nameLabel.replaceChildren();
-  const strong = document.createElement("strong");
-  strong.textContent = a.name ?? fileName.replace(/\.ac[st]$/i, "");
-  const badge = document.createElement("span");
-  badge.className = "format";
-  badge.textContent = format;
-  nameLabel.append(strong, badge, ` · ${a.character.width}×${a.character.height} · ${a.animations().length} アニメーション`);
-  nameLabel.title = `${fileName} (画像 ${a.character.width}×${a.character.height} px)`;
+  renderName(a, fileName);
+  renderLanguages(a);
 
   const icon = a.character.trayIcon && imageToDataUrl(a.character.trayIcon);
   pickIcon.hidden = !icon;
@@ -78,10 +74,72 @@ function showCharacter(a: Agent, fileName: string) {
   stage.classList.add("loaded");
   stageHint.textContent = "キャラクターは画面の上に浮かんでいます。ドラッグで動かし、ダブルクリックでおまかせの動き。";
   for (const el of document.querySelectorAll<HTMLElement>(".needs-agent")) el.hidden = false;
+  // 言語ごとの名前が無いキャラクター (ACT など) は、言語を選べない
+  langSelect.hidden = a.character.languages.length < 2;
+  eventList.replaceChildren();
 
   names = a.animations().sort((x, y) => x.localeCompare(y));
   filter.value = "";
   renderList();
+}
+
+function renderName(a: Agent, fileName: string) {
+  const format = a.character instanceof ActCharacter ? "ACT" : "ACS";
+  nameLabel.replaceChildren();
+  const strong = document.createElement("strong");
+  strong.textContent = a.name ?? fileName.replace(/\.ac[st]$/i, "");
+  const badge = document.createElement("span");
+  badge.className = "format";
+  badge.textContent = format;
+  nameLabel.append(strong, badge, ` · ${a.character.width}×${a.character.height} · ${a.animations().length} アニメーション`);
+  nameLabel.title = `${fileName} (画像 ${a.character.width}×${a.character.height} px)`;
+  nameLabel.dataset.file = fileName;
+}
+
+/** 名前・紹介文の言語の選択肢: 「ブラウザの言語」+ キャラクターファイルにある言語 */
+function renderLanguages(a: Agent) {
+  const display = typeof Intl.DisplayNames === "function" ? new Intl.DisplayNames([navigator.language], { type: "language" }) : undefined;
+  const label = (tag: string) => {
+    try {
+      return display?.of(tag) ?? tag;
+    } catch {
+      return tag;
+    }
+  };
+  const auto = new Option(`自動 (${label(navigator.language)})`, "");
+  const options = a.character.languages
+    .map((tag) => new Option(label(tag), tag))
+    .sort((x, y) => x.text.localeCompare(y.text));
+  langSelect.replaceChildren(auto, ...options);
+  langSelect.value = "";
+}
+
+langSelect.onchange = () => {
+  if (!agent) return;
+  agent.language = langSelect.value || undefined;
+  renderName(agent, nameLabel.dataset.file ?? "");
+};
+
+/** 届いたイベントを、プレイヤーの下に新しい順で出す */
+function watchEvents(a: Agent) {
+  const types: (keyof AgentEventMap)[] = [
+    "click", "dblclick", "dragstart", "dragend", "move", "show", "hide",
+    "animationstart", "animationend", "speakstart", "speakend",
+  ];
+  for (const type of types) {
+    a.on(type, (e) => {
+      const detail = { ...(e.detail as object) } as Record<string, unknown>;
+      delete detail.originalEvent;
+      for (const [k, v] of Object.entries(detail)) if (typeof v === "number") detail[k] = Math.round(v);
+      if (typeof detail.text === "string" && detail.text.length > 16) detail.text = `${detail.text.slice(0, 16)}…`;
+      const li = document.createElement("li");
+      const name = document.createElement("b");
+      name.textContent = type;
+      li.append(name, ` ${Object.keys(detail).length ? JSON.stringify(detail) : ""}`);
+      eventList.prepend(li);
+      while (eventList.children.length > 5) eventList.lastElementChild!.remove();
+    });
+  }
 }
 
 function renderList() {
@@ -168,11 +226,11 @@ $<HTMLFormElement>("speak").onsubmit = (e) => {
   agent.speak($<HTMLInputElement>("text").value.trim() || selfIntroduction(agent));
 };
 
-/** 空欄のまま「話す」を押したときの自己紹介: キャラクターファイルの紹介文 (無ければ名前だけ) */
+/** 空欄のまま「話す」を押したときの自己紹介: キャラクターファイルの紹介文 (選んだ言語。無ければ名前だけ) */
 function selfIntroduction(a: Agent): string {
-  const description = a.character.description?.trim();
+  const description = a.description?.trim();
   if (description) return description;
-  return `こんにちは、${a.name ?? nameLabel.title.replace(/\.ac[st].*$/i, "")}です。`;
+  return `こんにちは、${a.name ?? (nameLabel.dataset.file ?? "").replace(/\.ac[st]$/i, "")}です。`;
 }
 $("animate").onclick = () => agent?.animate();
 $("stop").onclick = () => agent?.stop();

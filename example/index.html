@@ -130,6 +130,16 @@
       .anim:hover { border-color: var(--muted); }
       .anim[aria-current="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
       .anim-empty { color: var(--muted); font-size: 12px; padding: 4px 2px; }
+      /* 言語の切り替え */
+      .lang { flex: none; max-width: 120px; padding: 5px 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: inherit; font: inherit; font-size: 12px; }
+      .lang[hidden] { display: none; }
+      /* 届いたイベント (agent.on) */
+      .events { border-top: 1px solid var(--border); padding: 8px 12px 10px; font-size: 12px; }
+      .events-head { display: flex; justify-content: space-between; color: var(--muted); }
+      .events ol { margin: 4px 0 0; padding: 0; list-style: none; font-family: "Cascadia Code", Consolas, monospace; font-size: 11.5px; }
+      .events li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+      .events li:first-child { color: var(--fg); }
+      .events b { color: var(--accent); font-weight: 600; }
       .needs-agent[hidden] { display: none; }
 
       /* セクション */
@@ -156,11 +166,8 @@
       footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 20px; justify-content: space-between; }
 
       /* ライブラリの吹き出しを、このページの配色に合わせる */
-      .msagent-balloon { padding: 10px 14px; border: 1.5px solid var(--balloon-border); border-radius: 12px; background: var(--balloon); color: var(--balloon-fg); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); }
-      .msagent-content { font: 13px/1.55 "Segoe UI", "Yu Gothic UI", "Hiragino Sans", sans-serif; }
-      .msagent-tip { width: 14px; height: 14px; background: var(--balloon); border: 1.5px solid var(--balloon-border); }
-      .msagent-top-left .msagent-tip, .msagent-top-right .msagent-tip { margin-top: -7px; border-top-color: transparent; border-left-color: transparent; }
-      .msagent-bottom-left .msagent-tip, .msagent-bottom-right .msagent-tip { margin-bottom: -7px; border-bottom-color: transparent; border-right-color: transparent; }
+      /* 吹き出しの色・文字・幅はキャラクターファイルの設定のまま。角の丸みと影だけ足す */
+      .msagent-balloon { padding: 10px 12px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18); }
 
       /* クリックした場所の目印 */
       .marker { position: fixed; z-index: 999; width: 18px; height: 18px; margin: -9px 0 0 -9px; border: 2px solid var(--accent); border-radius: 50%; pointer-events: none; animation: marker 0.8s ease-out forwards; }
@@ -209,6 +216,7 @@
               <img id="pick-icon" class="char-icon" alt="" width="16" height="16" hidden />
             </button>
             <span id="name" class="name">キャラクター未選択</span>
+            <select id="lang" class="lang needs-agent" title="名前・紹介文の言語 (agent.language)" aria-label="名前・紹介文の言語" hidden></select>
             <button id="visible" class="icon-btn needs-agent" type="button" aria-pressed="true" title="表示する / 隠す (show / hide)" aria-label="表示" hidden>
               <span class="on" aria-hidden="true">👁</span><span class="off" aria-hidden="true">🙈</span>
             </button>
@@ -237,6 +245,10 @@
             <span class="spacer"></span>
             <button id="animate" class="btn small" type="button" title="agent.animate()">🎲 おまかせ</button>
             <button id="stop" class="btn small" type="button" title="agent.stop()">■ 止める</button>
+          </div>
+          <div class="events needs-agent" hidden>
+            <div class="events-head"><span>イベント (agent.on)</span><span>新しい順</span></div>
+            <ol id="events" aria-live="off"></ol>
           </div>
           <div class="anims needs-agent" hidden>
             <input id="filter" class="text-input" type="search" placeholder="アニメーションを絞り込み (例: Greet, Wave)" aria-label="アニメーションを絞り込み" autocomplete="off" />

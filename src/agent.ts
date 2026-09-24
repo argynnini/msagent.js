@@ -4,6 +4,7 @@ import { ActCharacter, isActFile } from "./act/reader";
 import { Balloon } from "./balloon";
 import type { Character } from "./character";
 import { IdleController, isIdleAnimation } from "./idle";
+import type { Language } from "./language";
 import { Speaker, voiceParams } from "./speak";
 import { injectStyles } from "./styles";
 
@@ -16,7 +17,36 @@ export interface AgentOptions {
   voice?: boolean;
   /** 何もしていない間、ときどき待機動作 (Idle 系) を再生するか (既定: true) */
   idle?: boolean;
+  /** name / description の言語 (BCP 47 の "ja" など、または Windows の言語 ID)。省略時はブラウザの言語 */
+  language?: Language | readonly Language[];
 }
+
+/** agent.on() で受け取れるイベントと、その detail */
+export interface AgentEventMap {
+  /** キャラクターの絵の部分がクリックされた (ドラッグの後は来ない) */
+  click: { x: number; y: number; originalEvent: MouseEvent };
+  /** ダブルクリックされた。event.preventDefault() すると、animate() しない */
+  dblclick: { x: number; y: number; originalEvent: MouseEvent };
+  /** ドラッグで動かし始めた / 動かし終えた (x, y はキャラクターの左上の位置) */
+  dragstart: { x: number; y: number };
+  dragend: { x: number; y: number };
+  /** ドラッグか moveTo() で、別の場所に移った */
+  move: { x: number; y: number; by: "drag" | "moveTo" };
+  /** show() で出た / hide() で消えた */
+  show: Record<string, never>;
+  hide: Record<string, never>;
+  /** アニメーションが始まった / 終わった (idle: 待機動作か) */
+  animationstart: { name: string; idle: boolean };
+  animationend: { name: string; idle: boolean };
+  /** しゃべり始めた / しゃべり終えた (途中でやめたときも来る) */
+  speakstart: { text: string };
+  speakend: { text: string };
+}
+
+export type AgentEventListener<K extends keyof AgentEventMap> = (event: CustomEvent<AgentEventMap[K]>) => void;
+
+/** ドラッグとみなすまでの動き (px)。これより小さければクリック */
+const DRAG_THRESHOLD = 3;
 
 /** 順番待ちの 1 件。終わったら complete を呼ぶ */
 type Task = (complete: () => void) => void;
@@ -45,7 +75,7 @@ function findAnimation(character: Character, name: string): string | undefined {
  * キャラクター 1 体。clippy.js の Agent と同じ使い方ができる。
  * play / speak / moveTo / gestureAt / delay は順番待ちに入り、前のものが終わってから 1 つずつ実行される
  */
-export class Agent {
+export class Agent extends EventTarget {
   /** キャラクターの要素 (div.msagent)。この中に canvas がある */
   readonly element: HTMLDivElement;
   readonly canvas: HTMLCanvasElement;
@@ -55,6 +85,8 @@ export class Agent {
   private readonly idle: IdleController | undefined;
   /** speak() で声に出すか */
   voice: boolean;
+  /** name / description の言語 (BCP 47 か Windows の言語 ID)。undefined ならブラウザの言語 */
+  language: Language | readonly Language[] | undefined;
 
   private queue: Task[] = [];
   private running = false;
@@ -72,6 +104,7 @@ export class Agent {
     readonly character: Character,
     options: AgentOptions = {},
   ) {
+    super();
     injectStyles();
     this.element = document.createElement("div");
     this.element.className = "msagent";
@@ -81,7 +114,8 @@ export class Agent {
     this.player = new AcsPlayer(character, this.canvas);
     this.player.soundEnabled = options.sound ?? true;
     this.voice = options.voice ?? true;
-    this.balloon = new Balloon(this.element);
+    this.language = options.language;
+    this.balloon = new Balloon(this.element, character.balloon);
     this.speaker = new Speaker(() => this.player);
     (options.container ?? document.body).append(this.element, this.balloon.element);
 
@@ -91,14 +125,25 @@ export class Agent {
         character: () => this.character,
         busy: () => this.hidden || this.running || this.speaker.speaking || this.hold || this.player.isPaused,
       });
-      this.player.onPlayingChange = (playing) => {
-        if (!playing) this.idle?.animationEnded();
-      };
       this.idle.start();
     }
+    let playing: string | undefined;
+    this.player.onPlayingChange = (active) => {
+      if (active) {
+        playing = this.player.currentAnimation;
+        if (playing) this.emit("animationstart", { name: playing, idle: isIdleAnimation(character, playing) });
+      } else {
+        if (playing) this.emit("animationend", { name: playing, idle: isIdleAnimation(character, playing) });
+        playing = undefined;
+        this.idle?.animationEnded();
+      }
+    };
 
     this.setupDrag();
-    this.listen(this.element, "dblclick", () => this.animate());
+    this.listen(this.element, "dblclick", (e) => {
+      const ev = e as MouseEvent;
+      if (this.emit("dblclick", { x: ev.clientX, y: ev.clientY, originalEvent: ev }, true)) this.animate();
+    });
     this.listen(window, "resize", () => this.reposition());
     // 最初の操作で音を鳴らせるようにしておく (自動再生の制限)
     const unlock = () => this.player.unlockAudio();
@@ -112,6 +157,7 @@ export class Agent {
   show(fast?: boolean): boolean {
     this.hidden = false;
     this.element.style.display = "block";
+    this.emit("show", {});
     if (!this.element.style.left) {
       // clippy.js と同じく、画面の右下寄り (はみ出す分は reposition で戻す)
       this.element.style.left = `${window.innerWidth * 0.8}px`;
@@ -140,6 +186,7 @@ export class Agent {
       this.element.style.display = "none";
       this.balloon.hide();
       this.pause();
+      this.emit("hide", {});
       callback?.();
     };
     const name = findAnimation(this.character, "Hide");
@@ -204,6 +251,7 @@ export class Agent {
       window.clearTimeout(this.balloonTimer);
       this.hold = !!hold;
       this.speechComplete = complete;
+      this.emit("speakstart", { text });
       this.balloon.setText("");
       this.balloon.show();
       this.speaker.speak(
@@ -211,6 +259,7 @@ export class Agent {
         {
           onProgress: (shown) => this.balloon.setText(shown),
           onEnd: () => {
+            this.emit("speakend", { text });
             if (this.hold) return;
             this.completeSpeech();
             this.balloonTimer = window.setTimeout(() => this.balloon.hide(), CLOSE_BALLOON_DELAY_MS);
@@ -245,11 +294,13 @@ export class Agent {
     this.addToQueue(async (complete) => {
       if (duration === 0) {
         this.setPosition(x, y);
+        this.emit("move", { ...this.position, by: "moveTo" });
         return complete();
       }
       const name = findAnimation(this.character, `Move${this.direction(x, y)}`);
       if (name) await this.player.play(name, { hold: true });
       await this.slide(x, y, duration);
+      this.emit("move", { ...this.position, by: "moveTo" });
       if (name) await this.player.playReturn();
       complete();
     });
@@ -292,8 +343,25 @@ export class Agent {
 
   // --- msagent.js で足したもの ---
 
+  /** 名前 (language の言語。省略時はブラウザの言語) */
   get name(): string | undefined {
-    return this.character.name;
+    return this.character.getName(this.language);
+  }
+
+  /** 紹介文 (language の言語。省略時はブラウザの言語) */
+  get description(): string | undefined {
+    return this.character.getDescription(this.language);
+  }
+
+  /** イベントを受け取る (addEventListener と同じ。detail に中身が入る) */
+  on<K extends keyof AgentEventMap>(type: K, listener: AgentEventListener<K>, options?: AddEventListenerOptions): this {
+    this.addEventListener(type, listener as EventListener, options);
+    return this;
+  }
+
+  off<K extends keyof AgentEventMap>(type: K, listener: AgentEventListener<K>): this {
+    this.removeEventListener(type, listener as EventListener);
+    return this;
   }
 
   get sound(): boolean {
@@ -324,6 +392,16 @@ export class Agent {
   }
 
   // --- 内部 ---
+
+  /** イベントを出す。cancelable で preventDefault() されたら false */
+  private emit<K extends keyof AgentEventMap>(type: K, detail: AgentEventMap[K], cancelable = false): boolean {
+    return this.dispatchEvent(new CustomEvent(type, { detail, cancelable }));
+  }
+
+  private get position(): { x: number; y: number } {
+    const r = this.element.getBoundingClientRect();
+    return { x: r.left, y: r.top };
+  }
 
   private addToQueue(task: Task) {
     if (this.destroyed) return;
@@ -425,15 +503,24 @@ export class Agent {
    * タッチは押すまで位置が分からないので、押した時点で絵の上なら、そのままドラッグを始める
    */
   private setupDrag() {
-    let offset: { x: number; y: number } | undefined;
+    /** つかんだ位置 (キャラクターの左上から) と、つかんだ画面上の位置 */
+    let grab: { dx: number; dy: number; x: number; y: number } | undefined;
+    let dragging = false;
+    /** ドラッグの後に来る click は、クリックとして扱わない */
+    let suppressClick = false;
     const setHit = (hit: boolean) => this.element.classList.toggle("msagent-hit", hit);
     this.listen(
       document,
       "pointermove",
       (e) => {
         const ev = e as PointerEvent;
-        if (offset) this.setPosition(ev.clientX - offset.x, ev.clientY - offset.y);
-        else setHit(this.hitTest(ev.clientX, ev.clientY));
+        if (!grab) return void setHit(this.hitTest(ev.clientX, ev.clientY));
+        if (!dragging && Math.hypot(ev.clientX - grab.x, ev.clientY - grab.y) < DRAG_THRESHOLD) return;
+        if (!dragging) {
+          dragging = true;
+          this.emit("dragstart", this.position);
+        }
+        this.setPosition(ev.clientX - grab.dx, ev.clientY - grab.dy);
       },
       true,
     );
@@ -445,7 +532,8 @@ export class Agent {
         if (ev.button !== 0 || !this.hitTest(ev.clientX, ev.clientY)) return;
         setHit(true);
         const r = this.element.getBoundingClientRect();
-        offset = { x: ev.clientX - r.left, y: ev.clientY - r.top };
+        grab = { dx: ev.clientX - r.left, dy: ev.clientY - r.top, x: ev.clientX, y: ev.clientY };
+        dragging = false;
         this.element.setPointerCapture(ev.pointerId);
         // 文字の選択や、画像のドラッグを始めない
         ev.preventDefault();
@@ -462,11 +550,32 @@ export class Agent {
       },
       { capture: true, passive: false },
     );
-    const end = () => (offset = undefined);
+    const end = () => {
+      if (!grab) return;
+      grab = undefined;
+      if (!dragging) return;
+      dragging = false;
+      suppressClick = true;
+      // click はこの後すぐに来る (来なければ、次の操作までに戻しておく)
+      window.setTimeout(() => (suppressClick = false), 0);
+      const pos = this.position;
+      this.emit("dragend", pos);
+      this.emit("move", { ...pos, by: "drag" });
+    };
     this.listen(this.element, "pointerup", end);
     this.listen(this.element, "pointercancel", end);
     this.listen(this.element, "lostpointercapture", end);
+    this.listen(this.element, "click", (e) => {
+      if (suppressClick) {
+        suppressClick = false;
+        e.stopPropagation();
+        return;
+      }
+      const ev = e as MouseEvent;
+      this.emit("click", { x: ev.clientX, y: ev.clientY, originalEvent: ev });
+    });
   }
+
 
 
   private listen(target: EventTarget, type: string, handler: (e: Event) => void, options: boolean | AddEventListenerOptions = false) {

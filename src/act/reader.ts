@@ -94,6 +94,9 @@ export class ActCharacter implements Character {
   readonly animations = new Map<string, Animation>();
   readonly trayIcon = undefined;
   readonly voice = {};
+  /** ACT には言語ごとの名前も、吹き出しの見た目も入っていない */
+  readonly languages: readonly string[] = [];
+  readonly balloon = undefined;
 
   private readonly view: DataView;
   private readonly bytes: Uint8Array;
@@ -187,6 +190,14 @@ export class ActCharacter implements Character {
     const texts = this.readTexts(sections[5]!, sectionEnd(5), sections[6]!, sectionEnd(6));
     this.name = texts[0] || decodeShiftJis(rawName) || undefined;
     this.description = texts[1] || undefined;
+  }
+
+  getName(): string | undefined {
+    return this.name;
+  }
+
+  getDescription(): string | undefined {
+    return this.description;
   }
 
   get imageCount() {

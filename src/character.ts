@@ -1,4 +1,23 @@
 import type { AcsImage, Animation } from "./acs/reader";
+import type { Language } from "./language";
+
+/** キャラクターファイルに入っている、吹き出しの見た目 (Microsoft Agent の Character Editor で決めたもの) */
+export interface BalloonStyle {
+  /** 行数 */
+  lines: number;
+  /** 1 行の文字数 */
+  charsPerLine: number;
+  /** 文字・背景・縁の色 (CSS の色。例: "#ffffe1") */
+  foreground: string;
+  background: string;
+  border: string;
+  fontFamily: string;
+  /** 文字の大きさ (px) */
+  fontSize: number;
+  /** 文字の太さ (400: 標準, 700: 太字) */
+  fontWeight: number;
+  italic: boolean;
+}
 
 /**
  * プレイヤー・待機動作・しゃべる機能が使う、キャラクターの共通の形。
@@ -7,8 +26,18 @@ import type { AcsImage, Animation } from "./acs/reader";
 export interface Character {
   readonly width: number;
   readonly height: number;
+  /** 名前 (ブラウザの言語に一番合うもの。getName() で言語を選べる) */
   readonly name: string | undefined;
+  /** 紹介文 (ブラウザの言語に一番合うもの。getDescription() で言語を選べる) */
   readonly description: string | undefined;
+  /** 名前・紹介文が入っている言語 (BCP 47。例: ["en", "ja-JP"])。言語ごとに入っていなければ空 */
+  readonly languages: readonly string[];
+  /** 指定した言語の名前 (無ければ近い言語。省略時はブラウザの言語) */
+  getName(language?: Language | readonly Language[]): string | undefined;
+  /** 指定した言語の紹介文 (無ければ近い言語。省略時はブラウザの言語) */
+  getDescription(language?: Language | readonly Language[]): string | undefined;
+  /** 吹き出しの見た目 (入っていなければ undefined) */
+  readonly balloon: BalloonStyle | undefined;
   readonly animations: Map<string, Animation>;
   /** タスクトレイ用の小さなアイコン (無ければ undefined) */
   readonly trayIcon: AcsImage | undefined;

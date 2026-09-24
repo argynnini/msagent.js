@@ -8,17 +8,23 @@ const CSS = `
 .msagent { pointer-events: none; user-select: none; -webkit-user-select: none; }
 .msagent.msagent-hit { pointer-events: auto; cursor: pointer; touch-action: none; }
 .msagent canvas { display: block; }
+/*
+ * 色・文字・幅は、キャラクターファイルの吹き出しの設定から --msagent-balloon-* に入る (無ければ下の既定値)。
+ * ページの CSS で .msagent-balloon の background などを直接指定すれば、そちらが優先される
+ */
 .msagent-balloon {
-  box-sizing: border-box; padding: 8px; border: 1px solid #000; border-radius: 5px;
-  background: #ffc; color: #000;
+  box-sizing: border-box; padding: 8px; border: 1px solid var(--msagent-balloon-border, #000); border-radius: 5px;
+  background: var(--msagent-balloon-background, #ffffe1); color: var(--msagent-balloon-foreground, #000);
 }
 .msagent-content {
-  min-width: 120px; max-width: 200px; white-space: pre-wrap; overflow-wrap: anywhere;
-  font: 10pt/1.4 "Microsoft Sans Serif", "MS UI Gothic", Tahoma, sans-serif;
+  min-width: 120px; max-width: var(--msagent-balloon-width, 200px); white-space: pre-wrap; overflow-wrap: anywhere;
+  font-family: var(--msagent-balloon-font, "Microsoft Sans Serif"), "Microsoft Sans Serif", "MS UI Gothic", Tahoma, sans-serif;
+  font-size: var(--msagent-balloon-font-size, 13px); font-weight: var(--msagent-balloon-font-weight, 400);
+  font-style: var(--msagent-balloon-font-style, normal); line-height: 1.4;
 }
 .msagent-tip {
   position: absolute; width: 12px; height: 12px; box-sizing: border-box;
-  background: #ffc; border: 1px solid #000; transform: rotate(45deg);
+  background: inherit; border: inherit; border-radius: 0; transform: rotate(45deg);
 }
 .msagent-top-left .msagent-tip, .msagent-top-right .msagent-tip {
   top: 100%; margin-top: -6px; border-top-color: transparent; border-left-color: transparent;

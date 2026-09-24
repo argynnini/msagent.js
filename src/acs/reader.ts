@@ -1,5 +1,7 @@
 import { decompress } from "./decompress";
 import { decodeTrayIcon } from "./icon";
+import type { BalloonStyle } from "../character";
+import { languageTag, pickLanguage, type Language } from "../language";
 
 export interface Location {
   offset: number;
@@ -89,10 +91,10 @@ export class AcsCharacter {
   readonly width: number;
   readonly height: number;
   readonly transparentIndex: number;
-  /** キャラクター名 (ACS に埋め込まれた名前。日本語 → 英語 → 先頭の言語の順。読めなければ undefined) */
-  readonly name: string | undefined;
-  /** キャラクターの紹介文 (ACS に埋め込まれていれば。同じ優先順位で選ぶ) */
-  readonly description: string | undefined;
+  /** 言語 ID (Windows の LANGID) ごとの名前と紹介文 */
+  private readonly localized = new Map<number, { name: string; description: string }>();
+  /** 吹き出しの見た目 (入っていなければ undefined) */
+  readonly balloon: BalloonStyle | undefined;
   /**
    * 読み上げの声の設定 (Microsoft Agent の音声合成 = SAPI 4 の値)。音声の設定が無い (Office アシスタントなど)、
    * またはエンジン任せ (-1) の項目は undefined
@@ -149,11 +151,29 @@ export class AcsCharacter {
       }
     }
     if (style & STYLE_BALLOON) {
-      c.skip(2 + 12); // lines / chars per line / colors
-      c.string(); // font name
-      c.skip(4 + 2 + 4); // height / weight / italic / unknown など
+      const lines = c.u8();
+      const charsPerLine = c.u8();
+      // 色は COLORREF (R, G, B, 0 の順)
+      const color = () => {
+        const [r, g, b] = [c.u8(), c.u8(), c.u8()];
+        c.skip(1);
+        return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+      };
+      const foreground = color();
+      const background = color();
+      const border = color();
+      const fontFamily = c.string();
+      // LOGFONT と同じく、高さが負なら文字の高さ (px)
+      const height = c.u32() | 0;
+      const fontWeight = c.u32();
+      const italic = c.u8() !== 0;
+      c.skip(1);
+      this.balloon = {
+        lines, charsPerLine, foreground, background, border, fontFamily,
+        fontSize: Math.abs(height) || 13, fontWeight: fontWeight || 400, italic,
+      };
     }
-    ({ name: this.name, description: this.description } = this.readName(localizedLoc));
+    this.readNames(localizedLoc);
 
     const colorCount = c.u32();
     for (let i = 0; i < colorCount; i++) {
@@ -235,33 +255,54 @@ export class AcsCharacter {
    * 名前・紹介文はそれぞれ別に、日本語 → 英語 → 先頭の言語の順で選ぶ (例えば紹介文だけ日本語が
    * 空で英語にしかない、といった ACS でも拾えるように、同じ言語の組に固定しない)
    */
-  private readName(loc: Location): { name: string | undefined; description: string | undefined } {
+  /**
+   * 言語ごとの名前と紹介文を読む。言語 ID は Windows の LANGID で、0x0411 (ja-JP) のようにサブ言語込みのことが多いが、
+   * 0x11 (主言語 ID のみ) のこともある。読めなくてもキャラクター自体は使えるようにする
+   */
+  private readNames(loc: Location) {
     try {
       const c = new Cursor(this.buf, loc.offset);
       const count = c.u16();
-      const names = new Map<number, string>();
-      const descriptions = new Map<number, string>();
       for (let i = 0; i < count; i++) {
         const lang = c.u16();
-        const name = c.string();
-        const description = c.string();
+        const name = c.string().trim();
+        const description = c.string().trim();
         c.string(); // extra
-        if (name) names.set(lang, name);
-        if (description) descriptions.set(lang, description);
+        if (name || description) this.localized.set(lang, { name, description });
       }
-      // lang は Windows の LANGID (下位 10bit が主言語 ID)。0x0411 (ja-JP) のようにサブ言語込みで
-      // 入っていることが多いが、実ファイルでは 0x11 (主言語 ID のみ) の場合もあるため、主言語だけで比べる
-      const LANG_JAPANESE = 0x11, LANG_ENGLISH = 0x9;
-      const primaryLang = (lang: number) => lang & 0x3ff;
-      const pick = (m: Map<number, string>) => {
-        for (const [lang, v] of m) if (primaryLang(lang) === LANG_JAPANESE) return v;
-        for (const [lang, v] of m) if (primaryLang(lang) === LANG_ENGLISH) return v;
-        return m.values().next().value;
-      };
-      return { name: pick(names), description: pick(descriptions) };
     } catch {
-      return { name: undefined, description: undefined };
+      // 途中まで読めたものは使う
     }
+  }
+
+  get languages(): string[] {
+    return [...this.localized.keys()].map(languageTag);
+  }
+
+  /** 名前 (ブラウザの言語に一番合うもの) */
+  get name(): string | undefined {
+    return this.getName();
+  }
+
+  /** 紹介文 (ブラウザの言語に一番合うもの) */
+  get description(): string | undefined {
+    return this.getDescription();
+  }
+
+  /** 指定した言語 (BCP 47 か LANGID。省略時はブラウザの言語) の名前。無ければ近い言語 */
+  getName(language?: Language | readonly Language[]): string | undefined {
+    return this.pickText("name", language);
+  }
+
+  /** 指定した言語 (BCP 47 か LANGID。省略時はブラウザの言語) の紹介文。無ければ近い言語 */
+  getDescription(language?: Language | readonly Language[]): string | undefined {
+    return this.pickText("description", language);
+  }
+
+  private pickText(key: "name" | "description", language?: Language | readonly Language[]): string | undefined {
+    const available = [...this.localized].filter(([, v]) => v[key]).map(([id]) => id);
+    const id = pickLanguage(available, language);
+    return id === undefined ? undefined : this.localized.get(id)![key];
   }
 
   private readAnimation(loc: Location): Animation {

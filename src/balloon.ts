@@ -1,3 +1,5 @@
+import type { BalloonStyle } from "./character";
+
 /** 吹き出しを出す向き (clippy.js と同じ名前。例: top-left = キャラクターの左上) */
 type Side = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 const SIDES: Side[] = ["top-left", "top-right", "bottom-left", "bottom-right"];
@@ -15,7 +17,10 @@ export class Balloon {
   private readonly content: HTMLDivElement;
   private side: Side | undefined;
 
-  constructor(private readonly target: HTMLElement) {
+  constructor(
+    private readonly target: HTMLElement,
+    style?: BalloonStyle,
+  ) {
     this.element = document.createElement("div");
     this.element.className = "msagent-balloon";
     this.element.style.display = "none";
@@ -24,6 +29,26 @@ export class Balloon {
     this.content = document.createElement("div");
     this.content.className = "msagent-content";
     this.element.append(tip, this.content);
+    if (style) this.applyStyle(style);
+  }
+
+  /**
+   * キャラクターファイルの吹き出しの設定を、CSS 変数として入れる。
+   * 幅は「1 行の文字数」から決める (半角の平均の幅をおよそ 0.55 文字分とみなす)
+   */
+  private applyStyle(style: BalloonStyle) {
+    const s = this.element.style;
+    s.setProperty("--msagent-balloon-foreground", style.foreground);
+    s.setProperty("--msagent-balloon-background", style.background);
+    s.setProperty("--msagent-balloon-border", style.border);
+    // MS Sans Serif はブラウザには無いことが多いので、Windows の後継の Microsoft Sans Serif も続ける (styles.ts)
+    s.setProperty("--msagent-balloon-font", JSON.stringify(style.fontFamily));
+    s.setProperty("--msagent-balloon-font-size", `${style.fontSize}px`);
+    s.setProperty("--msagent-balloon-font-weight", String(style.fontWeight));
+    s.setProperty("--msagent-balloon-font-style", style.italic ? "italic" : "normal");
+    if (style.charsPerLine > 0) {
+      s.setProperty("--msagent-balloon-width", `${Math.round(style.charsPerLine * style.fontSize * 0.55)}px`);
+    }
   }
 
   get visible(): boolean {
