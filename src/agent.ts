@@ -149,7 +149,8 @@ export class Agent {
 
   /**
    * アニメーションを再生する。timeout (ms、既定 5000。0 なら無制限) を過ぎても終わらなければ、終了分岐で自然に終わらせる。
-   * 終わったら callback。キャラクターに無いアニメーションなら false
+   * 終わったら callback。キャラクターに無いアニメーションなら false。
+   * 最後の姿勢 (指す・見るなど) は、次のアニメーションまで保ち、戻りの動きはその前に再生する
    */
   play(animation: string, timeout = DEFAULT_TIMEOUT_MS, callback?: () => void): boolean {
     const name = findAnimation(this.character, animation);
@@ -160,7 +161,8 @@ export class Agent {
             if (this.player.currentAnimation === name) void this.player.release();
           }, timeout)
         : undefined;
-      void this.player.play(name).then(() => {
+      // Microsoft Agent と同じく、戻りの動きは次のアニメーションの前にする (指した姿勢のまましゃべれる)
+      void this.player.play(name, { hold: true }).then(() => {
         window.clearTimeout(timer);
         callback?.();
         complete();

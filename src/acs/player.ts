@@ -127,23 +127,28 @@ export class AcsPlayer {
 
   /**
    * アニメーションを再生する。終了 (戻りアニメ含む) か、別の再生・stop() で resolve。
-   * hold なら、戻りの動きをせずに最後のコマのまま止め、playReturn() を待つ
-   * (移動: 移動前の動き → 最後のコマのまま移動 → 移動後の動き、の順にするため)
+   * hold なら、戻りの動きをせずに最後のコマのまま止める (Microsoft Agent と同じく、指す動きなどは次の再生まで姿勢を保つ)。
+   * 止めているアニメーションがあれば、先にその戻りの動きを再生してから始める
    */
   play(name: string, options: { hold?: boolean } = {}): Promise<void> {
+    const held = this.held;
     this.stop();
     this.releasing = false;
     this.current = name;
     this.setActive(true);
     const token = this.token;
     const run = async () => {
+      if (held) {
+        await this.returnFrom(held, token);
+        if (token !== this.token) return;
+      }
       let current: Animation | undefined = this.character.animations.get(name);
       // 戻りアニメの連鎖は念のため上限を設ける
       for (let depth = 0; current && depth < 4; depth++) {
         const last = await this.playFrames(current, token);
         if (token !== this.token) return;
         if (options.hold) {
-          this.held = { name, anim: current, frame: last };
+          if (current.transitionType !== 2) this.held = { name, anim: current, frame: last };
           break;
         }
         if (current.transitionType !== 0 || !current.returnAnimation) break;
@@ -167,36 +172,45 @@ export class AcsPlayer {
     return this.running ?? Promise.resolve();
   }
 
-  /**
-   * play(name, { hold: true }) で止めたアニメーションの、戻りの動きを再生する。
-   * 戻りアニメを使うもの (transitionType 0) はそれを、終了分岐を使うもの (1) は止めたコマから終了分岐をたどる。
-   * 止めたアニメーションが無い・戻りの動きが無ければ、すぐ resolve
-   */
+  /** hold で止めているアニメーションがあるか (次の再生の前に、戻りの動きが入る) */
+  get isHolding(): boolean {
+    return this.held !== undefined;
+  }
+
+  /** hold で止めたアニメーションの、戻りの動きだけを再生する。止めていなければ、すぐ resolve */
   playReturn(): Promise<void> {
     const held = this.held;
-    this.held = undefined;
     if (!held) return Promise.resolve();
-    const { anim, frame } = held;
-    if (anim.transitionType === 0) {
-      return anim.returnAnimation && this.character.animations.has(anim.returnAnimation)
-        ? this.play(anim.returnAnimation)
-        : Promise.resolve();
-    }
-    const start = anim.transitionType === 1 ? (anim.frames[frame]?.exitFrame ?? -1) : -1;
-    if (start < 0) return Promise.resolve();
     this.stop();
-    this.releasing = true;
     this.current = held.name;
     this.setActive(true);
     const token = this.token;
     const run = async () => {
-      await this.playFrames(anim, token, start);
+      await this.returnFrom(held, token);
       if (token === this.token) {
         this.current = undefined;
         this.setActive(false);
       }
     };
     return (this.running = run());
+  }
+
+  /**
+   * 止めたアニメーションの戻りの動き: 戻りアニメを使うもの (transitionType 0) はそれを、
+   * 終了分岐を使うもの (1) は、止めたコマから終了分岐をたどる
+   */
+  private async returnFrom(held: { anim: Animation; frame: number }, token: number) {
+    const { anim, frame } = held;
+    if (anim.transitionType === 0) {
+      const ret = anim.returnAnimation ? this.character.animations.get(anim.returnAnimation) : undefined;
+      if (ret) await this.playFrames(ret, token);
+    } else if (anim.transitionType === 1) {
+      const start = anim.frames[frame]?.exitFrame ?? -1;
+      if (start < 0) return;
+      this.releasing = true;
+      await this.playFrames(anim, token, start);
+      if (token === this.token) this.releasing = false;
+    }
   }
 
   /** start のコマから再生する。最後に描いたコマの番号 (描かなければ -1) で resolve */
@@ -216,17 +230,22 @@ export class AcsPlayer {
         // 終了分岐が循環しても終わるように上限を設ける
         if (this.releasing && ++releasedSteps > anim.frames.length * 3) return resolve();
         // 画像なし・0 秒のフレームは、描かずにすぐ次へ (ACT の分岐・効果音の命令。描くと一瞬消えてちらつく)
-        const drawn = frame.images.length > 0 || frame.duration > 0;
-        if (drawn) {
+        const timed = frame.images.length > 0 || frame.duration > 0;
+        // 未使用の画像 (0x0) だけのコマは、前の絵のまま待つ (例: フィンフィンの MoveLeftReturn の最後。描くと消えてしまう)
+        if (timed && !this.onlyPlaceholders(frame)) {
           this.draw(frame);
           last = index;
         }
         if (frame.soundIndex >= 0) void this.playSound(frame.soundIndex);
         const next = this.nextIndex(frame, index);
-        this.schedule(() => step(next), drawn ? Math.max(frame.duration, 10) : 0);
+        this.schedule(() => step(next), timed ? Math.max(frame.duration, 10) : 0);
       };
       step(start);
     });
+  }
+
+  private onlyPlaceholders(frame: Frame): boolean {
+    return frame.images.length > 0 && frame.images.every((fi) => this.sprite(fi.imageIndex).width === 0);
   }
 
   /** 分岐 (確率は % 相当) があれば抽選し、なければ次のフレーム。release 後は終了分岐を優先 */
