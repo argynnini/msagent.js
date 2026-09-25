@@ -1,25 +1,35 @@
 import { msagent } from "./load";
 
+// 読み込み (clippy.js と同じ msagent.load)
 export default msagent;
 export { msagent, load } from "./load";
 export type { CharacterSource, LoadOptions } from "./load";
+
+// キャラクター 1 体と、その命令・イベント・メニュー
 export { Agent, parseCharacter } from "./agent";
 export type { AgentEventListener, AgentEventMap, AgentOptions, HideOptions, MoveCause, PointerDetail, SpeakOptions, StopType, VisibilityCause } from "./agent";
 export { AgentRequest } from "./request";
+export type { RequestStatus, RequestType } from "./request";
 export { AgentCommands } from "./commands";
 export type { AgentCommand, CommandOptions } from "./commands";
-export type { RequestStatus, RequestType } from "./request";
+
+// キャラクターファイル (ACS / ACT) の中身
 export { DEFAULT_BALLOON_STYLE } from "./character";
 export type { BalloonStyle, Character, VoiceSettings } from "./character";
-export { defaultLanguages, languageTag, pickLanguage } from "./language";
-export type { Language } from "./language";
 export { AcsCharacter } from "./acs/reader";
 export type { AcsImage, Animation, Branch, Frame, FrameImage, Overlay } from "./acs/reader";
 export { ActCharacter, isActFile } from "./act/reader";
-export { AcsPlayer } from "./acs/player";
 export { imageToDataUrl } from "./acs/icon";
-export { Speaker, mouthSteps, pickVoice, voiceParams } from "./speak";
-export type { SpeakHandlers, SpeakParams } from "./speak";
+export { defaultLanguages, languageTag, pickLanguage } from "./language";
+export type { Language } from "./language";
+
+// 部品 (自分で組み立てるとき)
+export { AcsPlayer } from "./acs/player";
+export { Speaker } from "./speak";
+export type { SpeakHandlers } from "./speak";
+export { mouthSteps } from "./mouth";
+export { pickVoice, voiceParams } from "./voice";
+export type { SpeakParams } from "./voice";
 export { parseSpeechTags, shownText } from "./tags";
 export type { SpeechPart, SpeechText } from "./tags";
 export { IdleController, idleLevel, isIdleAnimation, pickIdle, pickIdleFor } from "./idle";

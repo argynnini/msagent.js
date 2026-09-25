@@ -1,3 +1,5 @@
+import { clamp, hertzToPitch, wordsPerMinuteToRate } from "./voice";
+
 /**
  * Microsoft Agent の読み上げの制御タグ (\Pau=500\ など) を読み、読み上げる部分の並びにする。
  *
@@ -25,10 +27,6 @@ export type SpeechPart =
   | { kind: "pause"; ms: number }
   | { kind: "bookmark"; id: number };
 
-/** 速さ・高さを、ブラウザの値に直すときの基準 (speak.ts の voiceParams と同じ) */
-const BASE_WORDS_PER_MINUTE = 170;
-const BASE_PITCH_HZ = 100;
-const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
 /** タグの名前 (大文字小文字は問わない) */
 const KNOWN_TAGS = new Set(["chr", "ctx", "emp", "lst", "map", "mrk", "pau", "pit", "rst", "spd", "vol"]);
@@ -102,8 +100,8 @@ export function parseSpeechTags(
         const n = Number(value);
         if (!Number.isFinite(n)) break;
         flush();
-        if (name === "spd" && n > 0) settings = { ...settings, rate: clamp(n / BASE_WORDS_PER_MINUTE, 0.1, 10) };
-        if (name === "pit" && n > 0) settings = { ...settings, pitch: clamp(n / BASE_PITCH_HZ, 0, 2) };
+        if (name === "spd" && n > 0) settings = { ...settings, rate: clamp(wordsPerMinuteToRate(n), 0.1, 10) };
+        if (name === "pit" && n > 0) settings = { ...settings, pitch: clamp(hertzToPitch(n), 0, 2) };
         if (name === "vol") settings = { ...settings, volume: clamp(n / 65535, 0, 1) };
         break;
       }
@@ -130,6 +128,22 @@ export function parseSpeechTags(
 /** 吹き出しに出す文 (タグを除いたもの) */
 export function shownText(parts: readonly SpeechPart[]): string {
   return parts.map((p) => (p.kind === "text" ? p.shown : "")).join("");
+}
+
+/**
+ * 目印 (\Mrk\) を、吹き出しに文字を出していくのに合わせて知らせるための関数を作る。
+ * 返した関数に、出した文字数を渡すと、そこまでに通り過ぎた目印を fire に渡す (Infinity なら残り全部)
+ */
+export function bookmarkNotifier(parts: readonly SpeechPart[], fire: (id: number) => void): (shownCount: number) => void {
+  const bookmarks: { at: number; id: number }[] = [];
+  let offset = 0;
+  for (const p of parts) {
+    if (p.kind === "text") offset += [...p.shown].length;
+    else if (p.kind === "bookmark") bookmarks.push({ at: offset, id: p.id });
+  }
+  return (shownCount) => {
+    while (bookmarks.length > 0 && bookmarks[0]!.at <= shownCount) fire(bookmarks.shift()!.id);
+  };
 }
 
 /** \Lst\ (直前の発言を繰り返す) だけの文か */
