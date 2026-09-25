@@ -30,6 +30,10 @@ export class AgentCommands {
   defaultCommand: string | undefined;
   /** false なら、足した項目をメニューに出さない (本家の Commands.Visible と同じ) */
   visible = true;
+  /** メニューの文字の書体 (本家の Commands.FontName と同じ。CSS の font-family)。undefined なら CSS のまま */
+  fontName: string | undefined;
+  /** メニューの文字の大きさ (ポイント。本家の Commands.FontSize と同じ)。undefined なら CSS のまま */
+  fontSize: number | undefined;
 
   /** 項目を最後に足す。同じ名前があれば置き換える */
   add(name: string, caption: string, options: CommandOptions = {}): AgentCommand {

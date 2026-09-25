@@ -214,3 +214,30 @@ test("音声ファイルでしゃべる: 音の大きさで口を動かし、文
   expect(r.bookmarks).toEqual([5]);
   expect(r.broken).toBe("failed");
 });
+
+test("balloonVisible の代入: false は読み終えてから閉じ、true は最後の文をもう一度出す", async ({ harness }) => {
+  const r = await harness.evaluate(async () => {
+    const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+    const a = await window.loadAgent("Merlin.acs");
+    await a.show(true);
+    const s = a.speak("Please keep talking until the end of this sentence.");
+    await sleep(200);
+    a.balloonVisible = false;
+    const whileSpeaking = a.balloonVisible;
+    await s;
+    const afterSpeak = a.balloonVisible; // 自動で閉じる (autoHide) の 2 秒を待たずに閉じる
+    a.balloonVisible = true;
+    const reshown = [a.balloonVisible, document.querySelector(".msagent-content")!.textContent];
+    await sleep(2500);
+    const stays = a.balloonVisible; // 出し直したものは自動では閉じない
+    a.balloonVisible = false;
+    return { whileSpeaking, afterSpeak, reshown, stays, closed: a.balloonVisible };
+  });
+  expect(r).toEqual({
+    whileSpeaking: true,
+    afterSpeak: false,
+    reshown: [true, "Please keep talking until the end of this sentence."],
+    stays: true,
+    closed: false,
+  });
+});

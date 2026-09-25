@@ -80,3 +80,60 @@ test("requeststart / requestcomplete が命令ごとに来る", async ({ harness
   });
   expect(log).toEqual(["start show", "end show complete", "start delay", "end delay complete"]);
 });
+
+test("get: アニメーション・状態はあるか確かめ、音声ファイルは読み込む。queue = false なら順番待ちに入らない", async ({ harness }) => {
+  const r = await harness.evaluate(async () => {
+    const a = await window.loadAgent("Merlin.acs");
+    const E = window.M.RequestError;
+    const ok = await Promise.all([
+      a.get("animation", "Wave, Greet"),
+      a.get("state", "Gesturing"),
+      a.get("state", "IdlingLevel1"),
+      a.get("wavefile", "/characters/Merlin.acs"),
+    ]);
+    const missing = a.get("animation", "Wave, NoSuchAnimation");
+    const noState = a.get("state", "NoSuchState");
+    const badType = a.get("sound" as "animation", "Wave");
+    const noFile = a.get("wavefile", "/characters/none.wav");
+    await Promise.all([missing, noState, badType, noFile]);
+    // queue = false: 前の命令 (delay) を待たずに終わる
+    const d = a.delay(1000);
+    const now = a.get("animation", "Wave", false);
+    await now;
+    const delayStatus = d.status;
+    a.stop();
+    return {
+      ok,
+      failed: [missing, noState, badType, noFile].map((q) => [q.status, q.number]),
+      codes: [E.animationNotFound, E.stateNotFound, E.invalidGetType, E.invalidSound],
+      delayStatus,
+      nowNumber: now.number,
+    };
+  });
+  expect(r.ok).toEqual(["complete", "complete", "complete", "complete"]);
+  expect(r.failed).toEqual(r.codes.map((n) => ["failed", n]));
+  expect(r.delayStatus).toBe("inProgress");
+  expect(r.nowNumber).toBe(0);
+});
+
+test("Request.number: 本家のエラー番号 (隠れている・止められた・自分を待つ)", async ({ harness }) => {
+  const r = await harness.evaluate(async () => {
+    const a = await window.loadAgent("Merlin.acs");
+    const hidden = a.speak("hidden");
+    await hidden;
+    await a.show(true);
+    const stopped = a.delay(1000);
+    const d = a.delay(10);
+    const self = a.wait(d);
+    await new Promise((res) => setTimeout(res, 50));
+    a.stop(stopped);
+    await self;
+    return { hidden: hidden.number, stopped: [stopped.status, stopped.number], self: [self.status, self.number], ok: d.number };
+  });
+  expect(r).toEqual({
+    hidden: -2147213302, // 0x8004200A
+    stopped: ["interrupted", -2147213044], // 0x8004210C
+    self: ["failed", -2147213051], // 0x80042105
+    ok: 0,
+  });
+});

@@ -63,7 +63,7 @@ const agent = await msagent.load(name); // Promise でも受け取れる
 
 ### Agent
 
-`show` / `hide` / `play` / `speak` / `think` / `moveTo` / `gestureAt` / `delay` は順番待ちに入り、前のものが終わってから 1 つずつ実行されます (Microsoft Agent と同じ)。
+`show` / `hide` / `play` / `speak` / `think` / `moveTo` / `gestureAt` / `delay` / `get` は順番待ちに入り、前のものが終わってから 1 つずつ実行されます (Microsoft Agent と同じ)。
 
 | メソッド | 動き |
 | --- | --- |
@@ -78,6 +78,7 @@ const agent = await msagent.load(name); // Promise でも受け取れる
 | `moveTo(x, y, duration = 1000)` | 移動する (Moving〜 の状態のアニメーション → 最後のコマのまま移動 → 戻りの動き)。`duration` が 0 か、隠れている間は、すぐ移る |
 | `gestureAt(x, y)` | その方向を指す (Gesturing〜 の状態のアニメーション。無ければ `Gesture〜`、`Look〜`)。指した姿勢は次の動きまで保つ |
 | `delay(ms = 250)` | 次の命令まで待つ |
+| `get(type, name, queue = true)` | 先に取り寄せる (本家の Get と同じ)。`type` は `"animation"` / `"state"` / `"wavefile"`、`name` はカンマ区切りで複数。ファイルは丸ごと読み込み済みなので、アニメーション・状態はあるかを確かめるだけ (無ければ `failed`)。`"wavefile"` は URL を読み込んでおく (`speak(text, { url })` が速くなる)。`queue` が `false` なら順番待ちに入らない |
 | `stopCurrent()` / `stop(request?)` | いまの動きを終わらせる / 順番待ちも全部捨てる (登場・退場の途中なら、それは最後まで)。`request` を渡すと、その命令だけ止める |
 | `stopAll(types?)` | 種類ごとに止める (`"play"` / `"speak"` / `"move"`。省略すると登場・退場の途中も含めて全部) |
 | `wait(request)` | 別のキャラクターの命令が終わるまで待つ (2 体の掛け合い) |
@@ -85,7 +86,7 @@ const agent = await msagent.load(name); // Promise でも受け取れる
 | `pause()` / `resume()` | 一時停止・再開 |
 | `reposition()` | 画面の中に収める |
 
-本家のプロパティ: `visible`、`left` / `top`、`idleOn`、`moveCause`、`visibilityCause`、`balloonVisible`、`extraData`、`version`、`guid`、`originalWidth` / `originalHeight`、`speed` / `pitch`、`soundEffectsOn`、`activate()` / `active` (いちばん手前に出す。表示・クリック・ドラッグでも手前に出る)
+本家のプロパティ: `visible`、`left` / `top`、`idleOn`、`moveCause`、`visibilityCause`、`balloonVisible` (`false` を代入すると閉じる。しゃべっている途中なら読み終えてから。`true` なら最後の文をもう一度出す)、`extraData`、`version`、`guid`、`originalWidth` / `originalHeight`、`speed` / `pitch`、`soundEffectsOn`、`activate()` / `active` (いちばん手前に出す。表示・クリック・ドラッグでも手前に出る)
 
 msagent.js で足したもの: `name`、`description`、`language`、`scale` / `width` / `height` (大きさ)、`balloonStyle` (吹き出しの見た目)、`speaking`、`sound`、`voice`、`on()` / `off()` (イベント)、`hitTest(clientX, clientY)`、`destroy()`、`element`、`canvas`、`character`、`player`
 
@@ -131,23 +132,28 @@ agent.autoPopupMenu = false;   // 右クリックでは出さない
 agent.showPopupMenu(x, y);     // 自分で出す
 ```
 
+`agent.commands.fontName` / `fontSize` (ポイント) で、メニューの文字を変えられます (本家の Commands.FontName / FontSize と同じ)。
 メニューは矢印キー・Enter・アクセスキー・Esc でも操作できます。「隠す」で隠れたときは、`hide` イベントの `cause` が `"user"` になります。見た目はクラス `.msagent-menu` / `.msagent-menu-item` / `.msagent-menu-separator` で変えられます。
 
 ### 命令 (Request)
 
-`show` / `hide` / `play` / `speak` / `think` / `moveTo` / `gestureAt` / `delay` / `wait` / `interrupt` は、命令 (`AgentRequest`) を返します (本家の Request オブジェクトと同じ)。`await` すると、終わったときの状態が返ります。
+`show` / `hide` / `play` / `speak` / `think` / `moveTo` / `gestureAt` / `delay` / `wait` / `interrupt` / `get` は、命令 (`AgentRequest`) を返します (本家の Request オブジェクトと同じ)。`await` すると、終わったときの状態が返ります。
 
 ```js
 const request = agent.play("Wave");
 request.status;             // "pending" (順番待ち) / "inProgress" (実行中)
 await request;              // "complete" / "failed" / "interrupted"
 agent.stop(request);        // この命令だけ止める
+request.number;             // failed / interrupted のときの理由の番号 (本家の Request.Number と同じ。それ以外は 0)
+request.description;        // failed のときの理由 (文)
 
 // 2 体の掛け合い
 const q = genie.speak("なぜニワトリは道を渡ったの？");
 robby.wait(q);              // genie がしゃべり終えるまで待つ
 robby.speak("わからないなあ");
 ```
+
+`request.number` の値は、`import { RequestError } from "msagent.js"` の `RequestError.hidden` (隠れている)・`animationNotFound`・`stateNotFound`・`interrupted` (止められた)・`invalidSound` などと比べられます。
 
 キャラクターに無いアニメーションを `play()` したときは、clippy.js と同じく `false` を返します。隠れている間の `speak` / `think` は、`failed` になります (本家と同じ)。
 
@@ -209,6 +215,7 @@ agent.height;        // いまの表示の高さ (px)
 agent.character.width, agent.character.height; // 元の大きさ (px)
 agent.character.guid;     // "{4E574F44-B521-11D0-9E9A-00C04FD7081F}"
 agent.character.voice;    // { speed: 156, pitch: 50, language: "en-US", gender: "male", age: 30, style: "Business", engine: "{…}", mode: "{…}" }
+agent.character.trayIcon; // タスクトレイ用の小さなアイコン (.acs のみ)。imageToDataUrl(icon) で <img> や favicon に使える
 agent.character.balloon;  // { background: "#ffffe1", foreground: "#000000", border: "#000000", fontFamily: "MS Sans Serif", fontSize: 13, lines: 2, charsPerLine: 32, … }
 ```
 

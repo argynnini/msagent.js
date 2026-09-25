@@ -5,6 +5,7 @@ import type { BalloonStyle, Character } from "./character";
 import type { Emit } from "./events";
 import { paceText } from "./pace";
 import type { Task } from "./queue";
+import { RequestError } from "./request";
 import type { Speaker } from "./speak";
 import { bookmarkNotifier, isRepeatTag, parseSpeechTags, removeBookmarks, shownText } from "./tags";
 import type { SpeakParams } from "./voice";
@@ -49,6 +50,8 @@ export class Talk {
   /** think() の文を出しておく時間のタイマー (過ぎたら次の命令へ) */
   private thinkTimer: number | undefined;
   private stopThinkPace: (() => void) | undefined;
+  /** balloonVisible = false をしゃべっている途中に言われた (読み終えたらすぐ閉じる) */
+  private hideWhenDone = false;
   /** 最後にしゃべった文 (\Lst\ で繰り返すため) */
   private lastSpoken: string | undefined;
 
@@ -71,7 +74,7 @@ export class Talk {
       try {
         audio = await player.audioContext().decodeAudioData(await readAudio(url));
       } catch (e) {
-        return complete("failed", `音声ファイルを読み込めません: ${e instanceof Error ? e.message : String(e)}`);
+        return complete("failed", `音声ファイルを読み込めません: ${e instanceof Error ? e.message : String(e)}`, RequestError.invalidSound);
       }
       if (isStale()) return complete();
     }
@@ -174,6 +177,22 @@ export class Talk {
     this.host.balloon.hide();
   }
 
+  /**
+   * 吹き出しを出す・閉じる (agent.balloonVisible の代入)。閉じるとき、読み上げ・考えごとの途中なら、終わったらすぐ閉じる
+   * (本家と同じく、途中の発言はやめない)。出すときは最後の文をもう一度出し、自動では閉じない
+   */
+  setBalloonVisible(visible: boolean) {
+    window.clearTimeout(this.balloonTimer);
+    if (visible) {
+      this.hideWhenDone = false;
+      if (this.host.balloon.text) this.host.balloon.show();
+    } else if (this.host.speaker.speaking || this.thinkTimer !== undefined) {
+      this.hideWhenDone = true;
+    } else {
+      this.close();
+    }
+  }
+
   /** いまの発言を終わらせる (stopCurrent): 読み上げ中なら読み終えたら閉じる、hold で出したままなら閉じる */
   stopCurrent() {
     if (this.host.speaker.speaking) this.hold = false;
@@ -189,13 +208,17 @@ export class Talk {
   private begin(complete: Complete, hold: boolean) {
     window.clearTimeout(this.balloonTimer);
     this.hold = hold;
+    this.hideWhenDone = false;
     this.complete = complete;
   }
 
   /** 読み終えた: 命令を終わらせ、自動で閉じる (autoHide) なら少しして閉じる */
   private finish() {
     this.callComplete();
-    if (this.host.balloonStyle().autoHide) {
+    if (this.hideWhenDone) {
+      this.hideWhenDone = false;
+      this.host.balloon.hide();
+    } else if (this.host.balloonStyle().autoHide) {
       this.balloonTimer = window.setTimeout(() => this.host.balloon.hide(), CLOSE_BALLOON_DELAY_MS);
     }
   }

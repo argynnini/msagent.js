@@ -1,8 +1,11 @@
 import type { Agent } from "./agent";
-import { AgentRequest, type RequestType } from "./request";
+import { AgentRequest, RequestError, type RequestType } from "./request";
 
-/** 順番待ちの命令の中身。終わったら complete を呼ぶ (できなかったときは "failed" と理由) */
-export type Task = (complete: (status?: "complete" | "failed", description?: string) => void, request: AgentRequest) => void;
+/** 順番待ちの命令の中身。終わったら complete を呼ぶ (できなかったときは "failed" と理由、その番号 (RequestError)) */
+export type Task = (
+  complete: (status?: "complete" | "failed", description?: string, number?: number) => void,
+  request: AgentRequest,
+) => void;
 
 export interface QueueHooks {
   /** 命令を始める前に待つもの (待機動作を終わらせるなど) */
@@ -50,11 +53,24 @@ export class RequestQueue {
   add(type: RequestType, task: Task): AgentRequest {
     const request = new AgentRequest(type, this.owner);
     if (this.closed) {
-      this.settle(request, "failed", "キャラクターは片付けられています");
+      this.settle(request, "failed", "キャラクターは destroy() で破棄されています", RequestError.characterNotFound);
       return request;
     }
     this.items.push({ request, task });
     if (!this.running) void this.next();
+    return request;
+  }
+
+  /** 順番待ちに入れず、すぐ実行する (get(…, false))。順番待ちの命令とは別に進む */
+  runNow(type: RequestType, task: Task): AgentRequest {
+    const request = new AgentRequest(type, this.owner);
+    if (this.closed) {
+      this.settle(request, "failed", "キャラクターは destroy() で破棄されています", RequestError.characterNotFound);
+      return request;
+    }
+    request.start();
+    this.hooks.onStart(request);
+    task((status = "complete", description, number) => this.settle(request, status, description, number), request);
     return request;
   }
 
@@ -64,8 +80,8 @@ export class RequestQueue {
   }
 
   /** 命令を終わらせ、onSettle を呼ぶ (すでに終わっていれば何もしない) */
-  settle(request: AgentRequest, status: "complete" | "failed" | "interrupted", description = "") {
-    if (request.settle(status, description)) this.hooks.onSettle(request);
+  settle(request: AgentRequest, status: "complete" | "failed" | "interrupted", description = "", number = 0) {
+    if (request.settle(status, description, number)) this.hooks.onSettle(request);
   }
 
   /** 順番待ちを全部捨てる (実行中の命令も、止められたことにする) */
@@ -100,7 +116,7 @@ export class RequestQueue {
     this.abort?.();
   }
 
-  /** これ以上命令を受け付けない (片付けたとき) */
+  /** これ以上命令を受け付けない (destroy() したとき) */
   close() {
     this.clear();
     this.closed = true;
@@ -129,10 +145,11 @@ export class RequestQueue {
     request.start();
     this.hooks.onStart(request);
     let done = false;
-    task((status = "complete", description) => {
+    task((status = "complete", description, number) => {
       if (done) return;
       done = true;
-      this.settle(request, request.interruptRequested ? "interrupted" : status, description);
+      if (request.interruptRequested) this.settle(request, "interrupted");
+      else this.settle(request, status, description, number);
       if (gen !== this.gen || this.currentRequest !== request) return;
       this.currentRequest = undefined;
       this.abort = undefined;

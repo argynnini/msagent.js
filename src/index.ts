@@ -7,8 +7,8 @@ export type { CharacterSource, LoadOptions } from "./load";
 
 // キャラクター 1 体と、その命令・イベント・メニュー
 export { Agent, parseCharacter } from "./agent";
-export type { AgentEventListener, AgentEventMap, AgentOptions, HideOptions, MoveCause, PointerDetail, SpeakOptions, StopType, VisibilityCause } from "./agent";
-export { AgentRequest } from "./request";
+export type { AgentEventListener, AgentEventMap, AgentOptions, GetType, HideOptions, MoveCause, PointerDetail, SpeakOptions, StopType, VisibilityCause } from "./agent";
+export { AgentRequest, RequestError } from "./request";
 export type { RequestStatus, RequestType } from "./request";
 export { AgentCommands } from "./commands";
 export type { AgentCommand, CommandOptions } from "./commands";

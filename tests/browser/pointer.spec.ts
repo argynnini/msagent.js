@@ -120,7 +120,13 @@ test("右クリックのメニュー: 足した項目・区切り・隠す。ア
   await harness.evaluate(() => (window.a.autoPopupMenu = false));
   await harness.mouse.click(...pt, { button: "right" });
   expect(await harness.$(".msagent-menu")).toBeNull();
+  // commands.fontName / fontSize (ポイント) で、メニューの文字を変える
+  await harness.evaluate(() => {
+    window.a.commands.fontName = "Georgia";
+    window.a.commands.fontSize = 12;
+  });
   expect(await harness.evaluate(() => window.a.showPopupMenu(300, 300))).toBe(true);
+  expect(await harness.$eval(".msagent-menu", (e) => [(e as HTMLElement).style.fontFamily, (e as HTMLElement).style.fontSize])).toEqual(["Georgia", "12pt"]);
   await harness.click(".msagent-menu >> text=隠す");
   await harness.waitForFunction(() => !window.a.visible);
   expect(await harness.evaluate(() => (window as unknown as { log: string[] }).log)).toEqual(["about", "about", "hide user"]);

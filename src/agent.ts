@@ -11,7 +11,7 @@ import { languageTag, type Language } from "./language";
 import { PopupMenu, type MenuEntry } from "./menu";
 import { attachPointerInput } from "./pointer";
 import { RequestQueue, type Task } from "./queue";
-import type { AgentRequest, RequestType } from "./request";
+import { RequestError, type AgentRequest, type RequestType } from "./request";
 import { Speaker } from "./speak";
 import { injectStyles } from "./styles";
 import { Talk } from "./talk";
@@ -62,7 +62,17 @@ export type StopType = "play" | "speak" | "move";
 
 const STOP_TYPES: Record<RequestType, StopType | undefined> = {
   play: "play", gestureAt: "play", speak: "speak", think: "speak", moveTo: "move",
-  show: undefined, hide: undefined, delay: undefined, wait: undefined, interrupt: undefined,
+  show: undefined, hide: undefined, delay: undefined, wait: undefined, interrupt: undefined, get: undefined,
+};
+
+/** get() で取り寄せるものの種類 (本家の Get の Type と同じ。大文字小文字は問わない) */
+export type GetType = "animation" | "state" | "wavefile";
+
+/** get("state", …) で、まとめて指定できる状態 (Gesturing なら GesturingDown / Left / Right / Up の全部) */
+const STATE_GROUPS: Record<string, readonly string[]> = {
+  gesturing: ["GesturingDown", "GesturingLeft", "GesturingRight", "GesturingUp"],
+  moving: ["MovingDown", "MovingLeft", "MovingRight", "MovingUp"],
+  idling: ["IdlingLevel1", "IdlingLevel2", "IdlingLevel3"],
 };
 
 /** キャラクターから見た向き (画面の左が "Right") */
@@ -295,7 +305,7 @@ export class Agent extends EventTarget {
     const { hold, url } = typeof options === "object" ? options : { hold: options, url: undefined };
     return this.enqueue("speak", (complete) => {
       // 隠れている間は、吹き出しも声も出せない (本家も隠れたキャラクターは音を出せず、失敗になる)
-      if (this.hidden) return complete("failed", HIDDEN);
+      if (this.hidden) return complete("failed", HIDDEN, RequestError.hidden);
       const gen = this.queue.generation;
       void this.talk.speak(text, !!hold, url, complete, () => gen !== this.queue.generation);
     });
@@ -308,7 +318,7 @@ export class Agent extends EventTarget {
   think(text: string): AgentRequest {
     text = pickAlternative(text);
     return this.enqueue("think", (complete) => {
-      if (this.hidden) return complete("failed", HIDDEN);
+      if (this.hidden) return complete("failed", HIDDEN, RequestError.hidden);
       this.talk.think(text, complete);
     });
   }
@@ -326,7 +336,7 @@ export class Agent extends EventTarget {
     if (!DIRECTIONS.some((d) => this.gestureAnimation(d))) return false;
     return this.enqueue("gestureAt", (complete) => {
       const name = this.gestureAnimation(this.direction(x, y));
-      if (!name) return complete("failed", "その向きの動きがありません");
+      if (!name) return complete("failed", "その向きの動きがありません", RequestError.stateNotFound);
       this.runPlay(name, DEFAULT_TIMEOUT_MS, undefined, complete);
     });
   }
@@ -376,6 +386,8 @@ export class Agent extends EventTarget {
    */
   wait(request: AgentRequest): AgentRequest {
     return this.enqueue("wait", (complete) => {
+      // 自分の命令を待つと、順番によっては終わらなくなる (本家もできない)
+      if (request.agent === this) return complete("failed", "自分の命令は待てません", RequestError.waitSelf);
       if (request.done) return complete();
       void request.then(() => complete());
       this.queue.onAbort(() => complete());
@@ -388,10 +400,29 @@ export class Agent extends EventTarget {
    */
   interrupt(request: AgentRequest): AgentRequest {
     return this.enqueue("interrupt", (complete) => {
-      if (request.agent === this) return complete("failed", "自分の命令は止められません (stop を使う)");
+      if (request.agent === this) return complete("failed", "自分の命令は止められません (stop を使う)", RequestError.interruptSelf);
       request.agent.stop(request);
       complete();
     });
+  }
+
+  /**
+   * アニメーション・状態・音声ファイルを、先に取り寄せる (本家の Get と同じ)。
+   * .acs / .act はファイルを丸ごと読み込み済みなので、アニメーションと状態は、あるかどうかを確かめるだけ
+   * (無ければ failed)。"wavefile" は URL を読み込んでおき (ブラウザのキャッシュに入る)、後の speak(text, { url }) を速くする。
+   * name はカンマ区切りで複数指定できる。queue が true (既定) なら順番待ちに入り、false ならすぐ実行する
+   *
+   * ```js
+   * agent.get("animation", "Wave, Greet");
+   * agent.get("state", "Gesturing"); // GesturingDown / Left / Right / Up の全部
+   * agent.get("wavefile", "hello.wav", false);
+   * ```
+   */
+  get(type: GetType, name: string, queue = true): AgentRequest {
+    const task: Task = (complete) => void this.runGet(type, name).then(([description, number]) =>
+      number ? complete("failed", description, number) : complete(),
+    );
+    return queue ? this.enqueue("get", task) : this.queue.runNow("get", task);
   }
 
   /** いまのアニメーションを、終了分岐で自然に終わらせる (しゃべっている途中なら、読み終えたら吹き出しを閉じる) */
@@ -597,9 +628,18 @@ export class Agent extends EventTarget {
     }
   }
 
-  /** 吹き出しが出ているか (本家の Balloon.Visible と同じ) */
+  /**
+   * 吹き出しが出ているか (本家の Balloon.Visible と同じ)。
+   * false を代入すると閉じる (しゃべっている途中なら、読み終えたらすぐ閉じる)。
+   * true を代入すると、最後の文をもう一度出す (自動では閉じない。隠れている間や、吹き出しを使わないキャラクターでは何もしない)
+   */
   get balloonVisible(): boolean {
     return this.balloon.visible;
+  }
+
+  set balloonVisible(visible: boolean) {
+    if (visible && (this.hidden || !this.balloonStyle.enabled)) return;
+    this.talk.setBalloonVisible(visible);
   }
 
   /** 作者が入れたおまけの文字 (本家の ExtraData。language の言語) */
@@ -689,7 +729,7 @@ export class Agent extends EventTarget {
       enabled: true,
       onSelect: () => void this.queueHide(false, undefined, { immediate: true }, "user"),
     });
-    this.menu = new PopupMenu(entries, x, y);
+    this.menu = new PopupMenu(entries, x, y, { fontName: this.commands.fontName, fontSize: this.commands.fontSize });
     return true;
   }
 
@@ -749,6 +789,36 @@ export class Agent extends EventTarget {
     this.transition = kind;
     await this.player.play(name);
     this.transition = undefined;
+  }
+
+  /** get() の中身。できたら ["", 0]、できなければ [理由, 番号] */
+  private async runGet(type: GetType, name: string): Promise<[string, number]> {
+    const names = name.split(",").map((n) => n.trim()).filter(Boolean);
+    switch (type.toLowerCase()) {
+      case "animation": {
+        const missing = names.find((n) => !findAnimation(this.character, n));
+        return missing ? [`アニメーションがありません: ${missing}`, RequestError.animationNotFound] : ["", 0];
+      }
+      case "state": {
+        const missing = names.find((n) =>
+          (STATE_GROUPS[n.toLowerCase()] ?? [n]).every((state) => this.character.stateAnimations(state).length === 0),
+        );
+        return missing ? [`状態にアニメーションがありません: ${missing}`, RequestError.stateNotFound] : ["", 0];
+      }
+      case "wavefile":
+        for (const url of names) {
+          try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`${res.status} ${res.url}`);
+            await res.arrayBuffer();
+          } catch (e) {
+            return [`音声ファイルを読み込めません: ${e instanceof Error ? e.message : String(e)}`, RequestError.invalidSound];
+          }
+        }
+        return ["", 0];
+      default:
+        return [`get() の type が正しくありません: ${type}`, RequestError.invalidGetType];
+    }
   }
 
   /** play() の中身 (順番が来たとき)。隠れている間は描かずに、すぐ終わったことにする (本家は見えないまま再生する) */

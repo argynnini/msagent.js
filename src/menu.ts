@@ -3,6 +3,13 @@ export type MenuEntry =
   | { kind: "item"; caption: string; enabled: boolean; bold?: boolean; onSelect: () => void }
   | { kind: "separator" };
 
+/** メニューの文字 (本家の Commands.FontName / FontSize。指定が無ければ CSS のまま) */
+export interface MenuFont {
+  fontName?: string | undefined;
+  /** ポイント */
+  fontSize?: number | undefined;
+}
+
 /** 開いているメニュー (同時に開けるのは 1 つだけ。本家と同じ) */
 let openMenu: PopupMenu | undefined;
 
@@ -15,11 +22,13 @@ export class PopupMenu {
   private readonly buttons: HTMLButtonElement[] = [];
   private readonly cleanups: (() => void)[] = [];
 
-  constructor(entries: readonly MenuEntry[], x: number, y: number) {
+  constructor(entries: readonly MenuEntry[], x: number, y: number, font: MenuFont = {}) {
     openMenu?.close();
     openMenu = this;
     this.element = document.createElement("div");
     this.element.className = "msagent-menu";
+    if (font.fontName) this.element.style.fontFamily = font.fontName;
+    if (font.fontSize) this.element.style.fontSize = `${font.fontSize}pt`;
     this.element.setAttribute("role", "menu");
     for (const entry of entries) {
       if (entry.kind === "separator") {
