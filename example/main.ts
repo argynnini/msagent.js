@@ -18,6 +18,7 @@ const eventList = $("events");
 const scaleInput = $<HTMLInputElement>("scale");
 const scaleValue = $("scale-value");
 const infoList = $("info");
+const durationInput = $<HTMLInputElement>("duration");
 
 let agent: Agent | undefined;
 let names: string[] = [];
@@ -337,11 +338,22 @@ document.addEventListener("click", (e) => {
   if (mode === "move") {
     // moveTo はキャラクターの左上の位置なので、キャラクターの真ん中がクリックした場所に来るようにずらす
     const { width, height } = agent.element.getBoundingClientRect();
-    agent.moveTo(e.clientX - width / 2, e.clientY - height / 2);
+    agent.moveTo(e.clientX - width / 2, e.clientY - height / 2, moveDuration());
   } else {
     agent.gestureAt(e.clientX, e.clientY);
   }
 });
+
+/** 移動にかける時間 (ms)。空欄や数でなければ既定の 1000 */
+function moveDuration(): number {
+  const ms = durationInput.valueAsNumber;
+  return Number.isFinite(ms) && ms >= 0 ? ms : 1000;
+}
+
+// 「移動」のときだけ、時間を入れられるようにする
+for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="click"]')) {
+  radio.addEventListener("change", () => (durationInput.disabled = radio.value !== "move" || !radio.checked));
+}
 
 function showMarker(x: number, y: number) {
   const marker = document.createElement("div");

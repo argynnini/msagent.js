@@ -121,6 +121,11 @@
       .seg span { display: block; padding: 2px 10px; border-radius: 7px; color: var(--muted); font-weight: 600; }
       .seg input:checked + span { background: var(--surface); color: var(--fg); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
       .actions .spacer { flex: 1; }
+      /* 移動にかける時間 (moveTo の duration)。「移動」以外のときは薄く */
+      .duration { display: inline-flex; align-items: center; gap: 4px; }
+      .duration input { width: 5.5em; padding: 3px 6px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); color: var(--fg); font: inherit; font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+      .duration input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+      .duration input:disabled { opacity: 0.45; }
 
       /* アニメーション一覧: 絞り込み + ボタンの並び */
       .anims { border-top: 1px solid var(--border); padding: 10px 12px 12px; }
@@ -256,6 +261,9 @@
               <label><input type="radio" name="click" value="gesture" /><span title="agent.gestureAt()">指す</span></label>
               <label><input type="radio" name="click" value="none" /><span>なし</span></label>
             </div>
+            <label class="duration" title="移動にかける時間 (moveTo の duration)。0 ならすぐ移る">
+              <input id="duration" type="number" min="0" max="10000" step="100" value="1000" inputmode="numeric" aria-label="移動にかける時間 (ミリ秒)" />ms
+            </label>
             <span class="spacer"></span>
             <button id="animate" class="btn small" type="button" title="agent.animate()">🎲 おまかせ</button>
             <button id="stop" class="btn small" type="button" title="agent.stop()">■ 止める</button>
