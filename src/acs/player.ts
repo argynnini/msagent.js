@@ -43,8 +43,15 @@ export class AcsPlayer {
   private releasing = false;
   private active = false;
   private current: string | undefined;
+  /** play() で頼まれたアニメーションの名前 (その前の戻りの動きの間も同じ) */
+  private requested: string | undefined;
   /** 再生中かどうかが変わったときに呼ばれる (UI のアイコン切り替え用) */
   onPlayingChange: ((playing: boolean) => void) | undefined;
+  /**
+   * 描いているアニメーションが変わったときに呼ばれる (current: 新しい名前、previous: 前の名前。止まれば undefined)。
+   * 戻りアニメ (MoveRightReturn など) を再生している間は、その名前になる
+   */
+  onAnimationChange: ((current: string | undefined, previous: string | undefined) => void) | undefined;
   /** 現在の play() 全体 (戻りアニメ含む) の完了 Promise */
   private running: Promise<void> | undefined;
   /** 口の形 (0: 閉じる, 1〜4: 大きく開く, 5: 中くらい, 6: すぼめる)。undefined なら口の画像を重ねない */
@@ -71,9 +78,25 @@ export class AcsPlayer {
     return this.current;
   }
 
+  /**
+   * play() で頼まれたアニメーションの名前 (再生中でなければ undefined)。
+   * currentAnimation と違い、前のアニメーションの戻りの動きを再生している間も、頼まれた名前を返す
+   */
+  get requestedAnimation(): string | undefined {
+    return this.requested;
+  }
+
   /** アニメーション再生中か (stop() や再生完了で false) */
   get isPlaying(): boolean {
     return this.active;
+  }
+
+  /** 描いているアニメーションの名前を変え、変わったら onAnimationChange で知らせる */
+  private setCurrent(name: string | undefined) {
+    if (this.current === name) return;
+    const previous = this.current;
+    this.current = name;
+    this.onAnimationChange?.(name, previous);
   }
 
   private setActive(v: boolean) {
@@ -83,7 +106,8 @@ export class AcsPlayer {
   }
 
   stop() {
-    this.current = undefined;
+    this.requested = undefined;
+    this.setCurrent(undefined);
     this.setActive(false);
     this.token++;
     if (this.timer !== undefined) window.clearTimeout(this.timer);
@@ -134,7 +158,7 @@ export class AcsPlayer {
     const held = this.held;
     this.stop();
     this.releasing = false;
-    this.current = name;
+    this.requested = name;
     this.setActive(true);
     const token = this.token;
     const run = async () => {
@@ -142,20 +166,24 @@ export class AcsPlayer {
         await this.returnFrom(held, token);
         if (token !== this.token) return;
       }
+      this.setCurrent(name);
       let current: Animation | undefined = this.character.animations.get(name);
       // 戻りアニメの連鎖は念のため上限を設ける
       for (let depth = 0; current && depth < 4; depth++) {
         const last = await this.playFrames(current, token);
         if (token !== this.token) return;
         if (options.hold) {
-          if (current.transitionType !== 2) this.held = { name, anim: current, frame: last };
+          if (current.transitionType !== 2) this.held = { name: this.current ?? name, anim: current, frame: last };
           break;
         }
         if (current.transitionType !== 0 || !current.returnAnimation) break;
+        // 戻りアニメも、その名前のアニメーションとして知らせる
+        this.setCurrent(current.returnAnimation);
         current = this.character.animations.get(current.returnAnimation);
       }
       if (token === this.token) {
-        this.current = undefined;
+        this.requested = undefined;
+        this.setCurrent(undefined);
         this.setActive(false);
       }
     };
@@ -187,13 +215,14 @@ export class AcsPlayer {
     const held = this.held;
     if (!held) return Promise.resolve();
     this.stop();
-    this.current = held.name;
+    this.requested = held.name;
     this.setActive(true);
     const token = this.token;
     const run = async () => {
       await this.returnFrom(held, token);
       if (token === this.token) {
-        this.current = undefined;
+        this.requested = undefined;
+        this.setCurrent(undefined);
         this.setActive(false);
       }
     };
@@ -204,14 +233,19 @@ export class AcsPlayer {
    * 止めたアニメーションの戻りの動き: 戻りアニメを使うもの (transitionType 0) はそれを、
    * 終了分岐を使うもの (1) は、止めたコマから終了分岐をたどる
    */
-  private async returnFrom(held: { anim: Animation; frame: number }, token: number) {
+  private async returnFrom(held: { name: string; anim: Animation; frame: number }, token: number) {
     const { anim, frame } = held;
     if (anim.transitionType === 0) {
+      // 別の戻りアニメ (MoveRightReturn など): その名前のアニメーションとして知らせる
       const ret = anim.returnAnimation ? this.character.animations.get(anim.returnAnimation) : undefined;
-      if (ret) await this.playFrames(ret, token);
+      if (!ret) return;
+      this.setCurrent(anim.returnAnimation);
+      await this.playFrames(ret, token);
     } else if (anim.transitionType === 1) {
+      // 同じアニメーションの終了分岐で戻る: 名前はそのアニメーションのまま
       const start = anim.frames[frame]?.exitFrame ?? -1;
       if (start < 0) return;
+      this.setCurrent(held.name);
       this.releasing = true;
       await this.playFrames(anim, token, start);
       if (token === this.token) this.releasing = false;

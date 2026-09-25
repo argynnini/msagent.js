@@ -126,7 +126,7 @@ export class IdleController {
    * 待機動作の play() の Promise は解決しないので、idlePlaying だけでなくプレイヤーの状態も確かめる
    */
   private get idleActive(): boolean {
-    return this.idlePlaying && this.deps.player()?.currentAnimation === this.lastName;
+    return this.idlePlaying && this.deps.player()?.requestedAnimation === this.lastName;
   }
 
   /** 再生中の待機動作を終了分岐で終わらせる (長引くときは打ち切る)。待機動作中でなければ即 resolve */

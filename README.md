@@ -110,7 +110,7 @@ agent.on("animationend", (e) => console.log(e.detail.name));
 | `balloonshow` / `balloonhide` | 吹き出しが出た / 閉じた | なし |
 | `idlestart` / `idlecomplete` | 待機状態に入った / 抜けた (次の命令が始まった) | なし |
 | `command` | 右クリックのメニューで、`commands` に足した項目が選ばれた | `name` |
-| `animationstart` / `animationend` | アニメーションが始まった / 終わった | `name`, `idle` (待機動作か) |
+| `animationstart` / `animationend` | アニメーションが始まった / 終わった。別の戻りアニメ (`MoveRightReturn` など) も、その名前で 1 つのアニメーションとして来る | `name`, `idle` (待機動作か) |
 | `speakstart` / `speakend` | しゃべり始めた / 終えた (途中でやめたときも。`think()` でも来る) | `text`, `thought` (`think()` か) |
 | `resize` | 大きさが変わった | `width`, `height`, `scale` |
 | `bookmark` | 読み上げの目印 (`\Mrk=番号\`) まで来た (`think()` でも来る) | `id` |

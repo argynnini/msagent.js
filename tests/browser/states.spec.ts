@@ -112,6 +112,55 @@ test("moveTo (フィンフィン): 移動前の動き → 最後のコマのま�
   expect(r.end).toEqual([100, 400]);
 });
 
+test("別の戻りアニメ (フィンフィン) は、その名前のアニメーションとして知らせる", async ({ harness }) => {
+  requireCharacters(CHARACTERS.finfin);
+  const r = await harness.evaluate(async () => {
+    const log: string[] = [];
+    const a = await window.loadAgent("finfin.acs");
+    a.moveTo(700, 400, 0);
+    await a.show(true);
+    a.on("animationstart", (e) => log.push(`start ${e.detail.name}`));
+    a.on("animationend", (e) => log.push(`end ${e.detail.name}`));
+    const names: (string | undefined)[] = [];
+    a.on("animationstart", () => names.push(a.player.currentAnimation));
+    await a.moveTo(100, 400, 500);
+    await a.gestureAt(1100, 450);
+    await a.play("Wave");
+    return { log, names };
+  });
+  expect(r.log).toEqual([
+    "start MoveRight",
+    "end MoveRight",
+    "start MoveRightReturn",
+    "end MoveRightReturn",
+    "start GestureLeft",
+    "end GestureLeft",
+    // 指した姿勢から戻ってから、手を振る
+    "start GestureLeftReturn",
+    "end GestureLeftReturn",
+    "start Wave",
+    "end Wave",
+  ]);
+  // currentAnimation も同じ名前
+  expect(r.names).toEqual(["MoveRight", "MoveRightReturn", "GestureLeft", "GestureLeftReturn", "Wave"]);
+});
+
+test("同じアニメーションの終了分岐で戻るもの (マーリン) は、名前はそのアニメーションのまま", async ({ harness }) => {
+  requireCharacters(CHARACTERS.merlin);
+  const log = await harness.evaluate(async () => {
+    const log: string[] = [];
+    const a = await window.loadAgent("Merlin.acs");
+    a.moveTo(700, 400, 0);
+    await a.show(true);
+    a.on("animationstart", (e) => log.push(`start ${e.detail.name}`));
+    a.on("animationend", (e) => log.push(`end ${e.detail.name}`));
+    await a.moveTo(100, 400, 300);
+    return log;
+  });
+  // 移動前の動きの後 (移動中) はいったん終わり、戻りの動きで同じ名前がもう一度始まる
+  expect(log).toEqual(["start MoveRight", "end MoveRight", "start MoveRight", "end MoveRight"]);
+});
+
 test("指した姿勢を次の動きまで保ち、次の動きの前に戻りの動きを再生する", async ({ harness }) => {
   requireCharacters(CHARACTERS.finfin);
   const r = await harness.evaluate(async () => {

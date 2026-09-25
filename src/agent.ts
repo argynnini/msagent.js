@@ -703,6 +703,7 @@ export class Agent extends EventTarget {
     this.idle.stop();
     this.player.stop();
     this.player.onPlayingChange = undefined;
+    this.player.onAnimationChange = undefined;
     this.menu?.close();
     if (topmost === this) topmost = undefined;
     for (const cleanup of this.cleanups) cleanup();
@@ -758,7 +759,7 @@ export class Agent extends EventTarget {
     }
     const timer = timeout
       ? window.setTimeout(() => {
-          if (this.player.currentAnimation === name) void this.player.release();
+          if (this.player.requestedAnimation === name) void this.player.release();
         }, timeout)
       : undefined;
     // Microsoft Agent と同じく、戻りの動きは次のアニメーションの前にする (指した姿勢のまましゃべれる)
@@ -802,23 +803,23 @@ export class Agent extends EventTarget {
     return this.dispatchEvent(new CustomEvent(type, { detail, cancelable }));
   }
 
-  /** アニメーションの始まり・終わりを知らせ、命令が無いときに待機動作が始まったら、待機状態に入る */
+  /**
+   * アニメーションの始まり・終わりを知らせ (戻りアニメも 1 つのアニメーションとして)、
+   * 命令が無いときに待機動作が始まったら、待機状態に入る
+   */
   private watchAnimations() {
-    let playing: string | undefined;
-    this.player.onPlayingChange = (active) => {
-      if (active) {
-        playing = this.player.currentAnimation;
-        const idle = playing !== undefined && isIdleAnimation(this.character, playing);
-        if (idle && !this.queue.busy && !this.idling) {
-          this.idling = true;
-          this.emit("idlestart", {});
-        }
-        if (playing) this.emit("animationstart", { name: playing, idle });
-      } else {
-        if (playing) this.emit("animationend", { name: playing, idle: isIdleAnimation(this.character, playing) });
-        playing = undefined;
-        this.idle.animationEnded();
+    this.player.onAnimationChange = (current, previous) => {
+      if (previous) this.emit("animationend", { name: previous, idle: isIdleAnimation(this.character, previous) });
+      if (!current) return;
+      const idle = isIdleAnimation(this.character, current);
+      if (idle && !this.queue.busy && !this.idling) {
+        this.idling = true;
+        this.emit("idlestart", {});
       }
+      this.emit("animationstart", { name: current, idle });
+    };
+    this.player.onPlayingChange = (active) => {
+      if (!active) this.idle.animationEnded();
     };
   }
 
