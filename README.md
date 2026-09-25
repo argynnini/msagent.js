@@ -77,7 +77,10 @@ const agent = await msagent.load(name); // Promise でも受け取れる
 | `moveTo(x, y, duration = 1000)` | 移動する (Moving〜 の状態のアニメーション → 最後のコマのまま移動 → 戻りの動き)。`duration` が 0 か、隠れている間は、すぐ移る |
 | `gestureAt(x, y)` | その方向を指す (Gesturing〜 の状態のアニメーション。無ければ `Gesture〜`、`Look〜`)。指した姿勢は次の動きまで保つ |
 | `delay(ms = 250)` | 次の命令まで待つ |
-| `stopCurrent()` / `stop()` | いまの動きを終わらせる / 順番待ちも全部捨てる (登場・退場の途中なら、それは最後まで) |
+| `stopCurrent()` / `stop(request?)` | いまの動きを終わらせる / 順番待ちも全部捨てる (登場・退場の途中なら、それは最後まで)。`request` を渡すと、その命令だけ止める |
+| `stopAll(types?)` | 種類ごとに止める (`"play"` / `"speak"` / `"move"`。省略すると登場・退場の途中も含めて全部) |
+| `wait(request)` | 別のキャラクターの命令が終わるまで待つ (2 体の掛け合い) |
+| `interrupt(request)` | 順番が来たら、別のキャラクターの命令を止める |
 | `pause()` / `resume()` | 一時停止・再開 |
 | `reposition()` | 画面の中に収める |
 
@@ -96,14 +99,35 @@ agent.on("animationend", (e) => console.log(e.detail.name));
 
 | イベント | いつ | `detail` |
 | --- | --- | --- |
-| `click` / `dblclick` | 絵の部分をクリック (ドラッグの後は来ない)。`dblclick` を `preventDefault()` すると `animate()` しない | `x`, `y`, `originalEvent` |
+| `click` / `dblclick` | 絵の部分をクリック (左・中・右ボタン。ドラッグの後は来ない)。`dblclick` を `preventDefault()` すると `animate()` しない | `x`, `y`, `button` (`"left"` / `"middle"` / `"right"`), `shift`, `ctrl`, `alt`, `originalEvent` |
 | `dragstart` / `dragend` | ドラッグで動かし始めた / 終えた | `x`, `y` (キャラクターの左上) |
-| `move` | ドラッグか `moveTo()` で移った | `x`, `y`, `by` (`"drag"` / `"moveTo"`) |
-| `show` / `hide` | 出た / 消えた | なし |
+| `move` | 移った | `x`, `y`, `by` (`"drag"` / `"moveTo"` / `"reposition"` = ブラウザの窓が小さくなり、画面の中に戻した) |
+| `show` / `hide` | 出た / 消えた | `cause` (`"program"` / `"user"`) |
+| `requeststart` / `requestcomplete` | 命令を始めた / 終えた | `request` |
+| `balloonshow` / `balloonhide` | 吹き出しが出た / 閉じた | なし |
+| `idlestart` / `idlecomplete` | 待機状態に入った / 抜けた (次の命令が始まった) | なし |
 | `animationstart` / `animationend` | アニメーションが始まった / 終わった | `name`, `idle` (待機動作か) |
 | `speakstart` / `speakend` | しゃべり始めた / 終えた (途中でやめたときも。`think()` でも来る) | `text`, `thought` (`think()` か) |
 | `resize` | 大きさが変わった | `width`, `height`, `scale` |
 | `bookmark` | 読み上げの目印 (`\Mrk=番号\`) まで来た (`think()` でも来る) | `id` |
+
+### 命令 (Request)
+
+`show` / `hide` / `play` / `speak` / `think` / `moveTo` / `gestureAt` / `delay` / `wait` / `interrupt` は、命令 (`AgentRequest`) を返します (本家の Request オブジェクトと同じ)。`await` すると、終わったときの状態が返ります。
+
+```js
+const request = agent.play("Wave");
+request.status;             // "pending" (順番待ち) / "inProgress" (実行中)
+await request;              // "complete" / "failed" / "interrupted"
+agent.stop(request);        // この命令だけ止める
+
+// 2 体の掛け合い
+const q = genie.speak("なぜニワトリは道を渡ったの？");
+robby.wait(q);              // genie がしゃべり終えるまで待つ
+robby.speak("わからないなあ");
+```
+
+キャラクターに無いアニメーションを `play()` したときは、clippy.js と同じく `false` を返します。隠れている間の `speak` / `think` は、`failed` になります (本家と同じ)。
 
 ### 読み上げの制御タグ
 

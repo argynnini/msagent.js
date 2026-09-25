@@ -255,12 +255,16 @@ langSelect.onchange = () => {
 function watchEvents(a: Agent) {
   const types: (keyof AgentEventMap)[] = [
     "click", "dblclick", "dragstart", "dragend", "move", "resize", "show", "hide",
-    "animationstart", "animationend", "speakstart", "speakend",
+    "animationstart", "animationend", "speakstart", "speakend", "bookmark",
+    "requeststart", "requestcomplete", "balloonshow", "balloonhide", "idlestart", "idlecomplete",
   ];
   for (const type of types) {
     a.on(type, (e) => {
       const detail = { ...(e.detail as object) } as Record<string, unknown>;
       delete detail.originalEvent;
+      // 命令は、番号・種類・状態だけを出す (agent を含むので、そのままでは文字にできない)
+      const request = detail.request as { id: number; type: string; status: string } | undefined;
+      if (request) detail.request = `#${request.id} ${request.type} ${request.status}`;
       for (const [k, v] of Object.entries(detail)) if (typeof v === "number") detail[k] = Math.round(v);
       if (typeof detail.text === "string" && detail.text.length > 16) detail.text = `${detail.text.slice(0, 16)}…`;
       const li = document.createElement("li");
@@ -268,7 +272,7 @@ function watchEvents(a: Agent) {
       name.textContent = type;
       li.append(name, ` ${Object.keys(detail).length ? JSON.stringify(detail) : ""}`);
       eventList.prepend(li);
-      while (eventList.children.length > 5) eventList.lastElementChild!.remove();
+      while (eventList.children.length > 8) eventList.lastElementChild!.remove();
     });
   }
 }

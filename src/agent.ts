@@ -7,6 +7,7 @@ import { IdleController, isIdleAnimation } from "./idle";
 import { languageTag, type Language } from "./language";
 import { Speaker, voiceParams, type SpeakParams } from "./speak";
 import { injectStyles } from "./styles";
+import { AgentRequest, type RequestType } from "./request";
 import { isRepeatTag, parseSpeechTags, removeBookmarks, shownText } from "./tags";
 
 export interface AgentOptions {
@@ -27,22 +28,49 @@ export interface AgentOptions {
 }
 
 
+/** クリックされたときの、ボタンと Shift / Ctrl / Alt キーの状態 (本家の Click の Button / Shift と同じ) */
+export interface PointerDetail {
+  /** 画面上の位置 (clientX / clientY) */
+  x: number;
+  y: number;
+  button: "left" | "middle" | "right";
+  shift: boolean;
+  ctrl: boolean;
+  alt: boolean;
+  originalEvent: MouseEvent;
+}
+
+/** 出た・消えた原因 (本家の VisibilityCause と同じ考え方): プログラムから / ユーザーの操作 (右クリックのメニューなど) */
+export type VisibilityCause = "program" | "user";
+
 /** agent.on() で受け取れるイベントと、その detail */
 export interface AgentEventMap {
-  /** キャラクターの絵の部分がクリックされた (ドラッグの後は来ない) */
-  click: { x: number; y: number; originalEvent: MouseEvent };
+  /** キャラクターの絵の部分がクリックされた (左・中・右ボタン。ドラッグの後は来ない) */
+  click: PointerDetail;
   /** ダブルクリックされた。event.preventDefault() すると、animate() しない */
-  dblclick: { x: number; y: number; originalEvent: MouseEvent };
+  dblclick: PointerDetail;
   /** ドラッグで動かし始めた / 動かし終えた (x, y はキャラクターの左上の位置) */
   dragstart: { x: number; y: number };
   dragend: { x: number; y: number };
-  /** ドラッグか moveTo() で、別の場所に移った */
-  move: { x: number; y: number; by: "drag" | "moveTo" };
+  /**
+   * 別の場所に移った。by: ドラッグ (ユーザー) / moveTo (プログラム) /
+   * reposition (ブラウザの窓が小さくなり、画面の中に戻した。本家の「画面の解像度が変わった」と同じ)
+   */
+  move: { x: number; y: number; by: "drag" | "moveTo" | "reposition" };
   /** 大きさが変わった (scale / width / height)。width, height は表示の大きさ (px) */
   resize: { width: number; height: number; scale: number };
-  /** show() で出た / hide() で消えた */
-  show: Record<string, never>;
-  hide: Record<string, never>;
+  /** 出た / 消えた */
+  show: { cause: VisibilityCause };
+  hide: { cause: VisibilityCause };
+  /** 命令 (show / play / speak など) を始めた / 終えた。request.status で結果が分かる */
+  requeststart: { request: AgentRequest };
+  requestcomplete: { request: AgentRequest };
+  /** 吹き出しが出た / 閉じた */
+  balloonshow: Record<string, never>;
+  balloonhide: Record<string, never>;
+  /** 待機状態 (Idling) に入った / 抜けた (次の命令が始まった) */
+  idlestart: Record<string, never>;
+  idlecomplete: Record<string, never>;
   /** アニメーションが始まった / 終わった (idle: 待機動作か) */
   animationstart: { name: string; idle: boolean };
   animationend: { name: string; idle: boolean };
@@ -58,8 +86,16 @@ export type AgentEventListener<K extends keyof AgentEventMap> = (event: CustomEv
 /** ドラッグとみなすまでの動き (px)。これより小さければクリック */
 const DRAG_THRESHOLD = 3;
 
-/** 順番待ちの 1 件。終わったら complete を呼ぶ */
-type Task = (complete: () => void) => void;
+/** 順番待ちの命令の中身。終わったら complete を呼ぶ (できなかったときは "failed" と理由) */
+type Task = (complete: (status?: "complete" | "failed", description?: string) => void, request: AgentRequest) => void;
+
+/** stopAll() で選べる種類 (本家の StopAll と同じ。play には gestureAt、speak には think も含む) */
+export type StopType = "play" | "speak" | "move";
+
+const STOP_TYPES: Record<RequestType, StopType | undefined> = {
+  play: "play", gestureAt: "play", speak: "speak", think: "speak", moveTo: "move",
+  show: undefined, hide: undefined, delay: undefined, wait: undefined, interrupt: undefined,
+};
 
 /** キャラクターから見た向き (画面の左が "Right") */
 type Direction = "Right" | "Up" | "Left" | "Down";
@@ -94,6 +130,12 @@ function pickAlternative(text: string): string {
   return alternatives[Math.floor(Math.random() * alternatives.length)]!;
 }
 
+/** マウスのイベントから、click / dblclick の detail を作る */
+function pointerDetail(e: MouseEvent): PointerDetail {
+  const button = e.button === 1 ? "middle" : e.button === 2 ? "right" : "left";
+  return { x: e.clientX, y: e.clientY, button, shift: e.shiftKey, ctrl: e.ctrlKey, alt: e.altKey, originalEvent: e };
+}
+
 /** 大文字小文字を問わず、実在するアニメーション名に直す (無ければ undefined) */
 function findAnimation(character: Character, name: string): string | undefined {
   if (character.animations.has(name)) return name;
@@ -122,8 +164,14 @@ export class Agent extends EventTarget {
   private currentScale = 1;
   /** balloonStyle で指定された項目 (キャラクターファイルの設定の上に重ねる) */
   private balloonOverrides: Partial<BalloonStyle> = {};
-  private queue: Task[] = [];
+  private queue: { request: AgentRequest; task: Task }[] = [];
   private running = false;
+  /** いま実行中の命令 */
+  private current: AgentRequest | undefined;
+  /** 実行中の命令を途中で止めるときに呼ぶもの (delay の待ちなど) */
+  private currentAbort: (() => void) | undefined;
+  /** 待機状態 (Idling) か */
+  private idling = false;
   /** stop() / hide() で順番待ちを捨てるたびに増やし、捨てたものの complete を無視する */
   private generation = 0;
   private hidden = true;
@@ -158,7 +206,9 @@ export class Agent extends EventTarget {
     this.voice = options.voice ?? true;
     this.language = options.language;
     this.balloonOverrides = { ...options.balloon };
-    this.balloon = new Balloon(this.element, this.balloonStyle);
+    this.balloon = new Balloon(this.element, this.balloonStyle, (visible) =>
+      this.emit(visible ? "balloonshow" : "balloonhide", {}),
+    );
     this.applyScale(options.scale ?? 1);
     this.speaker = new Speaker(() => this.player);
     (options.container ?? document.body).append(this.element, this.balloon.element);
@@ -175,7 +225,13 @@ export class Agent extends EventTarget {
     this.player.onPlayingChange = (active) => {
       if (active) {
         playing = this.player.currentAnimation;
-        if (playing) this.emit("animationstart", { name: playing, idle: isIdleAnimation(character, playing) });
+        const idle = playing !== undefined && isIdleAnimation(character, playing);
+        // 命令が無いときに待機動作が始まったら、待機状態に入る
+        if (idle && !this.running && !this.idling) {
+          this.idling = true;
+          this.emit("idlestart", {});
+        }
+        if (playing) this.emit("animationstart", { name: playing, idle });
       } else {
         if (playing) this.emit("animationend", { name: playing, idle: isIdleAnimation(character, playing) });
         playing = undefined;
@@ -185,10 +241,28 @@ export class Agent extends EventTarget {
 
     this.setupDrag();
     this.listen(this.element, "dblclick", (e) => {
-      const ev = e as MouseEvent;
-      if (this.emit("dblclick", { x: ev.clientX, y: ev.clientY, originalEvent: ev }, true)) this.animate();
+      if (this.emit("dblclick", pointerDetail(e as MouseEvent), true)) this.animate();
     });
-    this.listen(window, "resize", () => this.reposition());
+    // 中ボタンと右ボタン (contextmenu) も click として知らせる (本家の Click の Button と同じ)。
+    // 中ボタンは auxclick が来ないブラウザがあるので、絵の上で押して離したことで見る
+    let middleDown = false;
+    this.listen(this.element, "pointerdown", (e) => {
+      if ((e as PointerEvent).button === 1) middleDown = true;
+    });
+    this.listen(this.element, "pointerup", (e) => {
+      const ev = e as PointerEvent;
+      if (ev.button !== 1 || !middleDown) return;
+      middleDown = false;
+      if (this.hitTest(ev.clientX, ev.clientY)) this.emit("click", pointerDetail(ev));
+    });
+    this.listen(this.element, "contextmenu", (e) => this.emit("click", pointerDetail(e as MouseEvent)));
+    // ブラウザの窓が小さくなったら、画面の中に戻す
+    this.listen(window, "resize", () => {
+      const before = this.position;
+      this.reposition();
+      const after = this.position;
+      if (!this.hidden && (before.x !== after.x || before.y !== after.y)) this.emit("move", { ...after, by: "reposition" });
+    });
     // 最初の操作で音を鳴らせるようにしておく (自動再生の制限)
     const unlock = () => this.player.unlockAudio();
     this.listen(window, "pointerdown", unlock, true);
@@ -201,8 +275,8 @@ export class Agent extends EventTarget {
    * 登場する。キャラクターの Showing の状態に割り当てられたアニメーション (多くは Show) を再生する。
    * fast なら、アニメーションなしですぐ出す。Microsoft Agent と同じく順番待ちに入る
    */
-  show(fast?: boolean): boolean {
-    this.addToQueue(async (complete) => {
+  show(fast?: boolean): AgentRequest {
+    return this.addToQueue("show", async (complete) => {
       if (!this.hidden) return complete();
       this.hidden = false;
       this.element.style.display = "block";
@@ -213,7 +287,7 @@ export class Agent extends EventTarget {
       }
       this.reposition();
       this.resume();
-      this.emit("show", {});
+      this.emit("show", { cause: "program" });
       const name = fast ? undefined : this.stateAnimation("Showing", ["Show"]);
       if (!name) {
         this.drawRestPose();
@@ -224,7 +298,6 @@ export class Agent extends EventTarget {
       this.transition = undefined;
       complete();
     });
-    return true;
   }
 
   /**
@@ -232,7 +305,12 @@ export class Agent extends EventTarget {
    * fast なら、アニメーションなしですぐ消す。
    * Microsoft Agent と同じく順番待ちに入り、前の命令が終わってから隠れる。すぐ隠れたいときは { immediate: true }
    */
-  hide(fast?: boolean, callback?: () => void, options: HideOptions = {}): void {
+  hide(fast?: boolean, callback?: () => void, options: HideOptions = {}): AgentRequest {
+    return this.queueHide(fast, callback, options, "program");
+  }
+
+  /** hide() の中身。cause: 誰が隠したか (右クリックのメニューなら "user") */
+  private queueHide(fast: boolean | undefined, callback: (() => void) | undefined, options: HideOptions, cause: VisibilityCause) {
     const task: Task = async (complete) => {
       if (this.hidden) {
         callback?.();
@@ -250,7 +328,7 @@ export class Agent extends EventTarget {
       this.canvas.getContext("2d")?.clearRect(0, 0, this.canvas.width, this.canvas.height);
       this.element.style.display = "none";
       this.balloon.hide();
-      this.emit("hide", {});
+      this.emit("hide", { cause });
       callback?.();
       complete();
     };
@@ -260,7 +338,7 @@ export class Agent extends EventTarget {
       this.clearQueue();
       this.closeBalloon();
     }
-    this.addToQueue(task);
+    return this.addToQueue("hide", task);
   }
 
   /**
@@ -268,11 +346,10 @@ export class Agent extends EventTarget {
    * 終わったら callback。キャラクターに無いアニメーションなら false。
    * 最後の姿勢 (指す・見るなど) は、次のアニメーションまで保ち、戻りの動きはその前に再生する
    */
-  play(animation: string, timeout = DEFAULT_TIMEOUT_MS, callback?: () => void): boolean {
+  play(animation: string, timeout = DEFAULT_TIMEOUT_MS, callback?: () => void): AgentRequest | false {
     const name = findAnimation(this.character, animation);
     if (!name) return false;
-    this.addToQueue((complete) => this.runPlay(name, timeout, callback, complete));
-    return true;
+    return this.addToQueue("play", (complete) => this.runPlay(name, timeout, callback, complete));
   }
 
   /** play() の中身 (順番が来たとき)。隠れている間は描かずに、すぐ終わったことにする (本家は見えないまま再生する) */
@@ -295,7 +372,7 @@ export class Agent extends EventTarget {
   }
 
   /** 待機動作以外から、アニメーションを 1 つ選んで再生する */
-  animate(): boolean {
+  animate(): AgentRequest | false {
     const transitions = new Set([...this.character.stateAnimations("Showing"), ...this.character.stateAnimations("Hiding")]);
     const names = this.animations().filter(
       (n) => !isIdleAnimation(this.character, n) && !NOT_FOR_ANIMATE.test(n) && !transitions.has(n),
@@ -317,18 +394,18 @@ export class Agent extends EventTarget {
    * 吹き出しでしゃべる (声に出すのは voice が true のとき)。
    * hold なら、読み終えても吹き出しを閉じず、closeBalloon() まで次の命令に進まない
    */
-  speak(text: string, hold?: boolean): void {
+  speak(text: string, hold?: boolean): AgentRequest {
     text = pickAlternative(text);
-    this.addToQueue(async (complete) => {
-      // 隠れている間は、吹き出しも声も出せない (本家も隠れたキャラクターは音を出せない)
-      if (this.hidden) return complete();
+    return this.addToQueue("speak", async (complete) => {
+      // 隠れている間は、吹き出しも声も出せない (本家も隠れたキャラクターは音を出せず、失敗になる)
+      if (this.hidden) return complete("failed", "キャラクターが隠れています");
       // 口の画像が無いコマ (待機動作の終わりなど) では口が動かないので、Microsoft Agent と同じく、
       // しゃべるとき用のアニメーション (Speaking の状態。多くは RestPose) に切り替えてから
       if (!this.player.hasMouth) {
         const speaking = this.speakingAnimation();
         const gen = this.generation;
         if (speaking) await this.player.play(speaking, { hold: true });
-        if (gen !== this.generation) return; // 切り替えの間に stop() された
+        if (gen !== this.generation) return complete(); // 切り替えの間に stop() された
       }
       // \Lst\ だけなら、直前の発言を繰り返す (目印は繰り返さない。本家と同じ)
       let said = text;
@@ -379,12 +456,13 @@ export class Agent extends EventTarget {
    * 考えごとの吹き出し (雲形) に文を出す (本家の Think と同じ)。声は出さず、口も動かさない。
    * 読み終わるくらいの時間 (文の長さから決める) が過ぎたら次の命令に進み、少しして吹き出しを閉じる
    */
-  think(text: string): void {
+  think(text: string): AgentRequest {
     text = pickAlternative(text);
-    this.addToQueue((complete) => {
+    return this.addToQueue("think", (complete) => {
       // 隠れている間と、吹き出しを使わないキャラクターは、何も出さない (本家と同じ)
       const style = this.balloonStyle;
-      if (this.hidden || !style.enabled) return complete();
+      if (this.hidden) return complete("failed", "キャラクターが隠れています");
+      if (!style.enabled) return complete();
       // 本家と同じく、\Mrk\ (目印) だけを使い、ほかのタグは取り除く
       const parts = parseSpeechTags(text, undefined, true);
       const shownAll = shownText(parts);
@@ -450,15 +528,14 @@ export class Agent extends EventTarget {
    * (x, y) の方を指す。キャラクターの Gesturing〜 の状態に割り当てられたアニメーション
    * (無ければ Gesture〜、Look〜) を再生する。向きは順番が来たときの位置で決める。指す動きが 1 つも無ければ false
    */
-  gestureAt(x: number, y: number): boolean {
+  gestureAt(x: number, y: number): AgentRequest | false {
     const directions: Direction[] = ["Right", "Up", "Left", "Down"];
     if (!directions.some((d) => this.gestureAnimation(d))) return false;
-    this.addToQueue((complete) => {
+    return this.addToQueue("gestureAt", (complete) => {
       const name = this.gestureAnimation(this.direction(x, y));
-      if (!name) return complete();
+      if (!name) return complete("failed", "その向きの動きがありません");
       this.runPlay(name, DEFAULT_TIMEOUT_MS, undefined, complete);
     });
-    return true;
   }
 
   private gestureAnimation(d: Direction): string | undefined {
@@ -469,8 +546,8 @@ export class Agent extends EventTarget {
    * (x, y) へ移動する。Move〜 のアニメーションがあれば、Microsoft Agent と同じく
    * 移動前の動き → 最後のコマのまま移動 → 移動後の動き (戻りアニメか終了分岐) の順にする。duration が 0 なら、すぐ移る
    */
-  moveTo(x: number, y: number, duration = 1000): void {
-    this.addToQueue(async (complete) => {
+  moveTo(x: number, y: number, duration = 1000): AgentRequest {
+    return this.addToQueue("moveTo", async (complete, request) => {
       // 隠れている間は、アニメーションなしですぐ移る (本家と同じ)
       if (duration === 0 || this.hidden) {
         this.setPosition(x, y);
@@ -480,7 +557,7 @@ export class Agent extends EventTarget {
       const d = this.direction(x, y);
       const name = this.stateAnimation(`Moving${d}`, [`Move${d}`]);
       if (name) await this.player.play(name, { hold: true });
-      await this.slide(x, y, duration);
+      await this.slide(x, y, duration, request);
       this.emit("move", { ...this.position, by: "moveTo" });
       if (name) await this.player.playReturn();
       complete();
@@ -488,8 +565,44 @@ export class Agent extends EventTarget {
   }
 
   /** 次の命令まで、time (ms、既定 250) 待つ */
-  delay(time = 250): void {
-    this.addToQueue((complete) => window.setTimeout(complete, time));
+  delay(time = 250): AgentRequest {
+    return this.addToQueue("delay", (complete) => {
+      const timer = window.setTimeout(() => complete(), time);
+      this.currentAbort = () => {
+        window.clearTimeout(timer);
+        complete();
+      };
+    });
+  }
+
+  /**
+   * 別のキャラクターの命令が終わるまで、このキャラクターの順番待ちを止める (本家の Wait と同じ)。
+   * 2 体の掛け合いで、相手がしゃべり終えてから、こちらがしゃべるときに使う
+   *
+   * ```js
+   * const q = genie.speak("なぜニワトリは道を渡ったの？");
+   * robby.wait(q);
+   * robby.speak("わからないなあ");
+   * ```
+   */
+  wait(request: AgentRequest): AgentRequest {
+    return this.addToQueue("wait", (complete) => {
+      if (request.done) return complete();
+      void request.then(() => complete());
+      this.currentAbort = () => complete();
+    });
+  }
+
+  /**
+   * 順番が来たら、別のキャラクターの命令を止める (本家の Interrupt と同じ)。
+   * その命令が実行中なら終わらせて相手の次の命令へ進め、順番待ちなら取り除く。相手の順番待ちは捨てない
+   */
+  interrupt(request: AgentRequest): AgentRequest {
+    return this.addToQueue("interrupt", (complete) => {
+      if (request.agent === this) return complete("failed", "自分の命令は止められません (stop を使う)");
+      request.agent.stop(request);
+      complete();
+    });
   }
 
   /** いまのアニメーションを、終了分岐で自然に終わらせる (しゃべっている途中なら、読み終えたら吹き出しを閉じる) */
@@ -501,17 +614,38 @@ export class Agent extends EventTarget {
 
   /**
    * 順番待ちを全部捨て、いまのアニメーションを終わらせ、吹き出しを閉じる。
-   * 登場・退場のアニメーションの途中なら、それは最後まで再生する (本家と同じ)
+   * 登場・退場のアニメーションの途中なら、それは最後まで再生する (本家と同じ)。
+   * request を渡すと、その命令だけを止める (実行中なら終わらせて次へ、順番待ちなら取り除く)
    */
-  stop(): void {
+  stop(request?: AgentRequest): void {
+    if (request) return this.stopRequest(request);
     if (this.transition) {
-      this.queue = [];
+      this.dropQueued(() => true);
       this.closeBalloon();
       return;
     }
     this.clearQueue();
     void this.player.release();
     this.closeBalloon();
+  }
+
+  /**
+   * 命令を種類ごとに止める (本家の StopAll と同じ)。types: "play" (play / gestureAt) / "speak" (speak / think) / "move" (moveTo)。
+   * 省略すると、登場・退場の途中も含めて、全部止める
+   */
+  stopAll(types?: StopType | readonly StopType[]): void {
+    if (types === undefined) {
+      this.transition = undefined;
+      this.stop();
+      return;
+    }
+    const wanted = new Set(Array.isArray(types) ? types : [types as StopType]);
+    const matches = (r: AgentRequest) => {
+      const t = STOP_TYPES[r.type];
+      return t !== undefined && wanted.has(t);
+    };
+    this.dropQueued(matches);
+    if (this.current && matches(this.current)) this.interruptCurrent();
   }
 
   /** アニメーションを一時停止する */
@@ -666,36 +800,102 @@ export class Agent extends EventTarget {
     return { x: r.left, y: r.top };
   }
 
-  private addToQueue(task: Task) {
-    if (this.destroyed) return;
-    this.queue.push(task);
+  /** 命令を順番待ちに入れる。前の命令が終わっていれば、すぐ始める */
+  private addToQueue(type: RequestType, task: Task): AgentRequest {
+    const request = new AgentRequest(type, this);
+    if (this.destroyed) {
+      this.settle(request, "failed", "キャラクターは片付けられています");
+      return request;
+    }
+    this.queue.push({ request, task });
     if (!this.running) void this.next();
+    return request;
   }
 
   private async next() {
-    const task = this.queue.shift();
-    if (!task) {
+    const item = this.queue.shift();
+    if (!item) {
       this.running = false;
+      this.current = undefined;
       return;
     }
+    const { request, task } = item;
     this.running = true;
+    this.current = request;
+    this.currentAbort = undefined;
     const gen = this.generation;
-    // 待機動作の途中なら、終了分岐で自然に終わらせてから
+    // 命令が来たので、待機状態を抜ける。待機動作の途中なら、終了分岐で自然に終わらせてから
+    if (this.idling) {
+      this.idling = false;
+      this.emit("idlecomplete", {});
+    }
     this.idle?.userActivity();
     await this.idle?.interrupt();
-    if (gen !== this.generation) return;
+    if (gen !== this.generation || request.done) return;
+    // 待機動作を終わらせている間に止められた命令は、始めずに次へ
+    if (request.interruptRequested) {
+      this.settle(request, "interrupted");
+      this.current = undefined;
+      return void this.next();
+    }
+    request.start();
+    this.emit("requeststart", { request });
     let done = false;
-    task(() => {
-      if (done || gen !== this.generation) return;
+    task((status = "complete", description) => {
+      if (done) return;
       done = true;
+      this.settle(request, request.interruptRequested ? "interrupted" : status, description);
+      if (gen !== this.generation || this.current !== request) return;
+      this.current = undefined;
+      this.currentAbort = undefined;
       void this.next();
-    });
+    }, request);
   }
 
+  /** 命令を終わらせ、requestcomplete を出す (すでに終わっていれば何もしない) */
+  private settle(request: AgentRequest, status: "complete" | "failed" | "interrupted", description = "") {
+    if (request.settle(status, description)) this.emit("requestcomplete", { request });
+  }
+
+  /** 順番待ちを全部捨てる (実行中の命令も、止められたことにする) */
   private clearQueue() {
-    this.queue = [];
+    this.dropQueued(() => true);
+    if (this.current) this.settle(this.current, "interrupted");
+    this.current = undefined;
+    this.currentAbort = undefined;
     this.generation++;
     this.running = false;
+  }
+
+  /** 順番待ち (まだ始まっていないもの) から、条件に合う命令を取り除く */
+  private dropQueued(matches: (request: AgentRequest) => boolean) {
+    const kept: typeof this.queue = [];
+    for (const item of this.queue) {
+      if (matches(item.request)) this.settle(item.request, "interrupted");
+      else kept.push(item);
+    }
+    this.queue = kept;
+  }
+
+  /** 命令を 1 つだけ止める: 実行中なら終わらせて次へ、順番待ちなら取り除く */
+  private stopRequest(request: AgentRequest) {
+    if (request.agent !== this) return request.agent.stop(request);
+    if (request.done) return;
+    if (this.current === request) this.interruptCurrent();
+    else this.dropQueued((r) => r === request);
+  }
+
+  /**
+   * 実行中の命令を終わらせて、次の命令へ進める (本家の Interrupt と同じ。順番待ちは捨てない)。
+   * アニメーションは終了分岐で自然に終わらせ、しゃべり・考えごとは途中でやめ、待ちはすぐやめる
+   */
+  private interruptCurrent() {
+    const request = this.current;
+    if (!request) return;
+    request.interruptRequested = true;
+    void this.player.release();
+    if (this.speaking) this.closeBalloon();
+    this.currentAbort?.();
   }
 
   /** 読み終えた後: 自動で閉じる (autoHide) なら少しして閉じる。そうでなければ、次の speak / think などまで出したまま */
@@ -783,11 +983,13 @@ export class Agent extends EventTarget {
     this.balloon.reposition();
   }
 
-  private slide(x: number, y: number, duration: number): Promise<void> {
+  /** duration ms かけて (x, y) へ動かす。request が止められたら、その場で止まる */
+  private slide(x: number, y: number, duration: number, request?: AgentRequest): Promise<void> {
     const r = this.element.getBoundingClientRect();
     const start = performance.now();
     return new Promise((resolve) => {
       const frame = (now: number) => {
+        if (request?.interruptRequested) return resolve();
         const t = Math.min(1, (now - start) / duration);
         this.setPosition(r.left + (x - r.left) * t, r.top + (y - r.top) * t);
         if (t < 1 && !this.destroyed) requestAnimationFrame(frame);
@@ -872,8 +1074,7 @@ export class Agent extends EventTarget {
         e.stopPropagation();
         return;
       }
-      const ev = e as MouseEvent;
-      this.emit("click", { x: ev.clientX, y: ev.clientY, originalEvent: ev });
+      this.emit("click", pointerDetail(e as MouseEvent));
     });
   }
 

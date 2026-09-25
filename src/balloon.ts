@@ -25,6 +25,8 @@ export class Balloon {
   constructor(
     private readonly target: HTMLElement,
     style: BalloonStyle,
+    /** 吹き出しが出た (true) / 閉じた (false) */
+    private readonly onVisibleChange?: (visible: boolean) => void,
   ) {
     this.element = document.createElement("div");
     this.element.className = "msagent-balloon";
@@ -77,12 +79,16 @@ export class Balloon {
   }
 
   show() {
+    const was = this.visible;
     this.element.style.display = "block";
     this.reposition();
+    if (!was) this.onVisibleChange?.(true);
   }
 
   hide() {
+    const was = this.visible;
     this.element.style.display = "none";
+    if (was) this.onVisibleChange?.(false);
   }
 
   /** いま出している文 */
