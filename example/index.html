@@ -292,7 +292,12 @@
               <label>縁 <input type="color" data-key="border" /></label>
               <label>大きさ <input type="number" data-key="fontSize" min="8" max="40" step="1" />px</label>
               <label>1 行 <input type="number" data-key="charsPerLine" min="8" max="80" step="1" />文字</label>
+              <label>行 <input type="number" data-key="lines" min="1" max="20" step="1" /></label>
               <label><input type="checkbox" data-key="bold" /> 太字</label>
+              <label title="enabled"><input type="checkbox" data-key="enabled" /> 使う</label>
+              <label title="sizeToText (off なら行数で固定し、はみ出した分は上へ流す)"><input type="checkbox" data-key="sizeToText" /> 文に合わせる</label>
+              <label title="autoHide"><input type="checkbox" data-key="autoHide" /> 自動で閉じる</label>
+              <label title="autoPace"><input type="checkbox" data-key="autoPace" /> 少しずつ出す</label>
               <button id="bstyle-reset" class="btn small" type="button" title="agent.balloonStyle = undefined">ファイルの設定に戻す</button>
             </div>
           </details>

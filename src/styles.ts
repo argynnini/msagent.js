@@ -21,6 +21,11 @@ const CSS = `
   font-family: var(--msagent-balloon-font, "Microsoft Sans Serif"), "Microsoft Sans Serif", "MS UI Gothic", Tahoma, sans-serif;
   font-size: var(--msagent-balloon-font-size, 13px); font-weight: var(--msagent-balloon-font-weight, 400);
   font-style: var(--msagent-balloon-font-style, normal); line-height: 1.4;
+  text-decoration: var(--msagent-balloon-decoration, none);
+}
+/* 高さを文に合わせない (sizeToText: false): lines 行の高さに固定し、はみ出した分は上へ流す */
+.msagent-balloon.msagent-fixed .msagent-content {
+  height: calc(var(--msagent-balloon-lines, 2) * 1.4em); overflow: hidden;
 }
 .msagent-tip {
   position: absolute; width: 12px; height: 12px; box-sizing: border-box;

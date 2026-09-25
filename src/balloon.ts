@@ -19,6 +19,8 @@ export class Balloon {
   private readonly content: HTMLDivElement;
   private side: Side | undefined;
   private thinking = false;
+  /** 行数を固定しているか (sizeToText が false) */
+  private fixedLines = false;
 
   constructor(
     private readonly target: HTMLElement,
@@ -51,6 +53,12 @@ export class Balloon {
     s.setProperty("--msagent-balloon-font-size", `${style.fontSize}px`);
     s.setProperty("--msagent-balloon-font-weight", String(style.fontWeight));
     s.setProperty("--msagent-balloon-font-style", style.italic ? "italic" : "normal");
+    const decorations = [style.underline && "underline", style.strikethrough && "line-through"].filter(Boolean);
+    s.setProperty("--msagent-balloon-decoration", decorations.length ? decorations.join(" ") : "none");
+    // 高さを文に合わせないときは、lines 行の高さに固定する (はみ出した分は setText で上へ流す)
+    s.setProperty("--msagent-balloon-lines", String(Math.max(1, style.lines)));
+    this.fixedLines = !style.sizeToText;
+    this.element.classList.toggle("msagent-fixed", this.fixedLines);
     if (style.charsPerLine > 0) {
       s.setProperty("--msagent-balloon-width", `${Math.round(style.charsPerLine * style.fontSize * 0.55)}px`);
     }
@@ -84,6 +92,8 @@ export class Balloon {
 
   setText(text: string) {
     this.content.textContent = text;
+    // 行数を固定しているときは、いちばん新しい行が見えるように流す (本家の吹き出しと同じ)
+    if (this.fixedLines) this.content.scrollTop = this.content.scrollHeight;
     if (this.visible) this.reposition();
   }
 

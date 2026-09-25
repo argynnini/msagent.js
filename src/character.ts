@@ -38,7 +38,39 @@ export interface BalloonStyle {
   /** 文字の太さ (400: 標準, 700: 太字) */
   fontWeight: number;
   italic: boolean;
+  underline: boolean;
+  strikethrough: boolean;
+  /** 吹き出しを使うか (false なら speak は声だけ、think は何も出さない) */
+  enabled: boolean;
+  /** 高さを文の量に合わせるか。false なら lines 行の高さに固定し、はみ出した分は上へ流す */
+  sizeToText: boolean;
+  /** しゃべり終えたら自動で閉じるか。false なら次の speak / think、hide、キャラクターのクリック・ドラッグまで出したまま */
+  autoHide: boolean;
+  /** 読み上げに合わせて、言葉を少しずつ出すか。false なら最初から全文を出す */
+  autoPace: boolean;
 }
+
+/**
+ * 吹き出しの見た目の既定値 (キャラクターファイルに設定が無いとき。.act など)。
+ * Office アシスタントの吹き出しと同じ、薄い黄色に黒い縁
+ */
+export const DEFAULT_BALLOON_STYLE: Readonly<BalloonStyle> = {
+  lines: 2,
+  charsPerLine: 28,
+  foreground: "#000000",
+  background: "#ffffe1",
+  border: "#000000",
+  fontFamily: "Microsoft Sans Serif",
+  fontSize: 13,
+  fontWeight: 400,
+  italic: false,
+  underline: false,
+  strikethrough: false,
+  enabled: true,
+  sizeToText: true,
+  autoHide: true,
+  autoPace: true,
+};
 
 /**
  * プレイヤー・待機動作・しゃべる機能が使う、キャラクターの共通の形。

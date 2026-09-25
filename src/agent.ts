@@ -2,7 +2,7 @@ import { AcsPlayer } from "./acs/player";
 import { AcsCharacter } from "./acs/reader";
 import { ActCharacter, isActFile } from "./act/reader";
 import { Balloon } from "./balloon";
-import type { BalloonStyle, Character } from "./character";
+import { DEFAULT_BALLOON_STYLE, type BalloonStyle, type Character } from "./character";
 import { IdleController, isIdleAnimation } from "./idle";
 import type { Language } from "./language";
 import { Speaker, voiceParams } from "./speak";
@@ -25,21 +25,6 @@ export interface AgentOptions {
   balloon?: Partial<BalloonStyle>;
 }
 
-/**
- * 吹き出しの見た目の既定値 (キャラクターファイルに設定が無いとき。.act など)。
- * Office アシスタントの吹き出しと同じ、薄い黄色に黒い縁
- */
-export const DEFAULT_BALLOON_STYLE: Readonly<BalloonStyle> = {
-  lines: 2,
-  charsPerLine: 28,
-  foreground: "#000000",
-  background: "#ffffe1",
-  border: "#000000",
-  fontFamily: "Microsoft Sans Serif",
-  fontSize: 13,
-  fontWeight: 400,
-  italic: false,
-};
 
 /** agent.on() で受け取れるイベントと、その detail */
 export interface AgentEventMap {
@@ -141,6 +126,8 @@ export class Agent extends EventTarget {
   private balloonTimer: number | undefined;
   /** think() の文を出しておく時間のタイマー (過ぎたら次の命令へ) */
   private thinkTimer: number | undefined;
+  /** think() の文を少しずつ出すタイマー */
+  private thinkPaceTimer: number | undefined;
   private destroyed = false;
   private readonly cleanups: (() => void)[] = [];
 
@@ -335,18 +322,26 @@ export class Agent extends EventTarget {
       this.hold = !!hold;
       this.speechComplete = complete;
       this.emit("speakstart", { text, thought: false });
-      this.balloon.setThink(false);
-      this.balloon.setText("");
-      this.balloon.show();
+      const style = this.balloonStyle;
+      if (style.enabled) {
+        this.balloon.setThink(false);
+        // 少しずつ出さない (autoPace: false) なら、最初から全文
+        this.balloon.setText(style.autoPace ? "" : text);
+        this.balloon.show();
+      } else {
+        this.balloon.hide();
+      }
       this.speaker.speak(
         text,
         {
-          onProgress: (shown) => this.balloon.setText(shown),
+          onProgress: (shown) => {
+            if (style.enabled && style.autoPace) this.balloon.setText(shown);
+          },
           onEnd: () => {
             this.emit("speakend", { text, thought: false });
             if (this.hold) return;
             this.completeSpeech();
-            this.balloonTimer = window.setTimeout(() => this.balloon.hide(), CLOSE_BALLOON_DELAY_MS);
+            this.scheduleBalloonHide();
           },
         },
         voiceParams(this.character.voice),
@@ -361,21 +356,36 @@ export class Agent extends EventTarget {
    */
   think(text: string): void {
     this.addToQueue((complete) => {
-      if (this.hidden) return complete();
+      // 隠れている間と、吹き出しを使わないキャラクターは、何も出さない (本家と同じ)
+      const style = this.balloonStyle;
+      if (this.hidden || !style.enabled) return complete();
       window.clearTimeout(this.balloonTimer);
       this.hold = false;
       this.speechComplete = complete;
       this.emit("speakstart", { text, thought: true });
       this.balloon.setThink(true);
-      this.balloon.setText(text);
+      const chars = [...text];
+      const ms = Math.min(THINK_MAX_MS, Math.max(THINK_MIN_MS, chars.length * THINK_MS_PER_CHAR));
+      // 少しずつ出すときは、出しておく時間に合わせて文字を出していく
+      let shown = style.autoPace ? 0 : chars.length;
+      this.balloon.setText(chars.slice(0, shown).join(""));
       this.balloon.show();
-      const ms = Math.min(THINK_MAX_MS, Math.max(THINK_MIN_MS, [...text].length * THINK_MS_PER_CHAR));
+      const started = performance.now();
+      const pace = () => {
+        if (this.thinkTimer === undefined) return;
+        shown = Math.min(chars.length, Math.ceil((chars.length * (performance.now() - started)) / (ms * 0.8)));
+        this.balloon.setText(chars.slice(0, shown).join(""));
+        if (shown < chars.length) this.thinkPaceTimer = window.setTimeout(pace, 60);
+      };
       this.thinkTimer = window.setTimeout(() => {
         this.thinkTimer = undefined;
+        window.clearTimeout(this.thinkPaceTimer);
+        this.balloon.setText(text);
         this.emit("speakend", { text, thought: true });
         this.completeSpeech();
-        this.balloonTimer = window.setTimeout(() => this.balloon.hide(), CLOSE_BALLOON_DELAY_MS);
+        this.scheduleBalloonHide();
       }, ms);
+      if (shown < chars.length) pace();
     });
   }
 
@@ -385,6 +395,7 @@ export class Agent extends EventTarget {
     this.speaker.cancel();
     if (this.thinkTimer !== undefined) {
       window.clearTimeout(this.thinkTimer);
+      window.clearTimeout(this.thinkPaceTimer);
       this.thinkTimer = undefined;
       this.emit("speakend", { text: this.balloon.text, thought: true });
     }
@@ -645,6 +656,13 @@ export class Agent extends EventTarget {
     this.running = false;
   }
 
+  /** 読み終えた後: 自動で閉じる (autoHide) なら少しして閉じる。そうでなければ、次の speak / think などまで出したまま */
+  private scheduleBalloonHide() {
+    if (this.balloonStyle.autoHide) {
+      this.balloonTimer = window.setTimeout(() => this.balloon.hide(), CLOSE_BALLOON_DELAY_MS);
+    }
+  }
+
   private completeSpeech() {
     const complete = this.speechComplete;
     this.speechComplete = undefined;
@@ -755,6 +773,7 @@ export class Agent extends EventTarget {
         const ev = e as PointerEvent;
         if (ev.button !== 0 || !this.hitTest(ev.clientX, ev.clientY)) return;
         setHit(true);
+        if (!this.speaking && this.balloon.visible) this.balloon.hide();
         const r = this.element.getBoundingClientRect();
         grab = { dx: ev.clientX - r.left, dy: ev.clientY - r.top, x: ev.clientX, y: ev.clientY };
         dragging = false;

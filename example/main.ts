@@ -144,6 +144,13 @@ function renderInfo(a: Agent) {
             swatch(b.background), `背景 ${b.background}  `, swatch(b.foreground), `文字 ${b.foreground}  `, swatch(b.border), `縁 ${b.border}`,
             document.createElement("br"),
             `${b.fontFamily} ${b.fontSize}px${b.fontWeight >= 700 ? " 太字" : ""}${b.italic ? " 斜体" : ""} · ${b.lines} 行 × ${b.charsPerLine} 文字`,
+            document.createElement("br"),
+            [
+              b.enabled ? "使う" : "使わない",
+              b.sizeToText ? "高さは文に合わせる" : "行数で固定",
+              b.autoHide ? "自動で閉じる" : "出したまま",
+              b.autoPace ? "少しずつ出す" : "一度に出す",
+            ].join(" · "),
           ]
         : "設定なし",
     ],
@@ -171,6 +178,7 @@ function renderBalloonStyle(a: Agent) {
   for (const input of styleInputs) {
     const key = input.dataset.key!;
     if (key === "bold") input.checked = style.fontWeight >= 700;
+    else if (input.type === "checkbox") input.checked = Boolean(style[key as keyof typeof style]);
     else input.value = String(style[key as keyof typeof style]);
   }
 }
@@ -178,10 +186,11 @@ function renderBalloonStyle(a: Agent) {
 /** 入力欄の値を、agent.balloonStyle に入れる (キャラクターファイルの設定の上に重なる) */
 function applyBalloonStyle() {
   if (!agent) return;
-  const style: Record<string, string | number> = {};
+  const style: Record<string, string | number | boolean> = {};
   for (const input of styleInputs) {
     const key = input.dataset.key!;
     if (key === "bold") style.fontWeight = input.checked ? 700 : 400;
+    else if (input.type === "checkbox") style[key] = input.checked;
     else if (input.type === "number") {
       if (Number.isFinite(input.valueAsNumber)) style[key] = input.valueAsNumber;
     } else style[key] = input.value;

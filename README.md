@@ -157,8 +157,15 @@ msagent.load({ name: "Merlin", balloon: { fontFamily: '"Yu Gothic UI", sans-seri
 | --- | --- |
 | `background` / `foreground` / `border` | 背景・文字・縁の色 (CSS の色) |
 | `fontFamily` / `fontSize` / `fontWeight` / `italic` | 文字 (`fontSize` は px、`fontWeight` は 400 / 700 など) |
+| `underline` / `strikethrough` | 下線・取り消し線 |
 | `charsPerLine` | 1 行の文字数 (吹き出しの幅になる) |
-| `lines` | 行数 (今は使っていない) |
+| `lines` | 行数 (`sizeToText` が `false` のときの高さ) |
+| `enabled` | 吹き出しを使うか。`false` なら `speak` は声だけ、`think` は何も出さない |
+| `sizeToText` | 高さを文の量に合わせるか。`false` なら `lines` 行の高さに固定し、はみ出した分は上へ流す |
+| `autoHide` | しゃべり終えたら自動で閉じるか。`false` なら次の `speak` / `think`、`hide`、キャラクターのクリック・ドラッグまで出したまま |
+| `autoPace` | 読み上げに合わせて言葉を少しずつ出すか (声を出さないときも、口の動きに合わせて出す)。`false` なら最初から全文 |
+
+`enabled` / `sizeToText` / `autoHide` / `autoPace` の既定値も、キャラクターファイルの設定 (Character Editor の Word Balloon のページ) から付きます。
 
 読み出すと、いま使われている見た目 (ファイルの設定 + 重ねた項目) が返ります。設定の無いキャラクター (.act など) は `DEFAULT_BALLOON_STYLE` (薄い黄色に黒い縁) が元になります。
 

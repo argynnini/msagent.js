@@ -1,6 +1,6 @@
 import { decompress } from "./decompress";
 import { decodeTrayIcon } from "./icon";
-import type { BalloonStyle, VoiceSettings } from "../character";
+import { DEFAULT_BALLOON_STYLE, type BalloonStyle, type VoiceSettings } from "../character";
 import { languageTag, pickLanguage, type Language } from "../language";
 
 export interface Location {
@@ -93,6 +93,13 @@ class Cursor {
 const SIGNATURE = 0xabcdabc3;
 const STYLE_VOICE = 1 << 5;
 const STYLE_BALLOON = 1 << 9;
+/*
+ * 吹き出しの動きの旗 (Character Editor の Word Balloon のページの設定)。公式の資料には無く、
+ * 広く使われている ACS の解析資料による。実ファイル (Merlin 0x110220 など) とも合う
+ */
+const STYLE_BALLOON_SIZE_TO_TEXT = 1 << 16;
+const STYLE_BALLOON_NO_AUTO_HIDE = 1 << 17;
+const STYLE_BALLOON_NO_AUTO_PACE = 1 << 18;
 
 export class AcsCharacter {
   readonly width: number;
@@ -100,8 +107,8 @@ export class AcsCharacter {
   readonly transparentIndex: number;
   /** 言語 ID (Windows の LANGID) ごとの名前と紹介文 */
   private readonly localized = new Map<number, { name: string; description: string }>();
-  /** 吹き出しの見た目 (入っていなければ undefined) */
-  readonly balloon: BalloonStyle | undefined;
+  /** 吹き出しの見た目と動き */
+  readonly balloon: BalloonStyle;
   /**
    * 読み上げの声の設定 (Microsoft Agent の音声合成 = SAPI 4 の値)。音声の設定が無い (Office アシスタントなど)、
    * またはエンジン任せ (-1) の項目は undefined
@@ -169,6 +176,14 @@ export class AcsCharacter {
         if (style) this.voice.style = style;
       }
     }
+    const behavior = {
+      enabled: (style & STYLE_BALLOON) !== 0,
+      sizeToText: (style & STYLE_BALLOON_SIZE_TO_TEXT) !== 0,
+      autoHide: (style & STYLE_BALLOON_NO_AUTO_HIDE) === 0,
+      autoPace: (style & STYLE_BALLOON_NO_AUTO_PACE) === 0,
+    };
+    // 吹き出しを使わないキャラクターは、見た目は既定のまま、吹き出しを出さない
+    this.balloon = { ...DEFAULT_BALLOON_STYLE, ...behavior };
     if (style & STYLE_BALLOON) {
       const lines = c.u8();
       const charsPerLine = c.u8();
@@ -188,6 +203,7 @@ export class AcsCharacter {
       const italic = c.u8() !== 0;
       c.skip(1);
       this.balloon = {
+        ...this.balloon,
         lines, charsPerLine, foreground, background, border, fontFamily,
         fontSize: Math.abs(height) || 13, fontWeight: fontWeight || 400, italic,
       };

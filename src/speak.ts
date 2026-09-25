@@ -123,6 +123,8 @@ export class Speaker {
   private mouthTimer: number | undefined;
   private fallbackTimer: number | undefined;
   private silentTimer: number | undefined;
+  /** 声を出さないときに、吹き出しの文を少しずつ出すタイマー */
+  private paceTimer: number | undefined;
   /** 口の動きの並びを出すたびに増やし、古い並びを止める */
   private mouthToken = 0;
   /** 読み上げ中の発話 (Chrome では参照を持っていないと、途中で GC されてイベントが来なくなることがある) */
@@ -149,11 +151,11 @@ export class Speaker {
 
     const synth = !aloud || typeof speechSynthesis === "undefined" ? undefined : speechSynthesis;
     if (!synth) {
-      handlers.onProgress(text);
       const steps = mouthSteps(text, MORA_MS / params.rate, PAUSE_MS / params.rate);
       this.playMouth(steps);
-      const total = steps.reduce((sum, [, ms]) => sum + ms, 0);
-      this.silentTimer = window.setTimeout(() => this.finish(), Math.max(SILENT_MIN_MS, total));
+      const total = Math.max(SILENT_MIN_MS, steps.reduce((sum, [, ms]) => sum + ms, 0));
+      this.pace(text, total, handlers);
+      this.silentTimer = window.setTimeout(() => this.finish(), total);
       return;
     }
 
@@ -221,14 +223,37 @@ export class Speaker {
     next();
   }
 
+  /**
+   * 声を出さないとき: 口を動かす時間に合わせて、吹き出しの文を少しずつ出す。
+   * 英語などは単語の区切りまで、日本語などは文字ごとに出す
+   */
+  private pace(text: string, total: number, handlers: SpeakHandlers) {
+    const chars = [...text];
+    const start = performance.now();
+    let shown = -1;
+    const tick = () => {
+      if (this.handlers !== handlers) return;
+      const t = Math.min(1, (performance.now() - start) / total);
+      let n = Math.ceil(chars.length * t);
+      // 単語の途中で切らない (空白で区切る言葉のとき)
+      while (n < chars.length && /[A-Za-z0-9'\-]/.test(chars[n - 1] ?? "") && /[A-Za-z0-9'\-]/.test(chars[n]!)) n++;
+      if (n !== shown) {
+        shown = n;
+        handlers.onProgress(chars.slice(0, n).join(""));
+      }
+      if (n < chars.length) this.paceTimer = window.setTimeout(tick, 60);
+    };
+    tick();
+  }
+
   private finish() {
     const handlers = this.handlers;
     if (!handlers) return;
     this.handlers = undefined;
     this.utterance = undefined;
     this.mouthToken++;
-    for (const t of [this.mouthTimer, this.fallbackTimer, this.silentTimer]) window.clearTimeout(t);
-    this.mouthTimer = this.fallbackTimer = this.silentTimer = undefined;
+    for (const t of [this.mouthTimer, this.fallbackTimer, this.silentTimer, this.paceTimer]) window.clearTimeout(t);
+    this.mouthTimer = this.fallbackTimer = this.silentTimer = this.paceTimer = undefined;
     this.player()?.setMouth(undefined);
     handlers.onProgress(this.text);
     handlers.onEnd();
