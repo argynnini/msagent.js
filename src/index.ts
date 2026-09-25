@@ -3,15 +3,38 @@ import { msagent } from "./load";
 // 読み込み (clippy.js と同じ msagent.load)
 export default msagent;
 export { msagent, load } from "./load";
+export { audioOutput } from "./audio";
+export type { AudioStatus } from "./audio";
 export type { CharacterSource, LoadOptions } from "./load";
 
 // キャラクター 1 体と、その命令・イベント・メニュー
 export { Agent, parseCharacter } from "./agent";
-export type { AgentEventListener, AgentEventMap, AgentOptions, GetType, HideOptions, MoveCause, PointerDetail, SpeakOptions, StopType, VisibilityCause } from "./agent";
-export { AgentRequest, RequestError } from "./request";
+export type {
+  AgentEventListener,
+  AgentEventMap,
+  AgentOptions,
+  CommandAlternative,
+  CommandDetail,
+  GetType,
+  HelpCause,
+  HelpDetail,
+  HideOptions,
+  ListenCause,
+  ListenMode,
+  MoveCause,
+  PointerDetail,
+  SpeakOptions,
+  SrStatus,
+  ThinkOptions,
+  StopType,
+  VisibilityCause,
+} from "./agent";
+export { AgentRequest, AgentRequestError, RequestError } from "./request";
 export type { RequestStatus, RequestType } from "./request";
 export { AgentCommands } from "./commands";
-export type { AgentCommand, CommandOptions } from "./commands";
+export { CommandsWindow } from "./commandswindow";
+export type { AgentCommand, CommandOptions, VoiceMatch } from "./commands";
+export { compileVoiceGrammar, GrammarError, normalizeSpeech } from "./grammar";
 
 // キャラクターファイル (ACS / ACT) の中身
 export { DEFAULT_BALLOON_STYLE } from "./character";

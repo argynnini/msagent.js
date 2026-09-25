@@ -37,9 +37,26 @@ export const RequestError = {
 let nextId = 1;
 
 /**
+ * 命令が失敗したときの例外 (agent.raiseRequestErrors が true のとき。本家の「エラーを発生させる」と同じ)。
+ * number は本家のエラー番号 (RequestError のどれか)
+ */
+export class AgentRequestError extends Error {
+  constructor(
+    readonly number: number,
+    description: string,
+    /** 失敗した命令 (命令を作る前に分かった失敗なら undefined) */
+    readonly request?: AgentRequest,
+  ) {
+    super(description);
+    this.name = "AgentRequestError";
+  }
+}
+
+/**
  * 順番待ちに入った命令 1 つ (本家の Request オブジェクトと同じ)。
  * show / hide / play / speak / think / moveTo / gestureAt / delay / wait / interrupt / get が返す。
  * await すると、終わったときの状態 (complete / failed / interrupted) が返る
+ * (agent.raiseRequestErrors が true なら、failed のときは AgentRequestError の例外になる)
  *
  * ```js
  * const request = agent.play("Wave");
@@ -59,13 +76,17 @@ export class AgentRequest implements PromiseLike<RequestStatus> {
   interruptRequested = false;
   private readonly settled: Promise<RequestStatus>;
   private resolveSettled!: (status: RequestStatus) => void;
+  private rejectSettled!: (error: AgentRequestError) => void;
 
   constructor(
     readonly type: RequestType,
     /** この命令を受けたキャラクター */
     readonly agent: Agent,
   ) {
-    this.settled = new Promise((resolve) => (this.resolveSettled = resolve));
+    this.settled = new Promise((resolve, reject) => {
+      this.resolveSettled = resolve;
+      this.rejectSettled = reject;
+    });
   }
 
   /** 終わったか (complete / failed / interrupted) */
@@ -91,7 +112,8 @@ export class AgentRequest implements PromiseLike<RequestStatus> {
     this.status = status;
     this.description = description;
     this.number = status === "interrupted" && !number ? RequestError.interrupted : number;
-    this.resolveSettled(status);
+    if (status === "failed" && this.agent.raiseRequestErrors) this.rejectSettled(new AgentRequestError(this.number, description, this));
+    else this.resolveSettled(status);
     return true;
   }
 }

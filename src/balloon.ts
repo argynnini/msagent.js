@@ -59,11 +59,18 @@ export class Balloon {
     s.setProperty("--msagent-balloon-decoration", decorations.length ? decorations.join(" ") : "none");
     // 高さを文に合わせないときは、lines 行の高さに固定する (はみ出した分は setText で上へ流す)
     s.setProperty("--msagent-balloon-lines", String(Math.max(1, style.lines)));
-    this.fixedLines = !style.sizeToText;
-    this.element.classList.toggle("msagent-fixed", this.fixedLines);
+    const height = style.height && style.height > 0 ? style.height : undefined;
+    this.fixedLines = !style.sizeToText || height !== undefined;
+    this.element.classList.toggle("msagent-fixed", !style.sizeToText);
     if (style.charsPerLine > 0) {
       s.setProperty("--msagent-balloon-width", `${Math.round(style.charsPerLine * style.fontSize * 0.55)}px`);
     }
+    // px で指定されたら、その大きさにする (charsPerLine・lines より優先)
+    const width = style.width && style.width > 0 ? style.width : undefined;
+    s.width = width ? `${width}px` : "";
+    s.height = height ? `${height}px` : "";
+    this.element.classList.toggle("msagent-fixed-width", width !== undefined);
+    this.element.classList.toggle("msagent-fixed-height", height !== undefined);
     this.reposition();
   }
 
@@ -81,6 +88,8 @@ export class Balloon {
   show() {
     const was = this.visible;
     this.element.style.display = "block";
+    // 隠れている間は流せないので、出したときに、いちばん新しい行が見えるように流す
+    if (this.fixedLines) this.content.scrollTop = this.content.scrollHeight;
     this.reposition();
     if (!was) this.onVisibleChange?.(true);
   }
@@ -89,6 +98,35 @@ export class Balloon {
     const was = this.visible;
     this.element.style.display = "none";
     if (was) this.onVisibleChange?.(false);
+  }
+
+  /**
+   * 文を少しずつ出すときに、先に全文の入る大きさを確保する (出しながら吹き出しが伸びたり、動いたりしないように。本家と同じ)。
+   * undefined なら確保をやめ、出している文に合わせる
+   */
+  reserve(text: string | undefined) {
+    const c = this.content.style;
+    c.width = c.minHeight = "";
+    if (text === undefined) return;
+    // 全文を入れて測る (隠れているときは、見えないまま並べて測る)
+    const s = this.element.style;
+    const hidden = !this.visible;
+    if (hidden) {
+      s.visibility = "hidden";
+      s.display = "block";
+    }
+    const current = this.content.textContent;
+    this.content.textContent = text;
+    const r = this.content.getBoundingClientRect();
+    this.content.textContent = current;
+    if (hidden) {
+      s.display = "none";
+      s.visibility = "";
+    }
+    c.width = `${Math.ceil(r.width)}px`;
+    // 高さを決めているとき (sizeToText: false・height) は、その高さのまま流す
+    if (!this.fixedLines) c.minHeight = `${Math.ceil(r.height)}px`;
+    this.reposition();
   }
 
   /** いま出している文 */

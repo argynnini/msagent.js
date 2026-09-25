@@ -270,3 +270,122 @@ test(".lwv でしゃべる: 口は音素から、吹き出しは単語の時刻�
   expect(r.mouths).toEqual([4, 6, 0]);
   expect(r.seen.filter(Boolean)).toEqual(["ah", "ah oo", "ah oo mm"]);
 });
+
+test("1 回ごとに声を切り替える: speak(text, { voice: false }) は吹き出しだけ、think(text, { voice: true }) は考えごとの吹き出しのまま声に出す", async ({ harness }) => {
+  const r = await harness.evaluate(async (fake) => {
+    const log: string[] = [];
+    (0, eval)(fake)(log);
+    const a = await window.loadAgent("Merlin.acs", { voice: true });
+    await a.show(true);
+    a.on("speakstart", (e) => log.push(`start ${e.detail.thought ? "think" : "speak"} ${e.detail.text}`));
+    const balloon = document.querySelector(".msagent-balloon")!;
+    await a.speak("Silent words", { voice: false });
+    const think = a.think("Thinking aloud", { voice: true });
+    await new Promise((res) => setTimeout(res, 10));
+    const thinkBalloon = balloon.classList.contains("msagent-think");
+    await think;
+    // agent.voice が false でも、think の { voice: true } は声に出す
+    a.voice = false;
+    await a.think("Still aloud", { voice: true });
+    await a.think("Quiet thought");
+    return { log, thinkBalloon };
+  }, FAKE_SYNTH);
+  expect(r.thinkBalloon).toBe(true);
+  expect(r.log).toEqual([
+    "start speak Silent words",
+    "start think Thinking aloud",
+    'utter "Thinking aloud" lang=en-US r=0.92 p=0.50 v=1.00',
+    "start think Still aloud",
+    'utter "Still aloud" lang=en-US r=0.92 p=0.50 v=1.00',
+    "start think Quiet thought",
+  ]);
+});
+
+test("think の間は考える動き (Thinking) を再生し、考え終えたら元の姿勢に戻す", async ({ harness }) => {
+  const r = await harness.evaluate(async () => {
+    const log: string[] = [];
+    const a = await window.loadAgent("Merlin.acs");
+    await a.show(true);
+    a.on("animationstart", (e) => log.push(`start ${e.detail.name}`));
+    a.on("speakend", () => log.push("think end"));
+    await a.think("Hmm, let me think.");
+    const done = performance.now();
+    // 考える動きは、止めるように言ってから、終了分岐で自然に終わる
+    while (a.player.requestedAnimation && performance.now() - done < 8000) await new Promise((res) => setTimeout(res, 100));
+    return { log, holding: a.player.isHolding, playing: a.player.requestedAnimation, endMs: performance.now() - done };
+  });
+  expect(r.log[0]).toBe("start Thinking");
+  expect(r.log).toContain("think end");
+  // 考え終えたら、繰り返しをやめて戻る
+  expect(r.holding).toBe(false);
+  expect(r.playing).toBeUndefined();
+});
+
+test("balloonStyle の width / height (px): 吹き出しの大きさを決め、はみ出した分は上へ流す。外すと文に合わせる", async ({ harness }) => {
+  const r = await harness.evaluate(async () => {
+    const a = await window.loadAgent("Merlin.acs");
+    a.moveTo(300, 300, 0);
+    await a.show(true);
+    const balloon = document.querySelector<HTMLElement>(".msagent-balloon")!;
+    const content = balloon.querySelector<HTMLElement>(".msagent-content")!;
+    a.balloonStyle = { width: 320, height: 60, autoPace: false };
+    a.speak("One two three four five six seven eight nine ten. ".repeat(4), true);
+    await new Promise((res) => setTimeout(res, 100));
+    const fixed = { w: balloon.offsetWidth, h: balloon.offsetHeight, scrolled: content.scrollTop > 0 };
+    a.balloonStyle = { autoPace: false };
+    const free = { w: balloon.offsetWidth, h: balloon.offsetHeight };
+    a.closeBalloon();
+    return { fixed, free };
+  });
+  expect(r.fixed).toEqual({ w: 320, h: 60, scrolled: true });
+  // 外すと、charsPerLine の幅・文の量の高さに戻る
+  expect(r.free.w).not.toBe(320);
+  expect(r.free.h).toBeGreaterThan(60);
+});
+
+test("少しずつ出すときも、吹き出しは最初から全文の入る大きさ (出しながら伸びない)", async ({ harness }) => {
+  const r = await harness.evaluate(async () => {
+    const a = await window.loadAgent("Merlin.acs");
+    a.moveTo(300, 300, 0);
+    await a.show(true);
+    const balloon = document.querySelector<HTMLElement>(".msagent-balloon")!;
+    const sizes = new Set<string>();
+    const shown: number[] = [];
+    const watch = new MutationObserver(() => {
+      sizes.add(`${balloon.offsetWidth}x${balloon.offsetHeight} ${balloon.style.left},${balloon.style.top}`);
+      shown.push(balloon.textContent!.length);
+    });
+    watch.observe(balloon, { childList: true, characterData: true, subtree: true });
+    await a.speak("This sentence is long enough to wrap onto a few lines in the word balloon of Merlin.");
+    await a.think("And this thought is also quite long, so it wraps as well.");
+    watch.disconnect();
+    return { sizes: [...sizes], growing: shown.some((n, i) => i > 0 && n > shown[i - 1]!) };
+  });
+  expect(r.growing).toBe(true); // 少しずつ出している
+  // speak と think で 1 つずつ (文字を足しても大きさ・位置が変わらない)
+  expect(r.sizes.length).toBeLessThanOrEqual(2);
+});
+
+test("audioOutput: enabled = false なら全キャラクターの声を出さない。status は声に出してしゃべっている間 4、ほかは 0", async ({ harness }) => {
+  const r = await harness.evaluate(async (fake) => {
+    const log: string[] = [];
+    (0, eval)(fake)(log);
+    const out = window.M.audioOutput;
+    const a = await window.loadAgent("Merlin.acs", { voice: true });
+    await a.show(true);
+    const statuses: number[] = [out.status];
+    const s = a.speak("Out loud");
+    await new Promise((res) => setTimeout(res, 20));
+    statuses.push(out.status);
+    await s;
+    statuses.push(out.status);
+    out.enabled = false;
+    await a.speak("Not out loud", { voice: true });
+    await a.think("Not out loud either", { voice: true });
+    out.enabled = true;
+    return { log, statuses, same: window.M.default.audioOutput === out };
+  }, FAKE_SYNTH);
+  expect(r.statuses).toEqual([0, 4, 0]);
+  expect(r.log).toEqual(['utter "Out loud" lang=en-US r=0.92 p=0.50 v=1.00']);
+  expect(r.same).toBe(true);
+});

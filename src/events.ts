@@ -1,3 +1,4 @@
+import type { ListenCause, ListenMode } from "./listen";
 import type { AgentRequest } from "./request";
 
 /** クリックされたときの、ボタンと Shift / Ctrl / Alt キーの状態 (本家の Click の Button / Shift と同じ) */
@@ -17,6 +18,47 @@ export type VisibilityCause = "program" | "user";
 
 /** 最後に動いた原因 (本家の MoveCause と同じ考え方): まだ動いていない / ドラッグ / プログラム / 画面の中に戻した */
 export type MoveCause = "none" | "drag" | "moveTo" | "reposition";
+
+/** 2 番目・3 番目に合ったコマンド (本家の Alt1Name / Alt1Confidence / Alt1Voice など) */
+export interface CommandAlternative {
+  name: string;
+  confidence: number;
+  voice: string;
+}
+
+/**
+ * コマンドが選ばれた (本家の Command イベントの UserInput と同じ考え方)。
+ * 右クリックのメニューなら source: "menu"、confidence: 100、voice: ""。
+ * 声なら、name は最も合ったコマンド ("" なら、どのコマンドにも合わなかったか、msagent.js が用意したコマンド)
+ */
+export interface CommandDetail {
+  name: string;
+  source: "menu" | "voice";
+  /** 聞き取った確かさ (0〜100) */
+  confidence: number;
+  /** 聞き取った文 */
+  voice: string;
+  /** 合ったコマンドの数 (声で、どれにも合わなければ 0) */
+  count: number;
+  /** 2 番目・3 番目に合ったもの */
+  alternatives: CommandAlternative[];
+}
+
+/**
+ * ヘルプモードで選ばれたもの (本家の HelpComplete の Cause と同じ考え方)。
+ * command: commands の項目 (メニューか声) / hide: 「隠す」 / character: キャラクターをクリック・ドラッグした /
+ * openCommandsWindow / closeCommandsWindow: 音声コマンドの窓を開く・閉じる
+ */
+export type HelpCause = "command" | "hide" | "character" | "openCommandsWindow" | "closeCommandsWindow";
+
+/** 右クリックのメニューで選ばれたもの・キャラクターのヘルプ (helpcomplete) */
+export interface HelpDetail {
+  /** 選ばれたコマンドの名前 (msagent.js が用意したもの・キャラクターなら "") */
+  name: string;
+  cause: HelpCause;
+  /** 選ばれたコマンド (無ければキャラクター) の helpContextId。ヘルプのどこを出すかに使う */
+  helpContextId: number | undefined;
+}
 
 /** agent.on() で受け取れるイベントと、その detail */
 export interface AgentEventMap {
@@ -46,8 +88,16 @@ export interface AgentEventMap {
   /** 待機状態 (Idling) に入った / 抜けた (次の命令が始まった) */
   idlestart: Record<string, never>;
   idlecomplete: Record<string, never>;
-  /** 右クリックのメニューで、commands に足した項目が選ばれた (本家の Command と同じ) */
-  command: { name: string };
+  /** 右クリックのメニューか声で、commands に足した項目が選ばれた (本家の Command と同じ) */
+  command: CommandDetail;
+  /**
+   * ヘルプモード (agent.helpModeOn) で、キャラクター・メニューの項目・声のコマンドが選ばれた (本家の HelpComplete と同じ)。
+   * ヘルプモードは終わる。この間は click / dragstart / command は来ない
+   */
+  helpcomplete: HelpDetail;
+  /** 聞き取りを始めた / 終えた (本家の ListenStart / ListenComplete と同じ) */
+  listenstart: { mode: ListenMode };
+  listencomplete: { cause: ListenCause };
   /** アニメーションが始まった / 終わった (idle: 待機動作か) */
   animationstart: { name: string; idle: boolean };
   animationend: { name: string; idle: boolean };

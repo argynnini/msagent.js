@@ -1,4 +1,5 @@
 import { Agent, parseCharacter, type AgentOptions } from "./agent";
+import { audioOutput } from "./audio";
 
 /** キャラクターファイルの中身。文字列 / URL なら fetch で取ってくる */
 export type CharacterSource = ArrayBuffer | ArrayBufferView | Blob | string | URL;
@@ -67,4 +68,6 @@ export const msagent = {
   BASE_PATH: "",
   load,
   Agent,
+  /** 全キャラクターの音の設定と状態 (本家の AudioOutput) */
+  audioOutput,
 };

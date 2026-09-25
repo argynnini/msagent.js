@@ -105,7 +105,7 @@ test("右クリックのメニュー: 足した項目・区切り・隠す。ア
         : `${e.textContent}${(e as HTMLButtonElement).disabled ? " (灰色)" : ""}${(e as HTMLElement).style.fontWeight === "700" ? " (太字)" : ""}`,
     ),
   );
-  expect(items).toEqual(["検索(S) (太字)", "ヘルプ(H) (灰色)", "情報(A)", "---", "隠す(H)"]);
+  expect(items).toEqual(["検索(S) (太字)", "ヘルプ(H) (灰色)", "情報(A)", "---", "音声コマンドを開く(O)", "隠す(H)"]);
   await harness.keyboard.press("a"); // アクセスキー
   await harness.mouse.click(...pt, { button: "right" });
   await harness.keyboard.press("ArrowDown"); // 検索 → 情報 (灰色は飛ばす)
@@ -137,3 +137,50 @@ declare global {
     a: import("../../src/index").Agent;
   }
 }
+
+test("右クリックのメニューは、何度手前に出したキャラクターよりも手前に出る", async ({ harness }) => {
+  const r = await harness.evaluate(async () => {
+    const a = await window.loadAgent("Merlin.acs");
+    await a.show(true);
+    for (let i = 0; i < 5; i++) a.activate();
+    a.showPopupMenu(100, 100);
+    const menu = document.querySelector<HTMLElement>(".msagent-menu")!;
+    return { menu: Number(getComputedStyle(menu).zIndex), agent: Number(getComputedStyle(a.element).zIndex) };
+  });
+  expect(r.menu).toBeGreaterThan(r.agent);
+});
+
+test("ヘルプモード: キャラクターを押すと click / ドラッグの代わりに helpcomplete。メニューの項目も同じ。終わるとふつうに戻る", async ({ harness }) => {
+  await harness.evaluate(() => {
+    const a = window.a;
+    const log: string[] = [];
+    (window as unknown as { log: string[] }).log = log;
+    a.helpContextId = 10;
+    a.commands.add("search", "検索(&S)", { helpContextId: 42 });
+    for (const type of ["click", "dragstart", "command", "hide"] as const) a.on(type, () => log.push(type));
+    a.on("helpcomplete", (e) => log.push(`help ${e.detail.cause} ${e.detail.name || "-"} ${e.detail.helpContextId ?? "-"}`));
+    a.helpModeOn = true;
+  });
+  const pt = await opaquePoint(harness);
+  const before = await harness.evaluate(() => [window.a.left, window.a.top]);
+  // 押してドラッグしても動かず、helpcomplete だけ来て、ヘルプモードが終わる
+  await harness.mouse.move(...pt);
+  expect(await harness.$eval(".msagent", (e) => getComputedStyle(e).cursor)).toBe("help");
+  await harness.mouse.down();
+  await harness.mouse.move(pt[0] + 40, pt[1] + 40, { steps: 4 });
+  await harness.mouse.up();
+  expect(await harness.evaluate(() => [window.a.left, window.a.top, window.a.helpModeOn])).toEqual([...before, false]);
+  // メニューの項目・「隠す」も、ヘルプモードならヘルプ (コマンドは実行しない・隠れない)
+  await harness.evaluate(() => (window.a.helpModeOn = true));
+  await harness.mouse.click(...pt, { button: "right" });
+  await harness.click(".msagent-menu >> text=検索");
+  await harness.evaluate(() => (window.a.helpModeOn = true));
+  await harness.mouse.click(...pt, { button: "right" });
+  await harness.click(".msagent-menu >> text=隠す");
+  // ヘルプモードでなければ、ふつうのクリック
+  await harness.mouse.click(...pt);
+  expect(await harness.evaluate(() => [window.a.visible, (window as unknown as { log: string[] }).log])).toEqual([
+    true,
+    ["help character - 10", "click", "help command search 42", "click", "help hide - -", "click"],
+  ]);
+});

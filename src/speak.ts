@@ -1,7 +1,7 @@
 import type { AcsPlayer } from "./acs/player";
 import { ipaAt, LWV_MOUTH_RATE, type LwvInfo, type LwvWord } from "./lwv";
 import { MORA_MS, MOUTH_CLOSED, PAUSE_MS, mouthForIpa, mouthForLevel, mouthSteps, randomVowelMouth, stepsDuration, type MouthStep } from "./mouth";
-import { paceText } from "./pace";
+import { paceText, withTrailingPunctuation } from "./pace";
 import { bookmarkNotifier, parseSpeechTags, shownText, type SpeechPart } from "./tags";
 import { pickVoice, type SpeakParams } from "./voice";
 
@@ -258,7 +258,8 @@ export class Speaker {
       if (this.utterance !== u || e.name === "sentence") return;
       gotBoundary = true;
       const end = e.charIndex + (e.charLength || wordLength(part.spoken, e.charIndex));
-      progress(part.spoken.slice(0, end));
+      // 言葉の後ろの句読点 (！。など) も一緒に出す (ブラウザが知らせる言葉の範囲には入っていない)
+      progress(part.spoken.slice(0, withTrailingPunctuation(part.spoken, end)));
       this.playMouth(mouthSteps(part.spoken.slice(e.charIndex, end), MORA_MS / u.rate));
     };
     u.onend = u.onerror = () => {

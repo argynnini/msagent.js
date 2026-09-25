@@ -33,7 +33,23 @@ test("タグで区切り、速さ・高さ・音量・間・目印・読みと�
   ]);
 });
 
-test("ブラウザでできないタグ (Emp / Chr / Ctx) は取り除き、知らないタグは文字のまま残す", () => {
+test("\\Emp\\ は次の言葉だけ、少しゆっくり・少し高く読む。\\Chr=Whisper\\ は小さい声 (Normal・\\Rst\\ で戻す)", () => {
+  expect(describe(parseSpeechTags("This is \\Emp\\really great!"))).toEqual([
+    "text(This is  r=1 p=1 v=1.00)",
+    "text(really r=0.8 p=1.2 v=1.00)",
+    "text( great! r=1 p=1 v=1.00)",
+  ]);
+  expect(describe(parseSpeechTags("\\Emp\\ずっと、待ってた"))).toEqual(["text(ずっと r=0.8 p=1.2 v=1.00)", "text(、待ってた r=1 p=1 v=1.00)"]);
+  expect(describe(parseSpeechTags('a \\Chr="Whisper"\\secret \\Chr=Normal\\b \\Chr=whisper\\c \\Rst\\d'))).toEqual([
+    "text(a  r=1 p=1 v=1.00)",
+    "text(secret  r=1 p=1 v=0.35)",
+    "text(b  r=1 p=1 v=1.00)",
+    "text(c  r=1 p=1 v=0.35)",
+    "text(d r=1 p=1 v=1.00)",
+  ]);
+});
+
+test("吹き出しには Emp / Chr / Ctx のタグを出さず、知らないタグは文字のまま残す", () => {
   const parts = parseSpeechTags('\\Emp\\big \\Chr="Whisper"\\voice \\Ctx="Address"\\here \\Unknown\\ end');
   expect(shownText(parts)).toBe("big voice here \\Unknown\\ end");
 });

@@ -8,6 +8,8 @@ export interface MenuFont {
   fontName?: string | undefined;
   /** ポイント */
   fontSize?: number | undefined;
+  /** ヘルプモード (ヘルプのポインターにする) */
+  help?: boolean;
 }
 
 /** 開いているメニュー (同時に開けるのは 1 つだけ。本家と同じ) */
@@ -28,6 +30,7 @@ export class PopupMenu {
     this.element = document.createElement("div");
     this.element.className = "msagent-menu";
     if (font.fontName) this.element.style.fontFamily = font.fontName;
+    if (font.help) this.element.classList.add("msagent-help-mode");
     if (font.fontSize) this.element.style.fontSize = `${font.fontSize}pt`;
     this.element.setAttribute("role", "menu");
     for (const entry of entries) {

@@ -59,6 +59,9 @@ const agent = await msagent.load(name); // Promise でも受け取れる
 - `language`: `name` / `description` の言語 (下の「言語」を参照。既定: ブラウザの言語)
 - `scale`: 表示の倍率 (既定: `1`)
 - `autoPopupMenu`: 右クリックでメニューを出すか (既定: `true`)
+- `listeningKey`: 聞き取りキー。押している間、声のコマンドを聞く (下の「音声認識」を参照。既定: なし)
+- `listeningTip`: 聞いている間、聞き取りのヒントを出すか (既定: `true`)
+- `raiseRequestErrors`: 命令の失敗を例外にするか (下の「命令」を参照。既定: `false`)
 - `balloon`: 吹き出しの見た目 (下の「見た目」を参照。キャラクターファイルの設定の上に重ねる)
 
 ### Agent
@@ -72,8 +75,8 @@ const agent = await msagent.load(name); // Promise でも受け取れる
 | `play(name, timeout = 5000, callback?)` | 再生する。`timeout` を過ぎたら、終了分岐で自然に終わらせる。無いアニメーションなら `false` |
 | `animate()` | 待機動作以外から、1 つ選んで再生する |
 | `animations()` / `hasAnimation(name)` | アニメーションの一覧・あるかどうか |
-| `speak(text, hold?)` / `speak(text, { hold, url })` | 吹き出しでしゃべる。`hold` なら、`closeBalloon()` まで吹き出しを閉じない。`"A\|B\|C"` のように `\|` で区切ると、毎回 1 つをランダムに選ぶ。`url` を渡すと、その音声ファイル (.wav / .mp3 など) でしゃべり、音の大きさに合わせて口を動かす (本家の Speak の Url と同じ)。.lwv なら音素で口を動かす (下の「言語情報つきの音声ファイル」) |
-| `think(text)` | 考えごとの吹き出し (雲形) に出す。声は出さず、口も動かさない (本家の Think と同じ) |
+| `speak(text, hold?)` / `speak(text, { hold, url, voice })` | 吹き出しでしゃべる。`hold` なら、`closeBalloon()` まで吹き出しを閉じない。`voice: false` なら、この 1 回だけ声を出さない (吹き出しと口の動きだけ)。`"A\|B\|C"` のように `\|` で区切ると、毎回 1 つをランダムに選ぶ。`url` を渡すと、その音声ファイル (.wav / .mp3 など) でしゃべり、音の大きさに合わせて口を動かす (本家の Speak の Url と同じ)。.lwv なら音素で口を動かす (下の「言語情報つきの音声ファイル」) |
+| `think(text, { voice }?)` | 考えごとの吹き出し (雲形) に出す。声は出さず、口も動かさない (本家の Think と同じ)。その間は考える動き (`Thinking`、無ければ `Think`) を再生し、終わったら元の姿勢に戻す (msagent.js で足したもの)。`voice: true` なら、考えごとの吹き出しのまま声に出して読む (msagent.js で足したもの) |
 | `closeBalloon()` | 吹き出しを閉じる |
 | `moveTo(x, y, duration = 1000)` | 移動する (Moving〜 の状態のアニメーション → 最後のコマのまま移動 → 戻りの動き)。`duration` が 0 か、隠れている間は、すぐ移る |
 | `gestureAt(x, y)` | その方向を指す (Gesturing〜 の状態のアニメーション。無ければ `Gesture〜`、`Look〜`)。指した姿勢は次の動きまで保つ |
@@ -85,8 +88,9 @@ const agent = await msagent.load(name); // Promise でも受け取れる
 | `interrupt(request)` | 順番が来たら、別のキャラクターの命令を止める |
 | `pause()` / `resume()` | 一時停止・再開 |
 | `reposition()` | 画面の中に収める |
+| `listen(on)` | 声のコマンドを聞く (下の「音声認識」を参照)。`true` なら 10 秒聞き、1 つ言い終えたらやめる。`false` ならやめる。音声認識が使えなければ `false` |
 
-本家のプロパティ: `visible`、`left` / `top`、`idleOn`、`moveCause`、`visibilityCause`、`balloonVisible` (`false` を代入すると閉じる。しゃべっている途中なら読み終えてから。`true` なら最後の文をもう一度出す)、`extraData`、`version`、`guid`、`originalWidth` / `originalHeight`、`speed` / `pitch`、`soundEffectsOn`、`activate()` / `active` (いちばん手前に出す。表示・クリック・ドラッグでも手前に出る)
+本家のプロパティ: `visible`、`left` / `top`、`idleOn`、`moveCause`、`visibilityCause`、`balloonVisible` (`false` を代入すると閉じる。しゃべっている途中なら読み終えてから。`true` なら最後の文をもう一度出す)、`extraData`、`version`、`guid`、`originalWidth` / `originalHeight`、`speed` / `pitch`、`soundEffectsOn`、`listening`、`srStatus` (音声入力が使えるか)、`listeningKey`、`listeningTip`、`helpModeOn` / `helpContextId` (下の「ヘルプモード」)、`commandsWindow` (音声コマンドの窓)、`raiseRequestErrors`、`activate()` / `active` (いちばん手前に出す。表示・クリック・ドラッグでも手前に出る)
 
 msagent.js で足したもの: `name`、`description`、`language`、`scale` / `width` / `height` (大きさ)、`balloonStyle` (吹き出しの見た目)、`speaking`、`sound`、`voice`、`on()` / `off()` (イベント)、`hitTest(clientX, clientY)`、`destroy()`、`element`、`canvas`、`character`、`player`
 
@@ -110,7 +114,9 @@ agent.on("animationend", (e) => console.log(e.detail.name));
 | `requeststart` / `requestcomplete` | 命令を始めた / 終えた | `request` |
 | `balloonshow` / `balloonhide` | 吹き出しが出た / 閉じた | なし |
 | `idlestart` / `idlecomplete` | 待機状態に入った / 抜けた (次の命令が始まった) | なし |
-| `command` | 右クリックのメニューで、`commands` に足した項目が選ばれた | `name` |
+| `command` | 右クリックのメニューか声で、`commands` の項目が選ばれた (本家の Command と同じ) | `name`, `source` (`"menu"` / `"voice"`), `confidence` (0〜100), `voice` (聞き取った文), `count` (合ったコマンドの数), `alternatives` (2 番目・3 番目) |
+| `helpcomplete` | ヘルプモードで、キャラクター・メニューの項目・声のコマンドが選ばれた (本家の HelpComplete と同じ) | `name`, `cause` (`"command"` / `"hide"` / `"character"` / `"openCommandsWindow"` / `"closeCommandsWindow"`), `helpContextId` |
+| `listenstart` / `listencomplete` | 聞き取りを始めた / 終えた | `mode` (`"program"` / `"key"`) / `cause` (`"program"` / `"timeout"` / `"key"` / `"finished"` / `"error"`) |
 | `animationstart` / `animationend` | アニメーションが始まった / 終わった。別の戻りアニメ (`MoveRightReturn` など) も、その名前で 1 つのアニメーションとして来る | `name`, `idle` (待機動作か) |
 | `speakstart` / `speakend` | しゃべり始めた / 終えた (途中でやめたときも。`think()` でも来る) | `text`, `thought` (`think()` か) |
 | `resize` | 大きさが変わった | `width`, `height`, `scale` |
@@ -153,9 +159,46 @@ robby.wait(q);              // genie がしゃべり終えるまで待つ
 robby.speak("わからないなあ");
 ```
 
+`raiseRequestErrors: true` にすると (本家の RaiseRequestErrors。本家の既定は `true` ですが、clippy.js に合わせて既定は `false`)、失敗した命令を `await` すると `AgentRequestError` (`number`・`message`・`request`) の例外になり、無いアニメーションの `play()` などは、その場で例外を投げます。止められた (`interrupted`) ときは例外にしません。
+
+```js
+const agent = await msagent.load({ name: "Merlin", raiseRequestErrors: true });
+try {
+  await agent.speak("こんにちは"); // 隠れていれば AgentRequestError
+} catch (e) {
+  console.log(e.number === RequestError.hidden);
+}
+```
+
 `request.number` の値は、`import { RequestError } from "msagent.js"` の `RequestError.hidden` (隠れている)・`animationNotFound`・`stateNotFound`・`interrupted` (止められた)・`invalidSound` などと比べられます。
 
 キャラクターに無いアニメーションを `play()` したときは、clippy.js と同じく `false` を返します。隠れている間の `speak` / `think` は、`failed` になります (本家と同じ)。
+
+### 音声出力の全体の設定
+
+`msagent.audioOutput` で、全キャラクターの音をまとめて切れます (本家の AudioOutput と同じ。本家はユーザーの設定なので読むだけですが、ここでは変えられます)。
+
+```js
+msagent.audioOutput.enabled = false;      // 全キャラクターの声を出さない (吹き出しと口の動きだけ)
+msagent.audioOutput.soundEffects = false; // 全キャラクターの効果音を鳴らさない
+msagent.audioOutput.status;               // 0: 空いている / 1: 音を出せない / 3: 聞き取り中で声が聞こえている / 4: 声に出してしゃべっている / 5: 聞き取り中で声を待っている
+```
+
+ESM では `import { audioOutput } from "msagent.js"` でも使えます。
+
+### ヘルプモード
+
+`agent.helpModeOn = true` の間は、キャラクターをクリック・ドラッグしたり、右クリックのメニューの項目や声のコマンドを選んだりすると、`click` / `dragstart` / `command` の代わりに `helpcomplete` イベントが来て、ヘルプモードが終わります (本家の HelpModeOn と同じ)。ポインターはヘルプの形になります。
+本家は Windows のヘルプファイル (HelpFile) を開きますが、ブラウザでは開けないので、`helpContextId` をイベントで渡します。これを使って、アプリ側でヘルプを出してください。
+
+```js
+agent.helpContextId = 1;                                            // キャラクター自体のヘルプ
+agent.commands.add("search", "検索(&S)", { helpContextId: 2 });
+agent.on("helpcomplete", (e) => showHelp(e.detail.helpContextId)); // cause: "character" / "command" / "hide" など
+helpButton.onclick = () => (agent.helpModeOn = true);
+```
+
+右クリックのメニューは、ヘルプモードの間も出せます (`autoPopupMenu` が `false` なら、右クリックもヘルプ)。`helpModeOn = false` でやめたときは、`helpcomplete` は来ません。
 
 ### 読み上げの制御タグ
 
@@ -176,9 +219,11 @@ agent.on("bookmark", (e) => console.log("目印", e.detail.id)); // → 目印 1
 | `\Map="読み"="表示"\` | 読み上げる文と、吹き出しに出す文を変える |
 | `\Mrk=番号\` | 目印。ここまで読むと `bookmark` イベントが来る |
 | `\Lst\` | 直前の発言を繰り返す (これだけを書く。目印は繰り返さない) |
-| `\Emp\` `\Chr=…\` `\Ctx=…\` | 強調・声色・文脈。ブラウザの読み上げではできないので、取り除くだけ |
+| `\Emp\` | 次の言葉を強調する。ブラウザの読み上げでは本物の強調ができないので、少しゆっくり・少し高く読む |
+| `\Chr=Whisper\` | ささやき声。ブラウザではできないので、小さい声で読む。`\Chr=Normal\` か `\Rst\` で戻す (`Monotone` はブラウザではできないので、何もしない) |
+| `\Ctx=…\` | 文脈 (記号や略語の読み方)。ブラウザ任せなので、取り除くだけ |
 
-`think()` では、本家と同じく `\Mrk\` だけを使い、ほかのタグは取り除きます。吹き出しには、タグを除いた文が出ます。
+`think()` では、本家と同じく `\Mrk\` だけを使い、ほかのタグは取り除きます (`think(text, { voice: true })` では、すべてのタグを使います)。吹き出しには、タグを除いた文が出ます。
 
 ### 言語情報つきの音声ファイル (.lwv)
 
@@ -254,6 +299,7 @@ msagent.load({ name: "Merlin", balloon: { fontFamily: '"Yu Gothic UI", sans-seri
 | `underline` / `strikethrough` | 下線・取り消し線 |
 | `charsPerLine` | 1 行の文字数 (吹き出しの幅になる) |
 | `lines` | 行数 (`sizeToText` が `false` のときの高さ) |
+| `width` / `height` | 吹き出しの幅・高さ (px。縁と余白を含む)。`charsPerLine` / `lines` より優先し、高さを決めたときは、はみ出した分を上へ流す (msagent.js で足したもの) |
 | `enabled` | 吹き出しを使うか。`false` なら `speak` は声だけ、`think` は何も出さない |
 | `sizeToText` | 高さを文の量に合わせるか。`false` なら `lines` 行の高さに固定し、はみ出した分は上へ流す |
 | `autoHide` | しゃべり終えたら自動で閉じるか。`false` なら次の `speak` / `think`、`hide`、キャラクターのクリック・ドラッグまで出したまま |
@@ -266,6 +312,55 @@ msagent.load({ name: "Merlin", balloon: { fontFamily: '"Yu Gothic UI", sans-seri
 角の丸みや影など、ここに無いものは CSS で指定します (`.msagent-balloon { border-radius: 12px; }` など)。ページの CSS で `background` などを直接指定すると、`balloonStyle` より優先されます。
 
 見た目は CSS で変えられます。クラス名は `.msagent` (キャラクター)、`.msagent-balloon` (吹き出し)、`.msagent-tip` (しっぽ)、`.msagent-content` (文) と、吹き出しの向きの `.msagent-top-left` / `.msagent-top-right` / `.msagent-bottom-left` / `.msagent-bottom-right` です。
+
+### 音声認識
+
+本家と同じく、声でコマンドを選べます。ブラウザの音声認識 (Web Speech API) を使うので、**Chrome・Edge・Safari で動き、Firefox では使えません**。
+**Chrome と Edge は、声をインターネット上のサーバー (Google・Microsoft) に送って認識します。** 初めて聞くときに、ブラウザがマイクの許可を求めます。
+
+```js
+agent.commands.voiceCaption = "メール";                                // 聞き取りのヒントに出す名前
+agent.commands.add("check", "メールを見る(&C)", { voice: "[...] (メール | めーる) を (見る | みる | 見せて) [...]" });
+agent.commands.add("send", "送る(&S)", { voice: "[please] send [the] mail", voiceCaption: "送る" });
+agent.on("command", (e) => {
+  if (e.detail.name === "check") agent.speak("メールを開きます");
+  if (e.detail.source === "voice" && e.detail.count === 0) agent.speak("よく分かりませんでした");
+});
+
+button.onclick = () => agent.listen(true);                     // 10 秒聞く (1 つ言い終えたらやめる)
+msagent.load({ name: "Merlin", listeningKey: "ScrollLock" });  // キーを押している間聞く (本家の Listening key)
+```
+
+`voice` の書き方は本家と同じです。ブラウザの音声認識は自由な文を返すので、msagent.js が聞き取った文と照らし合わせます。
+
+| 書き方 | 意味 | 例 |
+| --- | --- | --- |
+| `[ ]` | 省いてよい言葉 | `hello [there]` |
+| `( \| )` | どれか 1 つ | `(hello \| hi)` |
+| `*` / `+` | 直前の言葉・まとまりの 0 回以上 / 1 回以上の繰り返し | `please* try this`、`(New York)+` |
+| `...` | 何を言ってもよいところ | `[...] check mail [...]` |
+| `表示\読み` | 表示と読み。どちらで聞き取っても合う (日本語は `かな\漢字`) | `1st\first`、`けんさく\検索` |
+
+大文字小文字・全角半角・カタカナとひらがな・句読点・空白の違いは気にしません。
+
+- **聞く言語**は `agent.language` (無ければブラウザの言語) です。
+- **確かさ：** `command` の `confidence` は、ブラウザが返す確かさ (0〜1) を 0〜100 にしたものです。コマンドの `confidence` 以下なら、聞き取りのヒントに `confidenceText` を出します (本家と同じ)。
+- **聞き取りキー：** いちばん手前のキャラクターだけが聞きます。キーを押すと Listening、声が聞こえ始めると Hearing の状態のアニメーションを再生します (命令やしゃべりの途中なら、邪魔しません)。
+- **聞き取りのヒント：** 聞いている間、キャラクターの下に「-- マーリンが聞いています --」「「メールを見る」と聞こえました」などを出します。見た目はクラス `.msagent-listening-tip` で変えられます。
+- **聞こえている間：** ユーザーの声が聞こえている間にしゃべらせると、声は出さず、吹き出しだけを出します (ユーザーの声とキャラクターの声が混ざらないように。本家と同じ)。
+- **用意してあるコマンド：** 「hide Merlin」「隠れて」と言うと隠れます (`command` の `name` は `""`、`hide` の `cause` は `"user"`)。`agent.commands.globalVoiceCommandsEnabled = false` で使わなくできます。
+- **使えないとき：** `agent.srStatus` で理由が分かります (本家の SRStatus と同じ値)。0: 使える、1: マイクが使えない、4: このブラウザには音声認識が無い・認識サービスにつながらない、5: マイク・音声認識を許可されていない、6: そのほか。許可されているかは、一度聞いてみるまで分かりません。
+- 文法だけを試すときは、`compileVoiceGrammar(voice)` (照らし合わせる関数を返す) を使えます。
+
+#### 音声コマンドの窓
+
+いま声で言えるコマンドの一覧を出す窓です (本家の Voice Commands Window)。このキャラクターの声のコマンド (`voiceCaption`、無ければ `caption` と、言う言葉) と、用意してあるコマンドが並びます。
+
+- **開き方：** 右クリックのメニューの「音声コマンドを開く」(音声認識が使えるブラウザだけに出る)、声で「what can I say」「show commands」「コマンドを見せて」「何て言えばいい」、または `agent.commandsWindow.visible = true`
+- **閉じ方：** 右上の ×、声で「close commands window」「コマンドを閉じて」、または `agent.commandsWindow.visible = false`
+- 画面の右下に出ます (本家はタスクバーのアイコンの隣)。位置や見た目は、クラス `.msagent-commands-window` で変えられます。
+- 開いている間にコマンドを変えたときは、`agent.commandsWindow.refresh()` で出し直します (聞き始めたときは自動で出し直す)。
+- `left` / `top` / `width` / `height` で、画面上の位置と大きさが分かります (本家の CommandsWindow と同じ。閉じていれば 0)。
 
 ### 状態 (States)
 
@@ -281,7 +376,7 @@ msagent.load({ name: "Merlin", balloon: { fontFamily: '"Yu Gothic UI", sans-seri
 - CSS のクラス名は `.clippy-*` ではなく `.msagent-*` です。
 - `show` / `hide` も順番待ちに入ります (本家と同じ)。clippy.js のように、すぐ隠れたいときは `hide(false, callback, { immediate: true })`。
 - 吹き出しの色や文字は、キャラクターごとの設定になります。
-- イベント (`agent.on()`)、言語ごとの名前・紹介文 (`agent.language`)、考えごとの吹き出し (`think()`) を足しています。
+- イベント (`agent.on()`)、言語ごとの名前・紹介文 (`agent.language`)、考えごとの吹き出し (`think()`)、音声認識 (`listen()`) を足しています。
 - 待機動作は、何もしない時間が少し続いてから始まり、放置が長いほど深い動き (居眠りなど) になります。
 
 ## 注意
@@ -289,6 +384,7 @@ msagent.load({ name: "Merlin", balloon: { fontFamily: '"Yu Gothic UI", sans-seri
 - キャラクターファイルは同梱していません。Office 2000 / XP / 2003 に付属していたものや、[Agentpedia](https://agentpedia.tmafe.com/) などから入手してください。キャラクターの著作権は、それぞれの権利者にあります。
 - ブラウザの制限で、効果音はページが一度クリックされるまで鳴りません。
 - 読み上げの声は、ブラウザと OS に入っている声を使います。
+- 音声認識は、Chrome・Edge では声をサーバーに送ります (上の「音声認識」を参照)。
 
 ## 開発
 

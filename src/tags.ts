@@ -7,7 +7,9 @@ import { clamp, hertzToPitch, wordsPerMinuteToRate } from "./voice";
  * - \Spd=語/分\ \Pit=Hz\ \Vol=0〜65535\: 速さ・高さ・音量 (次の \Rst\ か、文の終わりまで)
  * - \Pau=ms\: 間を空ける / \Mrk=番号\: 目印 (Bookmark イベント) / \Rst\: 速さなどを元に戻す
  * - \Map="読み"="表示"\: 読み上げる文と、吹き出しに出す文を変える
- * - \Emp\ \Chr=\ \Ctx=\: 強調・声色・文脈。ブラウザの読み上げではできないので、タグだけ取り除く
+ * - \Emp\: 次の言葉を強調する (ブラウザでは本物の強調ができないので、少しゆっくり・少し高く読む)
+ * - \Chr=Whisper\: ささやき声 (ブラウザではできないので、小さい声で読む)。Normal で戻す。Monotone はブラウザではできないので何もしない
+ * - \Ctx=\: 文脈 (記号の読み方)。ブラウザ任せなので、タグだけ取り除く
  * - \Lst\ (直前の発言を繰り返す) は、発言を覚えている Agent の側で扱う
  */
 
@@ -28,6 +30,14 @@ export type SpeechPart =
   | { kind: "bookmark"; id: number };
 
 
+/** \Emp\ で強調した言葉の、速さと高さの倍率 */
+const EMPHASIS_RATE = 0.8;
+const EMPHASIS_PITCH = 1.2;
+/** \Chr=Whisper\ の音量の倍率 */
+const WHISPER_VOLUME = 0.35;
+/** \Emp\ で強調する言葉の終わり (空白と句読点。タグの始まりの \ は除く) */
+const WORD_END = /[\s\p{P}]/u;
+
 /** タグの名前 (大文字小文字は問わない) */
 const KNOWN_TAGS = new Set(["chr", "ctx", "emp", "lst", "map", "mrk", "pau", "pit", "rst", "spd", "vol"]);
 
@@ -43,9 +53,19 @@ export function parseSpeechTags(
 ): SpeechPart[] {
   const parts: SpeechPart[] = [];
   let settings = { rate: base.rate, pitch: base.pitch, volume: 1 };
+  /** \Emp\ の後、次の言葉を読み終えるまで */
+  let emphasize = false;
+  /** \Chr=Whisper\ */
+  let whisper = false;
+  /** いまの速さ・高さ・音量 (強調・ささやきを含む) */
+  const tone = () => ({
+    rate: emphasize ? settings.rate * EMPHASIS_RATE : settings.rate,
+    pitch: emphasize ? clamp(settings.pitch * EMPHASIS_PITCH, 0, 2) : settings.pitch,
+    volume: whisper ? settings.volume * WHISPER_VOLUME : settings.volume,
+  });
   let buffer = "";
   const flush = () => {
-    if (buffer) parts.push({ kind: "text", spoken: buffer, shown: buffer, ...settings });
+    if (buffer) parts.push({ kind: "text", spoken: buffer, shown: buffer, ...tone() });
     buffer = "";
   };
 
@@ -55,6 +75,12 @@ export function parseSpeechTags(
     if (c !== "\\") {
       buffer += c;
       i++;
+      // 強調している言葉が終わったら、そこで区切る
+      const next = text[i];
+      if (emphasize && /\S/.test(buffer) && (next === undefined || (next !== "\\" && WORD_END.test(next)))) {
+        flush();
+        emphasize = false;
+      }
       continue;
     }
     // \\ は \ という文字
@@ -108,15 +134,24 @@ export function parseSpeechTags(
       case "rst":
         flush();
         settings = { rate: base.rate, pitch: base.pitch, volume: 1 };
+        emphasize = whisper = false;
+        break;
+      case "emp":
+        flush();
+        emphasize = true;
+        break;
+      case "chr":
+        flush();
+        whisper = value.trim().replace(/^"|"$/g, "").toLowerCase() === "whisper";
         break;
       case "map": {
         const m = /^"([^"]*)"="([^"]*)"$/.exec(value);
         if (!m) break;
         flush();
-        parts.push({ kind: "text", spoken: m[1]!, shown: m[2]!, ...settings });
+        parts.push({ kind: "text", spoken: m[1]!, shown: m[2]!, ...tone() });
         break;
       }
-      // \Emp\ \Chr=…\ \Ctx=…\ はブラウザの読み上げではできない。\Lst\ は Agent の側で扱う
+      // \Ctx=…\ はブラウザ任せ。\Lst\ は Agent の側で扱う
       default:
         break;
     }

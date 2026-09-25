@@ -137,3 +137,35 @@ test("Request.number: 本家のエラー番号 (隠れている・止められ�
     ok: 0,
   });
 });
+
+test("raiseRequestErrors: 失敗した命令は await で AgentRequestError、無いアニメーションの play はその場で例外。既定は例外にしない", async ({ harness }) => {
+  const r = await harness.evaluate(async () => {
+    const quiet = await window.loadAgent("Merlin.acs");
+    const loud = await window.loadAgent("Merlin.acs", { raiseRequestErrors: true });
+    const catchError = async (f: () => unknown) => {
+      try {
+        await f();
+        return "no error";
+      } catch (e) {
+        return e instanceof window.M.AgentRequestError ? `${e.name} ${e.number} ${e.request ? "request" : "-"}` : String(e);
+      }
+    };
+    return {
+      quiet: [quiet.play("NoSuchAnimation"), await quiet.speak("hidden")],
+      play: await catchError(() => loud.play("NoSuchAnimation")),
+      speak: await catchError(() => loud.speak("hidden")),
+      interrupted: await (async () => {
+        await loud.show(true);
+        const d = loud.delay(1000);
+        loud.stop();
+        return d;
+      })(),
+    };
+  });
+  expect(r).toEqual({
+    quiet: [false, "failed"],
+    play: "AgentRequestError -2147213309 -",
+    speak: "AgentRequestError -2147213302 request",
+    interrupted: "interrupted", // 止められたのは例外にしない (本家と同じ)
+  });
+});

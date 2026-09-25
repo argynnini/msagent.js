@@ -48,6 +48,10 @@ export interface BalloonStyle {
   autoHide: boolean;
   /** 読み上げに合わせて、言葉を少しずつ出すか。false なら最初から全文を出す */
   autoPace: boolean;
+  /** 吹き出しの幅 (px。縁と余白を含む)。指定すると charsPerLine より優先する (msagent.js で足したもの) */
+  width?: number | undefined;
+  /** 吹き出しの高さ (px。縁と余白を含む)。指定すると、この高さに固定し、はみ出した分は上へ流す (sizeToText・lines より優先) */
+  height?: number | undefined;
 }
 
 /**

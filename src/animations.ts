@@ -35,6 +35,14 @@ export function speakingAnimation(character: Character): string | undefined {
     .find((n) => n !== undefined && character.animations.get(n)!.frames.some((f) => f.overlays.length > 0));
 }
 
+/**
+ * think() の間に再生する、考える動き (Thinking、無ければ Think)。無ければ undefined。
+ * 本家は自動では再生しないが、何も動かないと固まったように見えるので、msagent.js で足している
+ */
+export function thinkingAnimation(character: Character): string | undefined {
+  return findAnimation(character, "Thinking") ?? findAnimation(character, "Think");
+}
+
 /** 止まっているときの絵のコマ (RestPose、無ければ登場のアニメーションの最後のコマ、それも無ければ最初のアニメーションの最初のコマ) */
 export function restFrame(character: Character): Frame | undefined {
   const rest = character.animations.get(findAnimation(character, "RestPose") ?? "");

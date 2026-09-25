@@ -19,6 +19,9 @@ export interface PointerHost {
   /** ドラッグで動かし始めた / 動かし終えた */
   dragstart(): void;
   dragend(): void;
+  /** ヘルプモードか (押されたら、クリックやドラッグの代わりに help() を呼ぶ) */
+  helpMode(): boolean;
+  help(): void;
   /** イベントを受け取る (後片付けで外す) */
   listen(target: EventTarget, type: string, handler: (e: Event) => void, options?: boolean | AddEventListenerOptions): void;
 }
@@ -37,6 +40,8 @@ export function attachPointerInput(host: PointerHost) {
   let dragging = false;
   /** ドラッグの後に来る click は、クリックとして扱わない */
   let suppressClick = false;
+  /** ヘルプモードで押した: その押して離す操作は、クリックとして扱わない */
+  let helpPress = false;
   const setHit = (hit: boolean) => element.classList.toggle("msagent-hit", hit);
 
   host.listen(
@@ -59,6 +64,13 @@ export function attachPointerInput(host: PointerHost) {
     "pointerdown",
     (e) => {
       const ev = e as PointerEvent;
+      // ヘルプモード: 左・中ボタンで押したら、つかまずにヘルプを知らせる (本家と同じ)
+      if ((ev.button === 0 || ev.button === 1) && host.helpMode() && host.hitTest(ev.clientX, ev.clientY)) {
+        ev.preventDefault();
+        helpPress = true;
+        host.help();
+        return;
+      }
       if (ev.button !== 0 || !host.hitTest(ev.clientX, ev.clientY)) return;
       setHit(true);
       host.grab();
@@ -92,18 +104,29 @@ export function attachPointerInput(host: PointerHost) {
     host.dragend();
   };
   host.listen(element, "pointerup", end);
+  // ヘルプモードで押した操作の click / dblclick が済んだら戻す
+  host.listen(
+    document,
+    "pointerup",
+    () => {
+      if (helpPress) window.setTimeout(() => (helpPress = false), 0);
+    },
+    true,
+  );
   host.listen(element, "pointercancel", end);
   host.listen(element, "lostpointercapture", end);
 
   host.listen(element, "click", (e) => {
-    if (suppressClick) {
+    if (suppressClick || helpPress) {
       suppressClick = false;
       e.stopPropagation();
       return;
     }
     host.click(pointerDetail(e as MouseEvent));
   });
-  host.listen(element, "dblclick", (e) => host.dblclick(pointerDetail(e as MouseEvent)));
+  host.listen(element, "dblclick", (e) => {
+    if (!helpPress) host.dblclick(pointerDetail(e as MouseEvent));
+  });
   // 中ボタンは auxclick が来ないブラウザがあるので、絵の上で押して離したことで見る
   let middleDown = false;
   host.listen(element, "pointerdown", (e) => {
@@ -113,6 +136,7 @@ export function attachPointerInput(host: PointerHost) {
     const ev = e as PointerEvent;
     if (ev.button !== 1 || !middleDown) return;
     middleDown = false;
+    if (helpPress) return;
     if (host.hitTest(ev.clientX, ev.clientY)) host.click(pointerDetail(ev));
   });
   host.listen(element, "contextmenu", (e) => host.contextmenu(e as MouseEvent));

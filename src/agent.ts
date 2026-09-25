@@ -1,23 +1,38 @@
 import { AcsPlayer } from "./acs/player";
 import { AcsCharacter } from "./acs/reader";
 import { ActCharacter, isActFile } from "./act/reader";
-import { animateCandidates, findAnimation, restFrame, stateAnimation } from "./animations";
+import { registerAudioClient } from "./audio";
+import { animateCandidates, findAnimation, restFrame, stateAnimation, thinkingAnimation } from "./animations";
 import { Balloon } from "./balloon";
 import { DEFAULT_BALLOON_STYLE, type BalloonStyle, type Character } from "./character";
-import { AgentCommands } from "./commands";
-import { pointerDetail, type AgentEventListener, type AgentEventMap, type MoveCause, type VisibilityCause } from "./events";
+import { AgentCommands, type GlobalVoiceCommand, type VoiceMatch } from "./commands";
+import { CommandsWindow, type CommandsWindowContent } from "./commandswindow";
+import { pointerDetail, type AgentEventListener, type AgentEventMap, type HelpCause, type MoveCause, type VisibilityCause } from "./events";
 import { IdleController, isIdleAnimation } from "./idle";
 import { languageTag, type Language } from "./language";
+import { Listener, recognitionClass, type HeardAlternative, type ListenCause, type ListenMode, type SrStatus } from "./listen";
+import { ListeningTip } from "./listentip";
 import { PopupMenu, type MenuEntry } from "./menu";
 import { attachPointerInput } from "./pointer";
 import { RequestQueue, type Task } from "./queue";
-import { RequestError, type AgentRequest, type RequestType } from "./request";
+import { AgentRequestError, RequestError, type AgentRequest, type RequestType } from "./request";
 import { Speaker } from "./speak";
 import { injectStyles } from "./styles";
 import { Talk } from "./talk";
 import { voiceParams, type SpeakParams } from "./voice";
 
-export type { AgentEventListener, AgentEventMap, MoveCause, PointerDetail, VisibilityCause } from "./events";
+export type {
+  AgentEventListener,
+  AgentEventMap,
+  CommandAlternative,
+  CommandDetail,
+  HelpCause,
+  HelpDetail,
+  MoveCause,
+  PointerDetail,
+  VisibilityCause,
+} from "./events";
+export type { ListenCause, ListenMode, SrStatus } from "./listen";
 
 export interface AgentOptions {
   /** キャラクターを置く要素 (既定: document.body) */
@@ -36,6 +51,18 @@ export interface AgentOptions {
   balloon?: Partial<BalloonStyle>;
   /** キャラクターを右クリックしたときに、メニューを出すか (既定: true。本家の AutoPopupMenu と同じ) */
   autoPopupMenu?: boolean;
+  /**
+   * 聞き取りキー (本家の Listening key)。押している間、声のコマンドを聞く。KeyboardEvent の key か code
+   * (例: "ScrollLock"、"F8")。既定: なし (listen() でだけ聞く)
+   */
+  listeningKey?: string;
+  /** 聞いている間、キャラクターの下に聞き取りのヒントを出すか (既定: true。本家の Listening Tip) */
+  listeningTip?: boolean;
+  /**
+   * 命令の失敗を例外にするか (既定: false。本家の RaiseRequestErrors。本家の既定は true だが、clippy.js に合わせる)。
+   * true なら、失敗した命令を await すると AgentRequestError になり、無いアニメーションの play() などはその場で例外を投げる
+   */
+  raiseRequestErrors?: boolean;
 }
 
 /** speak() の 2 つ目の引数 (true / false なら hold と同じ) */
@@ -47,6 +74,19 @@ export interface SpeakOptions {
    * 音の大きさに合わせて口を動かし、text は吹き出しに出す (目印 \Mrk\ も使える)
    */
   url?: string | URL | Blob | ArrayBuffer;
+  /**
+   * 声に出すか (この 1 回だけ。省略時は agent.voice)。false なら、吹き出しと口の動きだけ
+   */
+  voice?: boolean;
+}
+
+/** think() の 2 つ目の引数 */
+export interface ThinkOptions {
+  /**
+   * true なら、考えごとの吹き出しのまま声に出して読み、口も動かす (msagent.js で足したもの。本家の Think は声を出さない)。
+   * 読み上げの制御タグも使える
+   */
+  voice?: boolean;
 }
 
 export interface HideOptions {
@@ -81,6 +121,14 @@ const DIRECTIONS: readonly Direction[] = ["Right", "Up", "Left", "Down"];
 
 /** play() の timeout の既定値 (clippy.js と同じ) */
 const DEFAULT_TIMEOUT_MS = 5000;
+/** 音声コマンドの窓を開く・閉じる声のコマンド (本家の Global Commands) */
+const OPEN_COMMANDS_VOICE =
+  "((open | show) [the] commands [window] | what can I say [now] | (コマンド | こまんど) [の] [一覧] [を] (見せて | みせて | 開いて | ひらいて | 表示して) | (何 | なん) (と | て) (言えば | いえば) [いい])";
+const CLOSE_COMMANDS_VOICE = "(close [the] commands [window] | (コマンド | こまんど) [の] [一覧] [を] (閉じて | とじて))";
+
+/** 聞き取りのヒントに、聞こえた文を出しておく時間 (ms) */
+const HEARD_TIP_MS = 3000;
+
 /** 隠れているときの speak / think の失敗の理由 */
 const HIDDEN = "キャラクターが隠れています";
 
@@ -114,10 +162,32 @@ export class Agent extends EventTarget {
   language: Language | readonly Language[] | undefined;
   /** 右クリックのメニューに足す項目 (本家の Commands と同じ) */
   readonly commands = new AgentCommands();
+  /**
+   * 音声コマンドの窓 (本家の CommandsWindow)。いま声で言えるコマンドの一覧。visible で開く・閉じる。
+   * 開いている間にコマンドを変えたら refresh() で出し直す
+   */
+  readonly commandsWindow: CommandsWindow;
   /** キャラクターを右クリックしたときに、メニューを出すか (本家の AutoPopupMenu と同じ) */
   autoPopupMenu: boolean;
+  /** 聞き取りキー (KeyboardEvent の key か code。例: "ScrollLock")。undefined なら使わない (本家の Listening key) */
+  listeningKey: string | undefined;
+  /** 聞いている間、聞き取りのヒントを出すか (本家の Listening Tip) */
+  listeningTip: boolean;
+  /** 命令の失敗を例外にするか (本家の RaiseRequestErrors。AgentOptions の raiseRequestErrors を参照) */
+  raiseRequestErrors: boolean;
+  /** キャラクターをクリック・ドラッグしてヘルプモードが終わったときに、helpcomplete で渡す番号 (本家の HelpContextID) */
+  helpContextId: number | undefined;
 
   private readonly balloon: Balloon;
+  private readonly listener: Listener;
+  private readonly tip: ListeningTip;
+  /** 聞き取りのヒントに、聞こえた文を出している間のタイマー */
+  private tipTimer: number | undefined;
+  private helpMode = false;
+  /** 聞き取りのために、Listening / Hearing の状態のアニメーションを再生した (終わったら戻す) */
+  private listenAnimation = false;
+  /** think() のために再生している考える動き (終わったら戻す) */
+  private thinkPose: string | undefined;
   private readonly talk: Talk;
   private readonly queue: RequestQueue;
   private readonly idle: IdleController;
@@ -154,12 +224,20 @@ export class Agent extends EventTarget {
     this.voice = options.voice ?? true;
     this.language = options.language;
     this.autoPopupMenu = options.autoPopupMenu ?? true;
+    this.listeningKey = options.listeningKey;
+    this.listeningTip = options.listeningTip ?? true;
+    this.raiseRequestErrors = options.raiseRequestErrors ?? false;
     this.balloonOverrides = { ...options.balloon };
     this.balloon = new Balloon(this.element, this.balloonStyle, (visible) =>
       this.emit(visible ? "balloonshow" : "balloonhide", {}),
     );
+    this.tip = new ListeningTip(this.element);
+    this.commandsWindow = new CommandsWindow(
+      () => this.commandsWindowContent(),
+      () => String(++zIndexCounter),
+    );
     this.applyScale(options.scale ?? 1);
-    (options.container ?? document.body).append(this.element, this.balloon.element);
+    (options.container ?? document.body).append(this.element, this.balloon.element, this.tip.element);
 
     const speaker = new Speaker(() => this.player);
     this.talk = new Talk({
@@ -183,14 +261,41 @@ export class Agent extends EventTarget {
         this.idle.userActivity();
         await this.idle.interrupt();
       },
-      onStart: (request) => this.emit("requeststart", { request }),
+      onStart: (request) => {
+        this.listenAnimation = false;
+        this.thinkPose = undefined;
+        this.emit("requeststart", { request });
+      },
       onSettle: (request) => this.emit("requestcomplete", { request }),
     });
     this.idle = new IdleController({
       player: () => this.player,
       character: () => this.character,
-      busy: () => this.hidden || this.queue.busy || this.speaking || this.player.isPaused,
+      busy: () => this.hidden || this.queue.busy || this.speaking || this.player.isPaused || this.listener.listening,
     });
+    this.listener = new Listener({
+      lang: () => this.speechLanguage ?? (typeof navigator === "undefined" ? "en-US" : navigator.language),
+      onStart: (mode) => this.onListenStart(mode),
+      onHearing: () => this.playListenState("Hearing"),
+      onHeard: (alternatives) => this.onHeard(alternatives),
+      onEnd: (cause) => this.onListenEnd(cause),
+    });
+    // 全キャラクターの音の状態 (audioOutput.status) のために登録する
+    const talk = this.talk;
+    const listener = this.listener;
+    this.cleanups.push(
+      registerAudioClient({
+        get speakingAloud() {
+          return talk.speakingAloud;
+        },
+        get listening() {
+          return listener.listening;
+        },
+        get hearing() {
+          return listener.hearing;
+        },
+      }),
+    );
     this.idleEnabled = options.idle ?? true;
     if (this.idleEnabled) this.idle.start();
     this.watchAnimations();
@@ -209,25 +314,40 @@ export class Agent extends EventTarget {
         if (this.emit("dblclick", detail, true)) this.animate();
       },
       contextmenu: (e) => this.onContextMenu(e),
+      helpMode: () => this.helpMode,
+      help: () => this.completeHelp("", "character"),
       dragstart: () => this.emit("dragstart", this.position),
       dragend: () => {
         const pos = this.position;
         this.emit("dragend", pos);
         this.emit("move", { ...pos, by: "drag" });
       },
-      listen: (target, type, handler, options) => this.listen(target, type, handler, options),
+      listen: (target, type, handler, options) => this.listenTo(target, type, handler, options),
     });
     // ブラウザの窓が小さくなったら、画面の中に戻す
-    this.listen(window, "resize", () => {
+    this.listenTo(window, "resize", () => {
       const before = this.position;
       this.reposition();
       const after = this.position;
       if (!this.hidden && (before.x !== after.x || before.y !== after.y)) this.emit("move", { ...after, by: "reposition" });
     });
+    // 聞き取りキー: 押している間聞く (いちばん手前のキャラクターだけ)
+    this.listenTo(window, "keydown", (e) => {
+      const k = e as KeyboardEvent;
+      if (!this.isListeningKey(k) || !this.active) return;
+      k.preventDefault();
+      if (!k.repeat) this.listener.start("key");
+    });
+    this.listenTo(window, "keyup", (e) => {
+      if (this.isListeningKey(e as KeyboardEvent) && this.listener.mode === "key") this.listener.stop("key");
+    });
+    this.listenTo(window, "blur", () => {
+      if (this.listener.mode === "key") this.listener.stop("key");
+    });
     // 最初の操作で音を鳴らせるようにしておく (自動再生の制限)
     const unlock = () => this.player.unlockAudio();
-    this.listen(window, "pointerdown", unlock, true);
-    this.listen(window, "keydown", unlock, true);
+    this.listenTo(window, "pointerdown", unlock, true);
+    this.listenTo(window, "keydown", unlock, true);
   }
 
   // --- clippy.js と同じ API ---
@@ -271,12 +391,12 @@ export class Agent extends EventTarget {
 
   /**
    * アニメーションを再生する。timeout (ms、既定 5000。0 なら無制限) を過ぎても終わらなければ、終了分岐で自然に終わらせる。
-   * 終わったら callback。キャラクターに無いアニメーションなら false。
+   * 終わったら callback。キャラクターに無いアニメーションなら false (raiseRequestErrors なら例外)。
    * 最後の姿勢 (指す・見るなど) は、次のアニメーションまで保ち、戻りの動きはその前に再生する
    */
   play(animation: string, timeout = DEFAULT_TIMEOUT_MS, callback?: () => void): AgentRequest | false {
     const name = findAnimation(this.character, animation);
-    if (!name) return false;
+    if (!name) return this.fail(RequestError.animationNotFound, `アニメーションがありません: ${animation}`);
     return this.enqueue("play", (complete) => this.runPlay(name, timeout, callback, complete));
   }
 
@@ -297,29 +417,33 @@ export class Agent extends EventTarget {
   }
 
   /**
-   * 吹き出しでしゃべる (声に出すのは voice が true のとき)。
+   * 吹き出しでしゃべる (声に出すのは agent.voice が true のとき。{ voice: false } なら、この 1 回だけ声を出さない)。
    * hold なら、読み終えても吹き出しを閉じず、closeBalloon() まで次の命令に進まない
    */
   speak(text: string, options?: boolean | SpeakOptions): AgentRequest {
     text = pickAlternative(text);
-    const { hold, url } = typeof options === "object" ? options : { hold: options, url: undefined };
+    const { hold, url, voice } = typeof options === "object" ? options : { hold: options, url: undefined, voice: undefined };
     return this.enqueue("speak", (complete) => {
       // 隠れている間は、吹き出しも声も出せない (本家も隠れたキャラクターは音を出せず、失敗になる)
       if (this.hidden) return complete("failed", HIDDEN, RequestError.hidden);
       const gen = this.queue.generation;
-      void this.talk.speak(text, !!hold, url, complete, () => gen !== this.queue.generation);
+      void this.talk.speak(text, { hold: !!hold, url, voice }, complete, () => gen !== this.queue.generation);
     });
   }
 
   /**
    * 考えごとの吹き出し (雲形) に文を出す (本家の Think と同じ)。声は出さず、口も動かさない。
-   * 読み終わるくらいの時間 (文の長さから決める) が過ぎたら次の命令に進み、少しして吹き出しを閉じる
+   * キャラクターの声の速さで読んだときの時間をかけて文字を出し (声なしの speak と同じ)、出し終えたら次の命令に進み、少しして吹き出しを閉じる。
+   * { voice: true } なら、考えごとの吹き出しのまま声に出して読み、読み終えたら次の命令に進む
    */
-  think(text: string): AgentRequest {
+  think(text: string, options: ThinkOptions = {}): AgentRequest {
     text = pickAlternative(text);
     return this.enqueue("think", (complete) => {
       if (this.hidden) return complete("failed", HIDDEN, RequestError.hidden);
-      this.talk.think(text, complete);
+      if (!options.voice) return this.talk.think(text, this.withThinkingPose(complete));
+      // 声に出して考える: 考えごとの吹き出しで speak と同じように読む
+      const gen = this.queue.generation;
+      void this.talk.speak(text, { voice: true, thought: true }, complete, () => gen !== this.queue.generation);
     });
   }
 
@@ -333,7 +457,7 @@ export class Agent extends EventTarget {
    * (無ければ Gesture〜、Look〜) を再生する。向きは順番が来たときの位置で決める。指す動きが 1 つも無ければ false
    */
   gestureAt(x: number, y: number): AgentRequest | false {
-    if (!DIRECTIONS.some((d) => this.gestureAnimation(d))) return false;
+    if (!DIRECTIONS.some((d) => this.gestureAnimation(d))) return this.fail(RequestError.stateNotFound, "指す動きがありません");
     return this.enqueue("gestureAt", (complete) => {
       const name = this.gestureAnimation(this.direction(x, y));
       if (!name) return complete("failed", "その向きの動きがありません", RequestError.stateNotFound);
@@ -389,7 +513,7 @@ export class Agent extends EventTarget {
       // 自分の命令を待つと、順番によっては終わらなくなる (本家もできない)
       if (request.agent === this) return complete("failed", "自分の命令は待てません", RequestError.waitSelf);
       if (request.done) return complete();
-      void request.then(() => complete());
+      void request.then(() => complete(), () => complete());
       this.queue.onAbort(() => complete());
     });
   }
@@ -693,6 +817,7 @@ export class Agent extends EventTarget {
     const z = String(++zIndexCounter);
     this.element.style.zIndex = z;
     this.balloon.element.style.zIndex = z;
+    this.tip.element.style.zIndex = z;
     topmost = this;
     return true;
   }
@@ -717,20 +842,84 @@ export class Agent extends EventTarget {
           caption: c.caption,
           enabled: c.enabled,
           bold: c.name === this.commands.defaultCommand,
-          onSelect: () => this.emit("command", { name: c.name }),
+          onSelect: () => {
+            // ヘルプモードなら、コマンドの代わりにヘルプを知らせる (本家と同じ)
+            if (this.helpMode) return this.completeHelp(c.name, "command", c.helpContextId);
+            this.emit("command", { name: c.name, source: "menu", confidence: 100, voice: "", count: 1, alternatives: [] });
+          },
         });
       }
     }
     if (entries.length > 0) entries.push({ kind: "separator" });
+    // 音声認識が使えるブラウザなら、音声コマンドの窓を開く・閉じる項目 (本家と同じ)
+    if (recognitionClass()) {
+      const open = this.commandsWindow.visible;
+      const ja = this.isJapanese;
+      entries.push({
+        kind: "item",
+        caption: open ? (ja ? "音声コマンドを閉じる(&C)" : "&Close Voice Commands") : ja ? "音声コマンドを開く(&O)" : "&Open Voice Commands",
+        enabled: true,
+        onSelect: () => {
+          if (this.helpMode) return this.completeHelp("", open ? "closeCommandsWindow" : "openCommandsWindow");
+          this.commandsWindow.visible = !open;
+        },
+      });
+    }
     // 本家と同じく、キャラクターを隠す項目を足す (ユーザーが隠したので、hide の cause は "user")
     entries.push({
       kind: "item",
       caption: this.isJapanese ? "隠す(&H)" : "&Hide",
       enabled: true,
-      onSelect: () => void this.queueHide(false, undefined, { immediate: true }, "user"),
+      onSelect: () => {
+        if (this.helpMode) return this.completeHelp("", "hide");
+        void this.queueHide(false, undefined, { immediate: true }, "user");
+      },
     });
-    this.menu = new PopupMenu(entries, x, y, { fontName: this.commands.fontName, fontSize: this.commands.fontSize });
+    this.menu = new PopupMenu(entries, x, y, { fontName: this.commands.fontName, fontSize: this.commands.fontSize, help: this.helpMode });
+    // どのキャラクターよりも手前に出す (キャラクターは手前に出すたびに z-index が増える)
+    this.menu.element.style.zIndex = String(++zIndexCounter);
     return true;
+  }
+
+  /**
+   * 声のコマンドを聞く (本家の Listen と同じ)。true なら 10 秒聞き (聞いている途中なら延ばす)、1 つ言い終えたらやめる。
+   * false ならやめる。聞いた言葉は、commands の voice と照らし合わせて command イベントで知らせる。
+   * 音声認識が使えない (ブラウザが対応していないなど) ときと、聞き取りキーを押している間の listen(false) は false
+   */
+  listen(on: boolean): boolean {
+    if (this.destroyed) return false;
+    if (on) return this.listener.start("program");
+    if (this.listener.mode === "key") return false;
+    this.listener.stop("program");
+    return true;
+  }
+
+  /**
+   * ヘルプモード (本家の HelpModeOn と同じ)。true の間は、キャラクターのクリック・ドラッグ、メニューの項目、声のコマンドを選ぶと、
+   * click / dragstart / command の代わりに helpcomplete イベントが来て、ヘルプモードが終わる (右クリックのメニューは出せる)。
+   * false を代入してやめたときは、helpcomplete は来ない
+   */
+  get helpModeOn(): boolean {
+    return this.helpMode;
+  }
+
+  set helpModeOn(on: boolean) {
+    this.helpMode = on;
+    this.element.classList.toggle("msagent-help-mode", on);
+  }
+
+  /** 聞いているか */
+  get listening(): boolean {
+    return this.listener.listening;
+  }
+
+  /**
+   * 音声入力が使えるか (本家の SRStatus と同じ値)。0: 使える / 1: マイクが使えない /
+   * 4: このブラウザには音声認識が無い・認識サービスにつながらない / 5: マイク・音声認識を許可されていない / 6: そのほか。
+   * 許可されているかは、一度聞いてみるまで分からない
+   */
+  get srStatus(): SrStatus {
+    return this.listener.srStatus;
   }
 
   /** 後片付け: 再生・読み上げ・待機動作をやめ、要素を取り除く */
@@ -745,13 +934,23 @@ export class Agent extends EventTarget {
     this.player.onPlayingChange = undefined;
     this.player.onAnimationChange = undefined;
     this.menu?.close();
+    this.listener.abort();
+    window.clearTimeout(this.tipTimer);
     if (topmost === this) topmost = undefined;
     for (const cleanup of this.cleanups) cleanup();
     this.element.remove();
     this.balloon.element.remove();
+    this.tip.element.remove();
+    this.commandsWindow.destroy();
   }
 
   // --- 内部: 命令 ---
+
+  /** 命令を作る前に分かった失敗: raiseRequestErrors なら例外、そうでなければ false (clippy.js と同じ) */
+  private fail(number: number, description: string): false {
+    if (this.raiseRequestErrors) throw new AgentRequestError(number, description);
+    return false;
+  }
 
   private enqueue(type: RequestType, task: Task): AgentRequest {
     return this.queue.add(type, task);
@@ -778,6 +977,7 @@ export class Agent extends EventTarget {
       this.canvas.getContext("2d")?.clearRect(0, 0, this.canvas.width, this.canvas.height);
       this.element.style.display = "none";
       this.balloon.hide();
+      this.tip.hide();
       this.emit("hide", { cause });
       callback?.();
       complete();
@@ -840,6 +1040,27 @@ export class Agent extends EventTarget {
     });
   }
 
+  /**
+   * 考えている間、考える動き (Thinking / Think) を再生する。complete を包んで返し、考え終えたら元の姿勢に戻す
+   * (次の命令があれば、その前の戻りの動きで戻る)
+   */
+  private withThinkingPose(complete: Parameters<Task>[0]): Parameters<Task>[0] {
+    const pose = thinkingAnimation(this.character);
+    if (!pose) return complete;
+    this.thinkPose = pose;
+    void this.player.play(pose, { hold: true });
+    return (...args) => {
+      if (this.thinkPose === pose) {
+        this.thinkPose = undefined;
+        // 繰り返す動きは終了分岐で終わらせ、最後の姿勢のままなら戻す
+        void this.player.release().then(() => {
+          if (!this.queue.busy && !this.hidden && this.player.isHolding) void this.player.playReturn();
+        });
+      }
+      complete(...args);
+    };
+  }
+
   private gestureAnimation(d: Direction): string | undefined {
     return stateAnimation(this.character, `Gesturing${d}`, [`Gesture${d}`, `Look${d}`]);
   }
@@ -895,6 +1116,11 @@ export class Agent extends EventTarget {
 
   /** 右クリック: click として知らせ、メニューを出す (autoPopupMenu のとき) */
   private onContextMenu(e: MouseEvent) {
+    // ヘルプモードでメニューを出さないなら、右クリックもヘルプ (本家と同じ)
+    if (this.helpMode && !this.autoPopupMenu) {
+      e.preventDefault();
+      return this.completeHelp("", "character");
+    }
     this.emit("click", pointerDetail(e));
     if (!this.autoPopupMenu) return;
     e.preventDefault();
@@ -905,6 +1131,153 @@ export class Agent extends EventTarget {
   private drawRestPose() {
     const frame = restFrame(this.character);
     if (frame) this.player.draw(frame);
+  }
+
+  /** ヘルプモードを終え、helpcomplete で知らせる (キャラクターなら、キャラクターの helpContextId) */
+  private completeHelp(name: string, cause: HelpCause, helpContextId?: number) {
+    this.helpModeOn = false;
+    this.emit("helpcomplete", { name, cause, helpContextId: cause === "character" ? this.helpContextId : helpContextId });
+  }
+
+  // --- 内部: 聞き取り ---
+
+  private isListeningKey(e: KeyboardEvent): boolean {
+    const key = this.listeningKey?.toLowerCase();
+    return !!key && (e.key.toLowerCase() === key || e.code.toLowerCase() === key);
+  }
+
+  /** msagent.js が用意する声のコマンド: 「隠れて」(本家の Global Commands の Hide) */
+  private get globalVoiceCommands(): GlobalVoiceCommand[] {
+    // 名前は、文法の記号を除いて使う
+    const name = (this.name ?? "").replace(/[()[\]|*+\\.]/g, " ").trim();
+    const n = name ? `[${name}]` : "";
+    return [
+      { id: "hide", voice: `(hide ${n} | ${n} (隠れて | かくれて | 隠す | かくす | 消えて | きえて))` },
+      { id: "openCommands", voice: OPEN_COMMANDS_VOICE },
+      { id: "closeCommands", voice: CLOSE_COMMANDS_VOICE },
+    ];
+  }
+
+  /** 音声コマンドの窓に出すもの: このキャラクターの声のコマンドと、用意してあるコマンド */
+  private commandsWindowContent(): CommandsWindowContent {
+    const ja = this.isJapanese;
+    const name = this.name ?? "";
+    const plain = (caption: string) => caption.replace(/&(.)/g, "$1");
+    const mine = this.commands
+      .list()
+      .filter((c) => c.enabled && c.voice && (c.voiceCaption || c.caption))
+      .map((c) => ({ caption: plain(c.voiceCaption || c.caption), hint: c.voice }));
+    const sections = [
+      {
+        caption: this.commands.voiceCaption || this.commands.caption || (ja ? `${name}のコマンド` : `${name} commands`),
+        items: mine.length ? mine : [{ caption: ja ? "(声のコマンドはありません)" : "(no voice commands)" }],
+      },
+    ];
+    if (this.commands.globalVoiceCommandsEnabled) {
+      sections.push({
+        caption: ja ? "全体のコマンド" : "Global Commands",
+        items: [
+          { caption: ja ? "音声コマンドを閉じる" : "Close Voice Commands Window", hint: ja ? "「コマンドを閉じて」" : '"close commands window"' },
+          { caption: ja ? `${name}を隠す` : `Hide ${name}`, hint: ja ? "「隠れて」" : `"hide ${name}"` },
+        ],
+      });
+    }
+    const status = this.srStatus;
+    return {
+      title: ja ? "音声コマンド" : "Voice Commands",
+      closeLabel: ja ? "閉じる" : "Close",
+      notice: status === 0 ? undefined : ja ? `音声認識が使えません (srStatus: ${status})` : `Speech input is not available (srStatus: ${status})`,
+      sections,
+    };
+  }
+
+  private onListenStart(mode: ListenMode) {
+    this.commandsWindow.refresh();
+    this.emit("listenstart", { mode });
+    this.showListeningTip();
+    // 聞き取りキーのときは Listening の状態のアニメーション (listen() では、本家と同じく自動では再生しない)
+    if (mode === "key") this.playListenState("Listening");
+  }
+
+  private onListenEnd(cause: ListenCause) {
+    if (this.listenAnimation && !this.queue.busy && !this.hidden) void this.player.playReturn();
+    this.listenAnimation = false;
+    // 聞こえた文を出している途中なら、それが消えるまで出しておく
+    if (this.tipTimer === undefined) this.tip.hide();
+    this.emit("listencomplete", { cause });
+  }
+
+  /** 聞き取りのための状態のアニメーション (Listening / Hearing) を再生する。命令やしゃべりの途中なら、邪魔しない */
+  private playListenState(state: "Listening" | "Hearing") {
+    if (this.hidden || this.queue.busy || this.speaking) return;
+    const name = stateAnimation(this.character, state, []);
+    if (!name) return;
+    this.listenAnimation = true;
+    void this.player.play(name, { hold: true });
+  }
+
+  /** 1 つ言い終えた: 声のコマンドと照らし合わせ、command イベントで知らせる */
+  private onHeard(alternatives: HeardAlternative[]) {
+    const matches = this.commands.matchVoice(alternatives, this.globalVoiceCommands);
+    const best: VoiceMatch | undefined = matches[0];
+    const heard = alternatives[0]!;
+    // ヘルプモードなら、選ばれたコマンドのヘルプを知らせる (コマンドは実行しない)
+    if (this.helpMode && best) {
+      this.showHeardTip(best, heard.transcript);
+      if (best.global === "hide") return this.completeHelp("", "hide");
+      if (best.global === "openCommands") return this.completeHelp("", "openCommandsWindow");
+      if (best.global === "closeCommands") return this.completeHelp("", "closeCommandsWindow");
+      return this.completeHelp(best.name, "command", best.command?.helpContextId);
+    }
+    this.emit("command", {
+      name: best?.name ?? "",
+      source: "voice",
+      confidence: best?.confidence ?? Math.round(heard.confidence * 100),
+      voice: best?.voice ?? heard.transcript,
+      count: matches.length,
+      alternatives: matches.slice(1).map(({ name, confidence, voice }) => ({ name, confidence, voice })),
+    });
+    this.showHeardTip(best, heard.transcript);
+    if (best?.global === "hide") void this.queueHide(false, undefined, { immediate: true }, "user");
+    if (best?.global === "openCommands") this.commandsWindow.visible = true;
+    if (best?.global === "closeCommands") this.commandsWindow.visible = false;
+  }
+
+  /** 聞き取りのヒントの 1 行目 */
+  private tipTitle(listening: boolean): string {
+    const name = this.name ?? "";
+    if (this.isJapanese) return `-- ${name}${listening ? "が聞いています" : "は聞いていません"} --`;
+    return `-- ${name} is ${listening ? "" : "not "}listening --`;
+  }
+
+  /** 聞いている間のヒント: 何のコマンドを聞いているか */
+  private showListeningTip() {
+    if (!this.listeningTip || this.hidden) return;
+    window.clearTimeout(this.tipTimer);
+    this.tipTimer = undefined;
+    const caption = this.commands.voiceCaption ?? this.commands.caption;
+    const body = this.isJapanese
+      ? caption ? `「${caption}」のコマンドをどうぞ` : "コマンドをどうぞ"
+      : caption ? `for "${caption}" commands` : "for commands";
+    this.tip.show(this.tipTitle(true), body);
+  }
+
+  /** 聞こえた文をヒントに出す (しばらくしたら、聞いていれば聞いている表示に戻し、いなければ消す) */
+  private showHeardTip(best: VoiceMatch | undefined, transcript: string) {
+    if (!this.listeningTip || this.hidden) return;
+    const ja = this.isJapanese;
+    const low = best?.command?.confidence !== undefined && best.confidence <= best.command.confidence;
+    const body =
+      low && best?.command?.confidenceText ? best.command.confidenceText
+      : best ? (ja ? `「${best.voice}」と聞こえました` : `Heard "${best.voice}"`)
+      : ja ? `「${transcript}」は分かりませんでした` : `Didn't understand "${transcript}"`;
+    window.clearTimeout(this.tipTimer);
+    this.tip.show(this.tipTitle(this.listener.mode === "key"), body);
+    this.tipTimer = window.setTimeout(() => {
+      this.tipTimer = undefined;
+      if (this.listener.listening) this.showListeningTip();
+      else this.tip.hide();
+    }, HEARD_TIP_MS);
   }
 
   // --- 内部: 読み上げ ---
@@ -940,6 +1313,7 @@ export class Agent extends EventTarget {
     // 拡大はドット絵のまま、縮小はなめらかに
     this.canvas.style.imageRendering = scale > 1 ? "pixelated" : "auto";
     this.balloon.reposition();
+    this.tip?.reposition();
   }
 
   /** キャラクターの左上の位置 (隠れている間は、画面上の大きさが無いので、指定された位置) */
@@ -960,6 +1334,7 @@ export class Agent extends EventTarget {
     this.element.style.left = `${Math.max(0, Math.min(x, vw - w))}px`;
     this.element.style.top = `${Math.max(0, Math.min(y, vh - h))}px`;
     this.balloon.reposition();
+    this.tip.reposition();
   }
 
   /** すぐ移り、move を知らせる (left / top の代入) */
@@ -999,7 +1374,7 @@ export class Agent extends EventTarget {
     });
   }
 
-  private listen(target: EventTarget, type: string, handler: (e: Event) => void, options: boolean | AddEventListenerOptions = false) {
+  private listenTo(target: EventTarget, type: string, handler: (e: Event) => void, options: boolean | AddEventListenerOptions = false) {
     target.addEventListener(type, handler, options);
     this.cleanups.push(() => target.removeEventListener(type, handler, options));
   }

@@ -3,7 +3,9 @@ import { speakingAnimation } from "./animations";
 import type { Balloon } from "./balloon";
 import type { BalloonStyle, Character } from "./character";
 import type { Emit } from "./events";
+import { audioOutput } from "./audio";
 import { readLwv, type LwvInfo } from "./lwv";
+import { MORA_MS, mouthSteps, PAUSE_MS, stepsDuration } from "./mouth";
 import { paceText } from "./pace";
 import type { Task } from "./queue";
 import { RequestError } from "./request";
@@ -13,14 +15,22 @@ import type { SpeakParams } from "./voice";
 
 /** 読み上げが終わってから、吹き出しを閉じるまで (clippy.js と同じ) */
 const CLOSE_BALLOON_DELAY_MS = 2000;
-/** think() で文を出しておく時間: 1 文字あたりと、最短・最長 (読み終わるくらい) */
-const THINK_MS_PER_CHAR = 60;
-const THINK_MIN_MS = 1500;
-const THINK_MAX_MS = 10000;
-/** think() で少しずつ出すときは、出しておく時間のこの割合で出し終える (残りは全文を読む時間) */
-const THINK_PACE_RATIO = 0.8;
+/** think() で文を出しておく、最短の時間 (ms) */
+const THINK_MIN_MS = 300;
 
 type Complete = Parameters<Task>[0];
+
+/** speak() の中身の設定 */
+export interface TalkOptions {
+  /** 読み終えても吹き出しを閉じず、close() まで次へ進まない */
+  hold?: boolean;
+  /** 音声ファイルでしゃべる */
+  url?: string | URL | Blob | ArrayBuffer | undefined;
+  /** 声に出すか (省略時は agent.voice) */
+  voice?: boolean | undefined;
+  /** 考えごとの吹き出し (雲形) に出す (think(text, { voice: true })) */
+  thought?: boolean;
+}
 
 /** しゃべる・考えるために、キャラクター (Agent) から借りるもの */
 export interface TalkHost {
@@ -53,6 +63,8 @@ export class Talk {
   private stopThinkPace: (() => void) | undefined;
   /** balloonVisible = false をしゃべっている途中に言われた (読み終えたらすぐ閉じる) */
   private hideWhenDone = false;
+  /** いまの発言を声に出しているか */
+  private aloud = false;
   /** 最後にしゃべった文 (\Lst\ で繰り返すため) */
   private lastSpoken: string | undefined;
 
@@ -63,12 +75,21 @@ export class Talk {
     return this.host.speaker.speaking || this.hold || this.thinkTimer !== undefined;
   }
 
+  /** 声に出してしゃべっている途中か (声なしの speak・think は含まない) */
+  get speakingAloud(): boolean {
+    return this.host.speaker.speaking && this.aloud;
+  }
+
   /**
-   * しゃべる (speak の命令の中身)。url があれば、その音声ファイルでしゃべる。
+   * しゃべる (speak の命令の中身)。url があれば、その音声ファイルでしゃべる。thought なら考えごとの吹き出しに出す。
    * 途中で await するので、isStale() が true になっていたら (止められたら)、何もせずに終わる
    */
-  async speak(text: string, hold: boolean, url: string | URL | Blob | ArrayBuffer | undefined, complete: Complete, isStale: () => boolean) {
+  async speak(text: string, options: TalkOptions, complete: Complete, isStale: () => boolean) {
     const { player } = this.host;
+    const { hold = false, url, thought = false } = options;
+    // 全キャラクターの声を切っていれば (audioOutput.enabled)、声は出さない。
+    // 聞き取り中にユーザーの声が聞こえている間も、声は出さない (吹き出しは出す。本家と同じ)
+    const aloud = (options.voice ?? this.host.voice()) && audioOutput.enabled && audioOutput.status !== 3;
     // 音声ファイルでしゃべるときは、先に読み込んでおく (.lwv なら、単語と音素も)
     let audio: AudioBuffer | undefined;
     let lwv: LwvInfo | undefined;
@@ -97,7 +118,7 @@ export class Talk {
     if (isRepeatTag(said)) {
       if (this.lastSpoken === undefined) return complete();
       said = removeBookmarks(this.lastSpoken);
-    } else {
+    } else if (!thought) {
       this.lastSpoken = said;
     }
     const params = this.host.speakParams();
@@ -105,12 +126,14 @@ export class Talk {
     const shown = shownText(parts);
     const { balloon, emit } = this.host;
     this.begin(complete, hold);
-    emit("speakstart", { text: shown, thought: false });
+    this.aloud = aloud;
+    emit("speakstart", { text: shown, thought });
     const style = this.host.balloonStyle();
     balloon.element.lang = this.host.speechLanguage() ?? "";
     if (style.enabled) {
-      balloon.setThink(false);
-      // 少しずつ出さない (autoPace: false) なら、最初から全文
+      balloon.setThink(thought);
+      // 少しずつ出すなら、全文の入る大きさを先に確保する。出さない (autoPace: false) なら、最初から全文
+      balloon.reserve(style.autoPace ? shown : undefined);
       balloon.setText(style.autoPace ? "" : shown);
       balloon.show();
     } else {
@@ -122,18 +145,18 @@ export class Talk {
       },
       onBookmark: (id: number) => emit("bookmark", { id }),
       onEnd: () => {
-        emit("speakend", { text: shown, thought: false });
+        emit("speakend", { text: shown, thought });
         if (this.hold) return;
         this.finish();
       },
     };
-    if (audio) this.host.speaker.speakAudio(audio, player.audioContext(), parts, handlers, this.host.voice() ? 1 : 0, lwv);
-    else this.host.speaker.speak(parts, handlers, params, this.host.voice());
+    if (audio) this.host.speaker.speakAudio(audio, player.audioContext(), parts, handlers, aloud ? 1 : 0, lwv);
+    else this.host.speaker.speak(parts, handlers, params, aloud);
   }
 
   /**
    * 考えごとの吹き出しに出す (think の命令の中身)。声は出さず、口も動かさない。
-   * 読み終わるくらいの時間 (文の長さから決める) が過ぎたら complete を呼ぶ
+   * 声なしの speak と同じく、キャラクターの声の速さで読んだときの時間をかけて文字を出し、出し終えたら complete を呼ぶ
    */
   think(text: string, complete: Complete) {
     // 吹き出しを使わないキャラクターは、何も出さない (本家と同じ)
@@ -145,10 +168,15 @@ export class Talk {
     const { balloon, emit } = this.host;
     const notifyBookmarks = bookmarkNotifier(parts, (id) => emit("bookmark", { id }));
     this.begin(complete, false);
+    this.aloud = false;
     emit("speakstart", { text: shown, thought: true });
     balloon.setThink(true);
+    balloon.reserve(style.autoPace ? shown : undefined);
+    balloon.setText(style.autoPace ? "" : shown);
     balloon.show();
-    const ms = Math.min(THINK_MAX_MS, Math.max(THINK_MIN_MS, [...shown].length * THINK_MS_PER_CHAR));
+    // 声なしの speak と同じ見積もり: 文を拍に分け、キャラクターの声の速さ (本家の Speed) で 1 拍の長さを決める
+    const { rate } = this.host.speakParams();
+    const ms = Math.max(THINK_MIN_MS, stepsDuration(mouthSteps(shown, MORA_MS / rate, PAUSE_MS / rate)));
     this.thinkTimer = window.setTimeout(() => {
       this.thinkTimer = undefined;
       this.stopThinkPace?.();
@@ -159,10 +187,15 @@ export class Talk {
     }, ms);
     // 少しずつ出すときは、出しておく時間に合わせて文字を出していく
     if (style.autoPace) {
-      this.stopThinkPace = paceText(shown, ms * THINK_PACE_RATIO, (s, count) => {
-        balloon.setText(s);
-        notifyBookmarks(count);
-      });
+      this.stopThinkPace = paceText(
+        shown,
+        ms,
+        (s, count) => {
+          balloon.setText(s);
+          notifyBookmarks(count);
+        },
+        { wholeWords: true },
+      );
     } else {
       balloon.setText(shown);
       notifyBookmarks(Infinity);

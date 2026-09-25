@@ -1,3 +1,4 @@
+import { audioOutput } from "../audio";
 import { decodeWav } from "./wav";
 import type { Character } from "../character";
 import type { Animation, Frame } from "./reader";
@@ -315,7 +316,7 @@ export class AcsPlayer {
   }
 
   private async playSound(index: number) {
-    if (!this.soundEnabled) return;
+    if (!this.soundEnabled || !audioOutput.soundEffects) return;
     this.audioCtx ??= new AudioContext();
     const ctx = this.audioCtx;
     if (ctx.state === "suspended") await ctx.resume().catch(() => undefined);

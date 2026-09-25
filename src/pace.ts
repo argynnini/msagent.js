@@ -2,6 +2,16 @@
 const TICK_MS = 60;
 /** 単語として続けて出す文字 (空白で区切る言葉) */
 const WORD_CHAR = /[A-Za-z0-9'-]/;
+/** 前の文字と一緒に出す文字 (句読点・閉じ括弧など。「こんにちは」と「！」の間で止まらないように) */
+const TRAILING = /[\p{Pe}\p{Pf}\p{Po}]/u;
+
+/**
+ * 文の end 文字目 (UTF-16 の位置) までを出すとき、その後ろに続く句読点・閉じ括弧 (！。、」… など) も含めた位置
+ */
+export function withTrailingPunctuation(text: string, end: number): number {
+  while (end > 0 && end < text.length && TRAILING.test(text[end]!)) end++;
+  return end;
+}
 
 /**
  * 吹き出しの文を、durationMs かけて少しずつ出す (吹き出しの autoPace)。
@@ -24,6 +34,7 @@ export function paceText(
     if (options.wholeWords) {
       while (n < chars.length && WORD_CHAR.test(chars[n - 1] ?? "") && WORD_CHAR.test(chars[n]!)) n++;
     }
+    while (n > 0 && n < chars.length && TRAILING.test(chars[n]!)) n++;
     if (n !== shown) {
       shown = n;
       onProgress(chars.slice(0, n).join(""), n);
