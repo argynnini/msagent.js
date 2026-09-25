@@ -106,7 +106,9 @@ export class AcsCharacter {
   readonly height: number;
   readonly transparentIndex: number;
   /** 言語 ID (Windows の LANGID) ごとの名前と紹介文 */
-  private readonly localized = new Map<number, { name: string; description: string }>();
+  private readonly localized = new Map<number, { name: string; description: string; extraData: string }>();
+  /** キャラクターファイルの版 (例: "2.1") */
+  readonly version: string;
   /** 吹き出しの見た目と動き */
   readonly balloon: BalloonStyle;
   /**
@@ -144,7 +146,10 @@ export class AcsCharacter {
 
     // --- キャラクター情報 ---
     c.pos = charLoc.offset;
-    c.skip(4); // version
+    // 版: 下位 16 ビットが小さい番号、上位 16 ビットが大きい番号
+    const minor = c.u16();
+    const major = c.u16();
+    this.version = `${major}.${minor}`;
     const localizedLoc = c.location();
     this.guid = c.guid();
     this.width = c.u16();
@@ -302,8 +307,8 @@ export class AcsCharacter {
         const lang = c.u16();
         const name = c.string().trim();
         const description = c.string().trim();
-        c.string(); // extra
-        if (name || description) this.localized.set(lang, { name, description });
+        const extraData = c.string().trim();
+        if (name || description || extraData) this.localized.set(lang, { name, description, extraData });
       }
     } catch {
       // 途中まで読めたものは使う
@@ -334,7 +339,12 @@ export class AcsCharacter {
     return this.pickText("description", language);
   }
 
-  private pickText(key: "name" | "description", language?: Language | readonly Language[]): string | undefined {
+  /** 指定した言語 (省略時はブラウザの言語) の、作者が入れたおまけの文字 (本家の ExtraData)。無ければ近い言語 */
+  getExtraData(language?: Language | readonly Language[]): string | undefined {
+    return this.pickText("extraData", language);
+  }
+
+  private pickText(key: "name" | "description" | "extraData", language?: Language | readonly Language[]): string | undefined {
     const available = [...this.localized].filter(([, v]) => v[key]).map(([id]) => id);
     const id = pickLanguage(available, language);
     return id === undefined ? undefined : this.localized.get(id)![key];

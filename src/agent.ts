@@ -47,6 +47,9 @@ export interface PointerDetail {
 /** 出た・消えた原因 (本家の VisibilityCause と同じ考え方): プログラムから / ユーザーの操作 (右クリックのメニューなど) */
 export type VisibilityCause = "program" | "user";
 
+/** 最後に動いた原因 (本家の MoveCause と同じ考え方): まだ動いていない / ドラッグ / プログラム / 画面の中に戻した */
+export type MoveCause = "none" | "drag" | "moveTo" | "reposition";
+
 /** agent.on() で受け取れるイベントと、その detail */
 export interface AgentEventMap {
   /** キャラクターの絵の部分がクリックされた (左・中・右ボタン。ドラッグの後は来ない) */
@@ -60,7 +63,7 @@ export interface AgentEventMap {
    * 別の場所に移った。by: ドラッグ (ユーザー) / moveTo (プログラム) /
    * reposition (ブラウザの窓が小さくなり、画面の中に戻した。本家の「画面の解像度が変わった」と同じ)
    */
-  move: { x: number; y: number; by: "drag" | "moveTo" | "reposition" };
+  move: { x: number; y: number; by: Exclude<MoveCause, "none"> };
   /** 大きさが変わった (scale / width / height)。width, height は表示の大きさ (px) */
   resize: { width: number; height: number; scale: number };
   /** 出た / 消えた */
@@ -136,6 +139,11 @@ function pickAlternative(text: string): string {
   return alternatives[Math.floor(Math.random() * alternatives.length)]!;
 }
 
+/** 手前に出すときの z-index (出すたびに増やす) と、いちばん手前のキャラクター */
+let zIndexCounter = 1000;
+const nextZIndex = () => ++zIndexCounter;
+let topmost: Agent | undefined;
+
 /** マウスのイベントから、click / dblclick の detail を作る */
 function pointerDetail(e: MouseEvent): PointerDetail {
   const button = e.button === 1 ? "middle" : e.button === 2 ? "right" : "left";
@@ -161,7 +169,8 @@ export class Agent extends EventTarget {
   readonly player: AcsPlayer;
   private readonly balloon: Balloon;
   private readonly speaker: Speaker;
-  private readonly idle: IdleController | undefined;
+  private readonly idle: IdleController;
+  private idleEnabled: boolean;
   /** speak() で声に出すか */
   voice: boolean;
   /** name / description の言語 (BCP 47 か Windows の言語 ID)。undefined ならブラウザの言語 */
@@ -184,6 +193,9 @@ export class Agent extends EventTarget {
   private idling = false;
   /** 開いている右クリックのメニュー */
   private menu: PopupMenu | undefined;
+  /** 最後に動いた・出た / 消えた原因 (本家の MoveCause / VisibilityCause) */
+  private lastMoveCause: MoveCause = "none";
+  private lastVisibilityCause: VisibilityCause | "none" = "none";
   /** stop() / hide() で順番待ちを捨てるたびに増やし、捨てたものの complete を無視する */
   private generation = 0;
   private hidden = true;
@@ -226,14 +238,13 @@ export class Agent extends EventTarget {
     this.speaker = new Speaker(() => this.player);
     (options.container ?? document.body).append(this.element, this.balloon.element);
 
-    if (options.idle ?? true) {
-      this.idle = new IdleController({
-        player: () => this.player,
-        character: () => this.character,
-        busy: () => this.hidden || this.running || this.speaking || this.player.isPaused,
-      });
-      this.idle.start();
-    }
+    this.idle = new IdleController({
+      player: () => this.player,
+      character: () => this.character,
+      busy: () => this.hidden || this.running || this.speaking || this.player.isPaused,
+    });
+    this.idleEnabled = options.idle ?? true;
+    if (this.idleEnabled) this.idle.start();
     let playing: string | undefined;
     this.player.onPlayingChange = (active) => {
       if (active) {
@@ -306,6 +317,7 @@ export class Agent extends EventTarget {
       }
       this.reposition();
       this.resume();
+      this.activate();
       this.emit("show", { cause: "program" });
       const name = fast ? undefined : this.stateAnimation("Showing", ["Show"]);
       if (!name) {
@@ -780,6 +792,120 @@ export class Agent extends EventTarget {
     return this.player.hitTest(clientX, clientY);
   }
 
+  /** 見えているか (本家の Visible と同じ。読むだけ。出す・隠すは show() / hide()) */
+  get visible(): boolean {
+    return !this.hidden;
+  }
+
+  /** 左上の位置 (px、画面の左上から。本家の Left / Top と同じ)。代入すると、アニメーションなしですぐ移る */
+  get left(): number {
+    return this.position.x;
+  }
+
+  set left(x: number) {
+    this.setPosition(x, this.position.y);
+    this.emit("move", { ...this.position, by: "moveTo" });
+  }
+
+  get top(): number {
+    return this.position.y;
+  }
+
+  set top(y: number) {
+    this.setPosition(this.position.x, y);
+    this.emit("move", { ...this.position, by: "moveTo" });
+  }
+
+  /** 最後に動いた原因 (本家の MoveCause と同じ) */
+  get moveCause(): MoveCause {
+    return this.lastMoveCause;
+  }
+
+  /** 最後に出た・消えた原因 (本家の VisibilityCause と同じ。まだ一度も出ていなければ "none") */
+  get visibilityCause(): VisibilityCause | "none" {
+    return this.lastVisibilityCause;
+  }
+
+  /** 待機動作 (Idle 系) を自動で再生するか (本家の IdleOn と同じ)。false にすると、待機状態を自分で扱える */
+  get idleOn(): boolean {
+    return this.idleEnabled;
+  }
+
+  set idleOn(on: boolean) {
+    if (on === this.idleEnabled) return;
+    this.idleEnabled = on;
+    if (on) this.idle.start();
+    else {
+      this.idle.stop();
+      void this.idle.interrupt();
+    }
+  }
+
+  /** 吹き出しが出ているか (本家の Balloon.Visible と同じ) */
+  get balloonVisible(): boolean {
+    return this.balloon.visible;
+  }
+
+  /** 作者が入れたおまけの文字 (本家の ExtraData。language の言語) */
+  get extraData(): string | undefined {
+    return this.character.getExtraData(this.language);
+  }
+
+  /** キャラクターファイルの版 (本家の Version) */
+  get version(): string | undefined {
+    return this.character.version;
+  }
+
+  /** キャラクターの GUID (本家の GUID) */
+  get guid(): string | undefined {
+    return this.character.guid;
+  }
+
+  /** キャラクターファイルのままの大きさ (本家の OriginalWidth / OriginalHeight) */
+  get originalWidth(): number {
+    return this.character.width;
+  }
+
+  get originalHeight(): number {
+    return this.character.height;
+  }
+
+  /** 読み上げの速さ (語/分) と高さ (Hz)。キャラクターファイルの設定 (本家の Speed / Pitch。読むだけ) */
+  get speed(): number | undefined {
+    return this.character.voice.speed;
+  }
+
+  get pitch(): number | undefined {
+    return this.character.voice.pitch;
+  }
+
+  /** 効果音を鳴らすか (本家の SoundEffectsOn。sound と同じ) */
+  get soundEffectsOn(): boolean {
+    return this.sound;
+  }
+
+  set soundEffectsOn(on: boolean) {
+    this.sound = on;
+  }
+
+  /**
+   * いちばん手前に出す (本家の Activate と同じ。複数のキャラクターがいるとき)。
+   * キャラクターを表示したとき・クリックやドラッグしたときも、自動で手前に出る。隠れている間はできず、false を返す
+   */
+  activate(): boolean {
+    if (this.hidden) return false;
+    const z = String(nextZIndex());
+    this.element.style.zIndex = z;
+    this.balloon.element.style.zIndex = z;
+    topmost = this;
+    return true;
+  }
+
+  /** いちばん手前にいるか (本家の Active と同じ考え方) */
+  get active(): boolean {
+    return topmost === this && !this.hidden;
+  }
+
   /**
    * 右クリックのメニューを、画面上の (x, y) に出す (本家の ShowPopupMenu と同じ)。
    * commands に足した項目と、「隠す」が並ぶ。隠れている間は出せず、false を返す
@@ -827,6 +953,7 @@ export class Agent extends EventTarget {
     this.player.stop();
     this.player.onPlayingChange = undefined;
     this.menu?.close();
+    if (topmost === this) topmost = undefined;
     for (const cleanup of this.cleanups) cleanup();
     this.element.remove();
     this.balloon.element.remove();
@@ -845,6 +972,9 @@ export class Agent extends EventTarget {
 
   /** イベントを出す。cancelable で preventDefault() されたら false */
   private emit<K extends keyof AgentEventMap>(type: K, detail: AgentEventMap[K], cancelable = false): boolean {
+    // 最後に動いた・出た / 消えた原因を覚えておく (moveCause / visibilityCause)
+    if (type === "move") this.lastMoveCause = (detail as AgentEventMap["move"]).by;
+    if (type === "show" || type === "hide") this.lastVisibilityCause = (detail as AgentEventMap["show"]).cause;
     return this.dispatchEvent(new CustomEvent(type, { detail, cancelable }));
   }
 
@@ -1090,6 +1220,7 @@ export class Agent extends EventTarget {
         const ev = e as PointerEvent;
         if (ev.button !== 0 || !this.hitTest(ev.clientX, ev.clientY)) return;
         setHit(true);
+        this.activate();
         if (!this.speaking && this.balloon.visible) this.balloon.hide();
         const r = this.element.getBoundingClientRect();
         grab = { dx: ev.clientX - r.left, dy: ev.clientY - r.top, x: ev.clientX, y: ev.clientY };

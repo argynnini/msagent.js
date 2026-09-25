@@ -89,6 +89,10 @@ export interface Character {
   getName(language?: Language | readonly Language[]): string | undefined;
   /** 指定した言語の紹介文 (無ければ近い言語。省略時はブラウザの言語) */
   getDescription(language?: Language | readonly Language[]): string | undefined;
+  /** 作者が入れたおまけの文字 (本家の ExtraData。言語ごと。無ければ undefined) */
+  getExtraData(language?: Language | readonly Language[]): string | undefined;
+  /** キャラクターファイルの版 (本家の Version。例: "2.1"。無ければ undefined) */
+  readonly version: string | undefined;
   /** 吹き出しの見た目 (入っていなければ undefined) */
   readonly balloon: BalloonStyle | undefined;
   readonly animations: Map<string, Animation>;

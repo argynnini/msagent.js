@@ -4,7 +4,7 @@ export default msagent;
 export { msagent, load } from "./load";
 export type { CharacterSource, LoadOptions } from "./load";
 export { Agent, parseCharacter } from "./agent";
-export type { AgentEventListener, AgentEventMap, AgentOptions, HideOptions, PointerDetail, StopType, VisibilityCause } from "./agent";
+export type { AgentEventListener, AgentEventMap, AgentOptions, HideOptions, MoveCause, PointerDetail, StopType, VisibilityCause } from "./agent";
 export { AgentRequest } from "./request";
 export { AgentCommands } from "./commands";
 export type { AgentCommand, CommandOptions } from "./commands";

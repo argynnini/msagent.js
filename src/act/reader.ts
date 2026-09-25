@@ -201,6 +201,13 @@ export class ActCharacter implements Character {
     return this.description;
   }
 
+  /** ACT にはおまけの文字も版も無い */
+  getExtraData(): string | undefined {
+    return undefined;
+  }
+
+  readonly version = undefined;
+
   get imageCount() {
     return this.entries.length;
   }
