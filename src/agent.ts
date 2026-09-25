@@ -73,6 +73,17 @@ const DRAG_THRESHOLD = 3;
 /** 順番待ちの 1 件。終わったら complete を呼ぶ */
 type Task = (complete: () => void) => void;
 
+/** キャラクターから見た向き (画面の左が "Right") */
+type Direction = "Right" | "Up" | "Left" | "Down";
+
+export interface HideOptions {
+  /**
+   * true なら、順番待ちを捨てて、すぐに隠れる (clippy.js と同じ)。
+   * 省略時 (false) は Microsoft Agent と同じく順番待ちに入り、前の命令が終わってから隠れる
+   */
+  immediate?: boolean;
+}
+
 /** play() の timeout の既定値 (clippy.js と同じ) */
 const DEFAULT_TIMEOUT_MS = 5000;
 /** 読み上げが終わってから、吹き出しを閉じるまで (clippy.js と同じ) */
@@ -122,6 +133,8 @@ export class Agent extends EventTarget {
   /** stop() / hide() で順番待ちを捨てるたびに増やし、捨てたものの complete を無視する */
   private generation = 0;
   private hidden = true;
+  /** 登場・退場のアニメーションの途中 (stop() では止めない。本家と同じ) */
+  private transition: "show" | "hide" | undefined;
   /** speak(text, true): 読み終えても吹き出しを閉じず、closeBalloon() まで次へ進まない */
   private hold = false;
   private speechComplete: (() => void) | undefined;
@@ -186,45 +199,70 @@ export class Agent extends EventTarget {
 
   // --- clippy.js と同じ API ---
 
-  /** 登場する。fast なら、アニメーションなしですぐ出す */
+  /**
+   * 登場する。キャラクターの Showing の状態に割り当てられたアニメーション (多くは Show) を再生する。
+   * fast なら、アニメーションなしですぐ出す。Microsoft Agent と同じく順番待ちに入る
+   */
   show(fast?: boolean): boolean {
-    this.hidden = false;
-    this.element.style.display = "block";
-    this.emit("show", {});
-    if (!this.element.style.left) {
-      // clippy.js と同じく、画面の右下寄り (はみ出す分は reposition で戻す)
-      this.element.style.left = `${window.innerWidth * 0.8}px`;
-      this.element.style.top = `${window.innerHeight * 0.8}px`;
-    }
-    this.reposition();
-    this.resume();
-    if (fast) {
-      this.drawRestPose();
-      return true;
-    }
-    if (this.play("Show")) return true;
-    this.drawRestPose();
-    return false;
+    this.addToQueue(async (complete) => {
+      if (!this.hidden) return complete();
+      this.hidden = false;
+      this.element.style.display = "block";
+      if (!this.element.style.left) {
+        // clippy.js と同じく、画面の右下寄り (はみ出す分は reposition で戻す)
+        this.element.style.left = `${window.innerWidth * 0.8}px`;
+        this.element.style.top = `${window.innerHeight * 0.8}px`;
+      }
+      this.reposition();
+      this.resume();
+      this.emit("show", {});
+      const name = fast ? undefined : this.stateAnimation("Showing", ["Show"]);
+      if (!name) {
+        this.drawRestPose();
+        return complete();
+      }
+      this.transition = "show";
+      await this.player.play(name);
+      this.transition = undefined;
+      complete();
+    });
+    return true;
   }
 
-  /** 退場する (Hide を再生してから消す)。fast なら、すぐ消す */
-  hide(fast?: boolean, callback?: () => void): void {
-    this.hidden = true;
-    this.stop();
-    const gen = this.generation;
-    const finish = () => {
-      if (gen !== this.generation || !this.hidden) return; // 退場中に show() された
+  /**
+   * 退場する。キャラクターの Hiding の状態に割り当てられたアニメーション (多くは Hide) を再生してから消す。
+   * fast なら、アニメーションなしですぐ消す。
+   * Microsoft Agent と同じく順番待ちに入り、前の命令が終わってから隠れる。すぐ隠れたいときは { immediate: true }
+   */
+  hide(fast?: boolean, callback?: () => void, options: HideOptions = {}): void {
+    const task: Task = async (complete) => {
+      if (this.hidden) {
+        callback?.();
+        return complete();
+      }
+      this.closeBalloon();
+      const name = fast ? undefined : this.stateAnimation("Hiding", ["Hide"]);
+      if (name) {
+        this.transition = "hide";
+        await this.player.play(name);
+        this.transition = undefined;
+      }
+      this.hidden = true;
       this.player.stop();
       this.canvas.getContext("2d")?.clearRect(0, 0, this.canvas.width, this.canvas.height);
       this.element.style.display = "none";
       this.balloon.hide();
-      this.pause();
       this.emit("hide", {});
       callback?.();
+      complete();
     };
-    const name = findAnimation(this.character, "Hide");
-    if (fast || !name) return finish();
-    void this.player.play(name).then(finish);
+    if (options.immediate) {
+      // clippy.js と同じ: いまの動き (登場・退場の途中でも) と順番待ちを捨てて、すぐ隠れる
+      this.transition = undefined;
+      this.clearQueue();
+      this.closeBalloon();
+    }
+    this.addToQueue(task);
   }
 
   /**
@@ -235,25 +273,35 @@ export class Agent extends EventTarget {
   play(animation: string, timeout = DEFAULT_TIMEOUT_MS, callback?: () => void): boolean {
     const name = findAnimation(this.character, animation);
     if (!name) return false;
-    this.addToQueue((complete) => {
-      const timer = timeout
-        ? window.setTimeout(() => {
-            if (this.player.currentAnimation === name) void this.player.release();
-          }, timeout)
-        : undefined;
-      // Microsoft Agent と同じく、戻りの動きは次のアニメーションの前にする (指した姿勢のまましゃべれる)
-      void this.player.play(name, { hold: true }).then(() => {
-        window.clearTimeout(timer);
-        callback?.();
-        complete();
-      });
-    });
+    this.addToQueue((complete) => this.runPlay(name, timeout, callback, complete));
     return true;
+  }
+
+  /** play() の中身 (順番が来たとき)。隠れている間は描かずに、すぐ終わったことにする (本家は見えないまま再生する) */
+  private runPlay(name: string, timeout: number, callback: (() => void) | undefined, complete: () => void) {
+    if (this.hidden) {
+      callback?.();
+      return complete();
+    }
+    const timer = timeout
+      ? window.setTimeout(() => {
+          if (this.player.currentAnimation === name) void this.player.release();
+        }, timeout)
+      : undefined;
+    // Microsoft Agent と同じく、戻りの動きは次のアニメーションの前にする (指した姿勢のまましゃべれる)
+    void this.player.play(name, { hold: true }).then(() => {
+      window.clearTimeout(timer);
+      callback?.();
+      complete();
+    });
   }
 
   /** 待機動作以外から、アニメーションを 1 つ選んで再生する */
   animate(): boolean {
-    const names = this.animations().filter((n) => !isIdleAnimation(this.character, n) && !NOT_FOR_ANIMATE.test(n));
+    const transitions = new Set([...this.character.stateAnimations("Showing"), ...this.character.stateAnimations("Hiding")]);
+    const names = this.animations().filter(
+      (n) => !isIdleAnimation(this.character, n) && !NOT_FOR_ANIMATE.test(n) && !transitions.has(n),
+    );
     const name = names[Math.floor(Math.random() * names.length)];
     return name !== undefined && this.play(name);
   }
@@ -273,6 +321,8 @@ export class Agent extends EventTarget {
    */
   speak(text: string, hold?: boolean): void {
     this.addToQueue(async (complete) => {
+      // 隠れている間は、吹き出しも声も出せない (本家も隠れたキャラクターは音を出せない)
+      if (this.hidden) return complete();
       // 口の画像が無いコマ (待機動作の終わりなど) では口が動かないので、Microsoft Agent と同じく、
       // しゃべるとき用のアニメーション (Speaking の状態。多くは RestPose) に切り替えてから
       if (!this.player.hasMouth) {
@@ -305,13 +355,13 @@ export class Agent extends EventTarget {
     });
   }
 
-  /** 吹き出しを閉じる (読み上げ中ならやめる) */
   /**
    * 考えごとの吹き出し (雲形) に文を出す (本家の Think と同じ)。声は出さず、口も動かさない。
    * 読み終わるくらいの時間 (文の長さから決める) が過ぎたら次の命令に進み、少しして吹き出しを閉じる
    */
   think(text: string): void {
     this.addToQueue((complete) => {
+      if (this.hidden) return complete();
       window.clearTimeout(this.balloonTimer);
       this.hold = false;
       this.speechComplete = complete;
@@ -329,6 +379,7 @@ export class Agent extends EventTarget {
     });
   }
 
+  /** 吹き出しを閉じる (読み上げ中ならやめる) */
   closeBalloon(): void {
     this.hold = false;
     this.speaker.cancel();
@@ -342,10 +393,23 @@ export class Agent extends EventTarget {
     this.balloon.hide();
   }
 
-  /** (x, y) の方を指す (Gesture〜、無ければ Look〜) */
+  /**
+   * (x, y) の方を指す。キャラクターの Gesturing〜 の状態に割り当てられたアニメーション
+   * (無ければ Gesture〜、Look〜) を再生する。向きは順番が来たときの位置で決める。指す動きが 1 つも無ければ false
+   */
   gestureAt(x: number, y: number): boolean {
-    const d = this.direction(x, y);
-    return this.play(this.hasAnimation(`Gesture${d}`) ? `Gesture${d}` : `Look${d}`);
+    const directions: Direction[] = ["Right", "Up", "Left", "Down"];
+    if (!directions.some((d) => this.gestureAnimation(d))) return false;
+    this.addToQueue((complete) => {
+      const name = this.gestureAnimation(this.direction(x, y));
+      if (!name) return complete();
+      this.runPlay(name, DEFAULT_TIMEOUT_MS, undefined, complete);
+    });
+    return true;
+  }
+
+  private gestureAnimation(d: Direction): string | undefined {
+    return this.stateAnimation(`Gesturing${d}`, [`Gesture${d}`, `Look${d}`]);
   }
 
   /**
@@ -354,12 +418,14 @@ export class Agent extends EventTarget {
    */
   moveTo(x: number, y: number, duration = 1000): void {
     this.addToQueue(async (complete) => {
-      if (duration === 0) {
+      // 隠れている間は、アニメーションなしですぐ移る (本家と同じ)
+      if (duration === 0 || this.hidden) {
         this.setPosition(x, y);
         this.emit("move", { ...this.position, by: "moveTo" });
         return complete();
       }
-      const name = findAnimation(this.character, `Move${this.direction(x, y)}`);
+      const d = this.direction(x, y);
+      const name = this.stateAnimation(`Moving${d}`, [`Move${d}`]);
       if (name) await this.player.play(name, { hold: true });
       await this.slide(x, y, duration);
       this.emit("move", { ...this.position, by: "moveTo" });
@@ -380,8 +446,16 @@ export class Agent extends EventTarget {
     else if (this.hold) this.closeBalloon();
   }
 
-  /** 順番待ちを全部捨て、いまのアニメーションを終わらせ、吹き出しを閉じる */
+  /**
+   * 順番待ちを全部捨て、いまのアニメーションを終わらせ、吹き出しを閉じる。
+   * 登場・退場のアニメーションの途中なら、それは最後まで再生する (本家と同じ)
+   */
   stop(): void {
+    if (this.transition) {
+      this.queue = [];
+      this.closeBalloon();
+      return;
+    }
     this.clearQueue();
     void this.player.release();
     this.closeBalloon();
@@ -530,7 +604,11 @@ export class Agent extends EventTarget {
     return this.dispatchEvent(new CustomEvent(type, { detail, cancelable }));
   }
 
+  /** キャラクターの左上の位置 (隠れている間は、画面上の大きさが無いので、指定された位置) */
   private get position(): { x: number; y: number } {
+    if (this.element.style.display === "none") {
+      return { x: parseFloat(this.element.style.left) || 0, y: parseFloat(this.element.style.top) || 0 };
+    }
     const r = this.element.getBoundingClientRect();
     return { x: r.left, y: r.top };
   }
@@ -573,6 +651,20 @@ export class Agent extends EventTarget {
     complete?.();
   }
 
+  /**
+   * 状態 (Showing / MovingLeft など) に割り当てられたアニメーションから 1 つ選ぶ (複数あればランダム。本家と同じ)。
+   * 割り当てが無ければ、名前の候補から実在するもの
+   */
+  private stateAnimation(state: string, fallbacks: string[]): string | undefined {
+    const assigned = this.character.stateAnimations(state).filter((n) => this.character.animations.has(n));
+    if (assigned.length > 0) return assigned[Math.floor(Math.random() * assigned.length)];
+    for (const name of fallbacks) {
+      const found = findAnimation(this.character, name);
+      if (found) return found;
+    }
+    return undefined;
+  }
+
   /** しゃべるとき用のアニメーション (Speaking の状態、無ければ RestPose)。口の画像があるものだけ */
   private speakingAnimation(): string | undefined {
     const candidates = [...this.character.stateAnimations("Speaking"), "RestPose"];
@@ -581,10 +673,10 @@ export class Agent extends EventTarget {
       .find((n) => n !== undefined && this.character.animations.get(n)!.frames.some((f) => f.overlays.length > 0));
   }
 
-  /** 止まっているときの絵 (RestPose、無ければ Show の最後のコマ) を描く */
+  /** 止まっているときの絵 (RestPose、無ければ登場のアニメーションの最後のコマ) を描く */
   private drawRestPose() {
     const rest = this.character.animations.get(findAnimation(this.character, "RestPose") ?? "");
-    const show = this.character.animations.get(findAnimation(this.character, "Show") ?? "");
+    const show = this.character.animations.get(this.stateAnimation("Showing", ["Show"]) ?? "");
     const frame = rest?.frames[0] ?? show?.frames.at(-1) ?? this.character.animations.values().next().value?.frames[0];
     if (frame) this.player.draw(frame);
   }
@@ -593,7 +685,7 @@ export class Agent extends EventTarget {
    * (x, y) がキャラクターから見てどちらか (clippy.js と同じ判定)。
    * キャラクターの向きで数えるので、画面の左が "Right" になる
    */
-  private direction(x: number, y: number): "Right" | "Up" | "Left" | "Down" {
+  private direction(x: number, y: number): Direction {
     const r = this.element.getBoundingClientRect();
     const a = r.top + r.height / 2 - y;
     const b = r.left + r.width / 2 - x;

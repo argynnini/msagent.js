@@ -62,22 +62,22 @@ const agent = await msagent.load(name); // Promise でも受け取れる
 
 ### Agent
 
-clippy.js と同じく、`play` / `speak` / `think` / `moveTo` / `gestureAt` / `delay` は順番待ちに入り、前のものが終わってから 1 つずつ実行されます。
+`show` / `hide` / `play` / `speak` / `think` / `moveTo` / `gestureAt` / `delay` は順番待ちに入り、前のものが終わってから 1 つずつ実行されます (Microsoft Agent と同じ)。
 
 | メソッド | 動き |
 | --- | --- |
-| `show(fast?)` | 登場する (`Show` を再生)。`fast` なら、すぐ出す |
-| `hide(fast?, callback?)` | 退場する (`Hide` を再生してから消す) |
+| `show(fast?)` | 登場する (Showing の状態のアニメーション。多くは `Show`)。`fast` なら、すぐ出す |
+| `hide(fast?, callback?, { immediate? })` | 退場する (Hiding の状態のアニメーション。多くは `Hide`)。前の命令が終わってから隠れる。`immediate: true` なら順番待ちを捨ててすぐ隠れる (clippy.js と同じ) |
 | `play(name, timeout = 5000, callback?)` | 再生する。`timeout` を過ぎたら、終了分岐で自然に終わらせる。無いアニメーションなら `false` |
 | `animate()` | 待機動作以外から、1 つ選んで再生する |
 | `animations()` / `hasAnimation(name)` | アニメーションの一覧・あるかどうか |
 | `speak(text, hold?)` | 吹き出しでしゃべる。`hold` なら、`closeBalloon()` まで吹き出しを閉じない |
 | `think(text)` | 考えごとの吹き出し (雲形) に出す。声は出さず、口も動かさない (本家の Think と同じ) |
 | `closeBalloon()` | 吹き出しを閉じる |
-| `moveTo(x, y, duration = 1000)` | 移動する (`Move〜` のアニメーションがあれば再生しながら) |
-| `gestureAt(x, y)` | その方向を指す (`Gesture〜`、無ければ `Look〜`) |
+| `moveTo(x, y, duration = 1000)` | 移動する (Moving〜 の状態のアニメーション → 最後のコマのまま移動 → 戻りの動き)。`duration` が 0 か、隠れている間は、すぐ移る |
+| `gestureAt(x, y)` | その方向を指す (Gesturing〜 の状態のアニメーション。無ければ `Gesture〜`、`Look〜`)。指した姿勢は次の動きまで保つ |
 | `delay(ms = 250)` | 次の命令まで待つ |
-| `stopCurrent()` / `stop()` | いまの動きを終わらせる / 順番待ちも全部捨てる |
+| `stopCurrent()` / `stop()` | いまの動きを終わらせる / 順番待ちも全部捨てる (登場・退場の途中なら、それは最後まで) |
 | `pause()` / `resume()` | 一時停止・再開 |
 | `reposition()` | 画面の中に収める |
 
@@ -166,11 +166,19 @@ msagent.load({ name: "Merlin", balloon: { fontFamily: '"Yu Gothic UI", sans-seri
 
 見た目は CSS で変えられます。クラス名は `.msagent` (キャラクター)、`.msagent-balloon` (吹き出し)、`.msagent-tip` (しっぽ)、`.msagent-content` (文) と、吹き出しの向きの `.msagent-top-left` / `.msagent-top-right` / `.msagent-bottom-left` / `.msagent-bottom-right` です。
 
+### 状態 (States)
+
+登場・退場・移動・指す・しゃべる・待機動作では、キャラクターの作者が「状態」(Showing、Hiding、MovingLeft、GesturingLeft、Speaking、IdlingLevel1〜3 など) に割り当てたアニメーションを使います。1 つの状態に複数あれば、毎回ランダムに選びます。割り当てが無ければ、`Show` / `Hide` / `Move〜` / `Gesture〜` などの名前で探します。
+向き (Left / Right) はキャラクターから見た向きなので、画面の左へ動くときは MovingRight になります。
+
+隠れている間も順番待ちは進みます。`play` は描かずにすぐ終わり、`moveTo` はすぐ移り、`speak` / `think` は何も出しません (本家も、隠れたキャラクターは音を出せません)。
+
 ### clippy.js との違い
 
 - 読み込むのは clippy.js 用に変換したファイル (`agent.js` と画像) ではなく、`.acs` / `.act` そのものです。
 - `speak()` は声に出して読み、口も動かします (`voice: false` で声なし)。
 - CSS のクラス名は `.clippy-*` ではなく `.msagent-*` です。
+- `show` / `hide` も順番待ちに入ります (本家と同じ)。clippy.js のように、すぐ隠れたいときは `hide(false, callback, { immediate: true })`。
 - 吹き出しの色や文字は、キャラクターごとの設定になります。
 - イベント (`agent.on()`)、言語ごとの名前・紹介文 (`agent.language`)、考えごとの吹き出し (`think()`) を足しています。
 - 待機動作は、何もしない時間が少し続いてから始まり、放置が長いほど深い動き (居眠りなど) になります。
