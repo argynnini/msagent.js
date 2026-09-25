@@ -369,7 +369,8 @@ voiceButton.onclick = () => {
 visibleButton.onclick = () => {
   if (!agent) return;
   if (toggle(visibleButton)) agent.show();
-  else agent.hide();
+  // ボタンなので、順番待ち (しゃべっている途中など) を待たずに、すぐ隠す
+  else agent.hide(false, undefined, { immediate: true });
 };
 $<HTMLFormElement>("speak").onsubmit = (e) => {
   e.preventDefault();
