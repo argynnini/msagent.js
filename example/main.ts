@@ -84,6 +84,7 @@ function showCharacter(a: Agent, fileName: string) {
   eventList.replaceChildren();
   renderScale(a);
   renderInfo(a);
+  renderBalloonStyle(a);
 
   names = a.animations().sort((x, y) => x.localeCompare(y));
   filter.value = "";
@@ -159,6 +160,50 @@ function renderInfo(a: Agent) {
     }),
   );
 }
+
+// --- 吹き出しの見た目 (agent.balloonStyle) ---
+
+const styleInputs = [...document.querySelectorAll<HTMLInputElement>("#bstyle input")];
+
+/** いまの見た目を、入力欄に入れる */
+function renderBalloonStyle(a: Agent) {
+  const style = a.balloonStyle;
+  for (const input of styleInputs) {
+    const key = input.dataset.key!;
+    if (key === "bold") input.checked = style.fontWeight >= 700;
+    else input.value = String(style[key as keyof typeof style]);
+  }
+}
+
+/** 入力欄の値を、agent.balloonStyle に入れる (キャラクターファイルの設定の上に重なる) */
+function applyBalloonStyle() {
+  if (!agent) return;
+  const style: Record<string, string | number> = {};
+  for (const input of styleInputs) {
+    const key = input.dataset.key!;
+    if (key === "bold") style.fontWeight = input.checked ? 700 : 400;
+    else if (input.type === "number") {
+      if (Number.isFinite(input.valueAsNumber)) style[key] = input.valueAsNumber;
+    } else style[key] = input.value;
+  }
+  agent.balloonStyle = style;
+}
+
+/** 吹き出しが出ていなければ、見本を出す */
+function previewBalloon() {
+  if (agent && !agent.speaking) agent.speak("吹き出しの見た目を変えました。");
+}
+
+for (const input of styleInputs) {
+  input.addEventListener("input", applyBalloonStyle);
+  input.addEventListener("change", previewBalloon);
+}
+$("bstyle-reset").onclick = () => {
+  if (!agent) return;
+  agent.balloonStyle = undefined;
+  renderBalloonStyle(agent);
+  previewBalloon();
+};
 
 function code(text: string) {
   const el = document.createElement("code");

@@ -2,7 +2,7 @@ import { AcsPlayer } from "./acs/player";
 import { AcsCharacter } from "./acs/reader";
 import { ActCharacter, isActFile } from "./act/reader";
 import { Balloon } from "./balloon";
-import type { Character } from "./character";
+import type { BalloonStyle, Character } from "./character";
 import { IdleController, isIdleAnimation } from "./idle";
 import type { Language } from "./language";
 import { Speaker, voiceParams } from "./speak";
@@ -21,7 +21,25 @@ export interface AgentOptions {
   language?: Language | readonly Language[];
   /** 表示の倍率 (既定: 1 = キャラクターファイルのままの大きさ) */
   scale?: number;
+  /** 吹き出しの見た目。キャラクターファイルの設定の上に、指定した項目だけを重ねる (agent.balloonStyle と同じ) */
+  balloon?: Partial<BalloonStyle>;
 }
+
+/**
+ * 吹き出しの見た目の既定値 (キャラクターファイルに設定が無いとき。.act など)。
+ * Office アシスタントの吹き出しと同じ、薄い黄色に黒い縁
+ */
+export const DEFAULT_BALLOON_STYLE: Readonly<BalloonStyle> = {
+  lines: 2,
+  charsPerLine: 28,
+  foreground: "#000000",
+  background: "#ffffe1",
+  border: "#000000",
+  fontFamily: "Microsoft Sans Serif",
+  fontSize: 13,
+  fontWeight: 400,
+  italic: false,
+};
 
 /** agent.on() で受け取れるイベントと、その detail */
 export interface AgentEventMap {
@@ -93,6 +111,8 @@ export class Agent extends EventTarget {
   language: Language | readonly Language[] | undefined;
 
   private currentScale = 1;
+  /** balloonStyle で指定された項目 (キャラクターファイルの設定の上に重ねる) */
+  private balloonOverrides: Partial<BalloonStyle> = {};
   private queue: Task[] = [];
   private running = false;
   /** stop() / hide() で順番待ちを捨てるたびに増やし、捨てたものの complete を無視する */
@@ -120,7 +140,8 @@ export class Agent extends EventTarget {
     this.player.soundEnabled = options.sound ?? true;
     this.voice = options.voice ?? true;
     this.language = options.language;
-    this.balloon = new Balloon(this.element, character.balloon);
+    this.balloonOverrides = { ...options.balloon };
+    this.balloon = new Balloon(this.element, this.balloonStyle);
     this.applyScale(options.scale ?? 1);
     this.speaker = new Speaker(() => this.player);
     (options.container ?? document.body).append(this.element, this.balloon.element);
@@ -368,6 +389,25 @@ export class Agent extends EventTarget {
     this.emit("resize", { width: this.width, height: this.height, scale: value });
   }
 
+  /**
+   * 吹き出しの見た目 (いま使われているもの。キャラクターファイルの設定 + 指定した項目)。
+   * 代入すると、キャラクターファイルの設定の上に、指定した項目だけを重ねる。undefined や {} でファイルの設定に戻す。
+   *
+   * ```js
+   * agent.balloonStyle = { background: "#222", foreground: "#fff", fontSize: 16 };
+   * agent.balloonStyle = { ...agent.balloonStyle, border: "red" }; // 今の見た目に足す
+   * ```
+   */
+  get balloonStyle(): BalloonStyle {
+    const defined = Object.fromEntries(Object.entries(this.balloonOverrides).filter(([, v]) => v !== undefined));
+    return { ...DEFAULT_BALLOON_STYLE, ...this.character.balloon, ...defined };
+  }
+
+  set balloonStyle(style: Partial<BalloonStyle> | undefined) {
+    this.balloonOverrides = { ...style };
+    this.balloon.setStyle(this.balloonStyle);
+  }
+
   /** 表示の幅 (px)。代入すると、縦横の比を保ったまま大きさを変える (本家の Width と同じ) */
   get width(): number {
     return Math.round(this.character.width * this.currentScale);
@@ -394,6 +434,11 @@ export class Agent extends EventTarget {
   /** 紹介文 (language の言語。省略時はブラウザの言語) */
   get description(): string | undefined {
     return this.character.getDescription(this.language);
+  }
+
+  /** しゃべっている途中か (speak(text, true) で吹き出しを出したままのときも true) */
+  get speaking(): boolean {
+    return this.speaker.speaking || this.hold;
   }
 
   /** イベントを受け取る (addEventListener と同じ。detail に中身が入る) */

@@ -58,6 +58,7 @@ const agent = await msagent.load(name); // Promise でも受け取れる
 - `idle`: 待機動作 (既定: `true`)
 - `language`: `name` / `description` の言語 (下の「言語」を参照。既定: ブラウザの言語)
 - `scale`: 表示の倍率 (既定: `1`)
+- `balloon`: 吹き出しの見た目 (下の「見た目」を参照。キャラクターファイルの設定の上に重ねる)
 
 ### Agent
 
@@ -79,7 +80,7 @@ clippy.js と同じく、`play` / `speak` / `moveTo` / `gestureAt` / `delay` は
 | `pause()` / `resume()` | 一時停止・再開 |
 | `reposition()` | 画面の中に収める |
 
-msagent.js で足したもの: `name`、`description`、`language`、`scale` / `width` / `height` (大きさ)、`sound`、`voice`、`on()` / `off()` (イベント)、`hitTest(clientX, clientY)`、`destroy()`、`element`、`canvas`、`character`、`player`
+msagent.js で足したもの: `name`、`description`、`language`、`scale` / `width` / `height` (大きさ)、`balloonStyle` (吹き出しの見た目)、`speaking`、`sound`、`voice`、`on()` / `off()` (イベント)、`hitTest(clientX, clientY)`、`destroy()`、`element`、`canvas`、`character`、`player`
 
 キャラクターはドラッグで動かせ、ダブルクリックで `animate()` します。透明な部分 (キャラクターの周り) は押せず、クリックは下のページにそのまま届きます。
 ### イベント
@@ -142,7 +143,25 @@ agent.character.balloon;  // { background: "#ffffe1", foreground: "#000000", bor
 ### 見た目
 
 吹き出しの色・文字・幅は、キャラクターファイルの設定 (Character Editor で決めたもの) から付きます。
-CSS 変数 `--msagent-balloon-background` / `-foreground` / `-border` / `-font` / `-font-size` / `-width` に入るので、ページの CSS で `.msagent-balloon { background: … }` のように直接指定すれば、そちらが優先されます。
+`agent.balloonStyle` で、その上に好きな項目だけを重ねられます。
+
+```js
+agent.balloonStyle = { background: "#222222", foreground: "#ffffff", fontSize: 16 };
+agent.balloonStyle = { ...agent.balloonStyle, border: "#1e5aa8" }; // 今の見た目に足す
+agent.balloonStyle = undefined;                                  // キャラクターファイルの設定に戻す
+msagent.load({ name: "Merlin", balloon: { fontFamily: '"Yu Gothic UI", sans-serif' } }); // 読み込むときに指定
+```
+
+| 項目 | 内容 |
+| --- | --- |
+| `background` / `foreground` / `border` | 背景・文字・縁の色 (CSS の色) |
+| `fontFamily` / `fontSize` / `fontWeight` / `italic` | 文字 (`fontSize` は px、`fontWeight` は 400 / 700 など) |
+| `charsPerLine` | 1 行の文字数 (吹き出しの幅になる) |
+| `lines` | 行数 (今は使っていない) |
+
+読み出すと、いま使われている見た目 (ファイルの設定 + 重ねた項目) が返ります。設定の無いキャラクター (.act など) は `DEFAULT_BALLOON_STYLE` (薄い黄色に黒い縁) が元になります。
+
+角の丸みや影など、ここに無いものは CSS で指定します (`.msagent-balloon { border-radius: 12px; }` など)。ページの CSS で `background` などを直接指定すると、`balloonStyle` より優先されます。
 
 見た目は CSS で変えられます。クラス名は `.msagent` (キャラクター)、`.msagent-balloon` (吹き出し)、`.msagent-tip` (しっぽ)、`.msagent-content` (文) と、吹き出しの向きの `.msagent-top-left` / `.msagent-top-right` / `.msagent-bottom-left` / `.msagent-bottom-right` です。
 

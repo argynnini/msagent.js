@@ -149,6 +149,12 @@
       .info code { font-size: 11px; }
       .swatch { display: inline-block; width: 11px; height: 11px; margin-right: 3px; border: 1px solid var(--border); border-radius: 3px; vertical-align: -1px; }
       .info[hidden] { display: none; }
+      /* 吹き出しの見た目 (agent.balloonStyle) */
+      .bstyle { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 8px 0 2px; }
+      .bstyle label { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
+      .bstyle input[type="color"] { width: 28px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 5px; background: none; cursor: pointer; }
+      .bstyle input[type="number"] { width: 4.2em; padding: 2px 5px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; font-size: 12px; text-align: right; }
+      .bstyle input[type="checkbox"] { accent-color: var(--accent); }
       /* 言語の切り替え */
       .lang { flex: none; max-width: 120px; padding: 5px 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: inherit; font: inherit; font-size: 12px; }
       .lang[hidden] { display: none; }
@@ -276,6 +282,18 @@
           <details class="info needs-agent" hidden>
             <summary>キャラクターの設定 (agent.character)</summary>
             <dl id="info"></dl>
+          </details>
+          <details class="info needs-agent" hidden>
+            <summary>吹き出しの見た目 (agent.balloonStyle)</summary>
+            <div class="bstyle" id="bstyle">
+              <label>背景 <input type="color" data-key="background" /></label>
+              <label>文字 <input type="color" data-key="foreground" /></label>
+              <label>縁 <input type="color" data-key="border" /></label>
+              <label>大きさ <input type="number" data-key="fontSize" min="8" max="40" step="1" />px</label>
+              <label>1 行 <input type="number" data-key="charsPerLine" min="8" max="80" step="1" />文字</label>
+              <label><input type="checkbox" data-key="bold" /> 太字</label>
+              <button id="bstyle-reset" class="btn small" type="button" title="agent.balloonStyle = undefined">ファイルの設定に戻す</button>
+            </div>
           </details>
           <div class="events needs-agent" hidden>
             <div class="events-head"><span>イベント (agent.on)</span><span>新しい順</span></div>

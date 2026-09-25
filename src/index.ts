@@ -3,7 +3,7 @@ import { msagent } from "./load";
 export default msagent;
 export { msagent, load } from "./load";
 export type { CharacterSource, LoadOptions } from "./load";
-export { Agent, parseCharacter } from "./agent";
+export { Agent, DEFAULT_BALLOON_STYLE, parseCharacter } from "./agent";
 export type { AgentEventListener, AgentEventMap, AgentOptions } from "./agent";
 export type { BalloonStyle, Character, VoiceSettings } from "./character";
 export { defaultLanguages, languageTag, pickLanguage } from "./language";
