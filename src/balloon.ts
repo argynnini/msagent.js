@@ -6,6 +6,8 @@ const SIDES: Side[] = ["top-left", "top-right", "bottom-left", "bottom-right"];
 
 /** 吹き出しのしっぽの大きさの分だけ、キャラクターから離す */
 const TIP_GAP = 8;
+/** 考えごとの吹き出しは、しっぽの代わりの丸 2 つの分だけ、もっと離す (CSS の .msagent-think と合わせる) */
+const THINK_GAP = 24;
 /** しっぽの中心から、吹き出しの端までの距離 (CSS の .msagent-tip の位置と合わせる) */
 const TIP_INSET = 30;
 
@@ -16,6 +18,7 @@ export class Balloon {
   readonly element: HTMLDivElement;
   private readonly content: HTMLDivElement;
   private side: Side | undefined;
+  private thinking = false;
 
   constructor(
     private readonly target: HTMLElement,
@@ -54,6 +57,13 @@ export class Balloon {
     this.reposition();
   }
 
+  /** 考えごとの吹き出し (雲形。しっぽの代わりに小さな丸) にするか */
+  setThink(think: boolean) {
+    this.thinking = think;
+    this.element.classList.toggle("msagent-think", think);
+    this.reposition();
+  }
+
   get visible(): boolean {
     return this.element.style.display !== "none";
   }
@@ -67,9 +77,18 @@ export class Balloon {
     this.element.style.display = "none";
   }
 
+  /** いま出している文 */
+  get text(): string {
+    return this.content.textContent ?? "";
+  }
+
   setText(text: string) {
     this.content.textContent = text;
     if (this.visible) this.reposition();
+  }
+
+  private get gap(): number {
+    return this.thinking ? THINK_GAP : TIP_GAP;
   }
 
   /** キャラクターの周りで、画面からはみ出さない向きに置く (どこもはみ出すなら、最初の向きで画面内に寄せる) */
@@ -83,7 +102,7 @@ export class Balloon {
     const cx = a.left + a.width / 2;
     const place = (side: Side) => ({
       left: side.endsWith("left") ? cx - w + TIP_INSET : cx - TIP_INSET,
-      top: side.startsWith("top") ? a.top - h - TIP_GAP : a.bottom + TIP_GAP,
+      top: side.startsWith("top") ? a.top - h - this.gap : a.bottom + this.gap,
     });
     const fits = ({ left, top }: { left: number; top: number }) => left >= 0 && top >= 0 && left + w <= vw && top + h <= vh;
     const side = SIDES.find((s) => fits(place(s))) ?? SIDES[0]!;

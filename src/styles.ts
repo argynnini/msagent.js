@@ -33,6 +33,19 @@ const CSS = `
   bottom: 100%; margin-bottom: -6px; border-bottom-color: transparent; border-right-color: transparent;
 }
 .msagent-top-left .msagent-tip, .msagent-bottom-left .msagent-tip { right: 24px; }
+/* 考えごとの吹き出し (think): 角を大きく丸め、しっぽの代わりに小さな丸を 2 つ、キャラクターの方へ並べる */
+.msagent-balloon.msagent-think { border-radius: 18px; }
+.msagent-balloon.msagent-think .msagent-tip {
+  width: 11px; height: 11px; border: inherit; border-radius: 50%; transform: none;
+}
+.msagent-balloon.msagent-think .msagent-tip::after {
+  content: ""; position: absolute; width: 6px; height: 6px; box-sizing: border-box;
+  background: inherit; border: inherit; border-radius: 50%;
+}
+.msagent-balloon.msagent-think.msagent-top-left .msagent-tip, .msagent-balloon.msagent-think.msagent-top-right .msagent-tip { margin-top: 3px; }
+.msagent-balloon.msagent-think.msagent-bottom-left .msagent-tip, .msagent-balloon.msagent-think.msagent-bottom-right .msagent-tip { margin-bottom: 3px; }
+.msagent-think.msagent-top-left .msagent-tip::after, .msagent-think.msagent-top-right .msagent-tip::after { top: 12px; left: 4px; }
+.msagent-think.msagent-bottom-left .msagent-tip::after, .msagent-think.msagent-bottom-right .msagent-tip::after { bottom: 12px; left: 4px; }
 .msagent-top-right .msagent-tip, .msagent-bottom-right .msagent-tip { left: 24px; }
 `;
 

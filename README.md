@@ -62,7 +62,7 @@ const agent = await msagent.load(name); // Promise でも受け取れる
 
 ### Agent
 
-clippy.js と同じく、`play` / `speak` / `moveTo` / `gestureAt` / `delay` は順番待ちに入り、前のものが終わってから 1 つずつ実行されます。
+clippy.js と同じく、`play` / `speak` / `think` / `moveTo` / `gestureAt` / `delay` は順番待ちに入り、前のものが終わってから 1 つずつ実行されます。
 
 | メソッド | 動き |
 | --- | --- |
@@ -72,6 +72,7 @@ clippy.js と同じく、`play` / `speak` / `moveTo` / `gestureAt` / `delay` は
 | `animate()` | 待機動作以外から、1 つ選んで再生する |
 | `animations()` / `hasAnimation(name)` | アニメーションの一覧・あるかどうか |
 | `speak(text, hold?)` | 吹き出しでしゃべる。`hold` なら、`closeBalloon()` まで吹き出しを閉じない |
+| `think(text)` | 考えごとの吹き出し (雲形) に出す。声は出さず、口も動かさない (本家の Think と同じ) |
 | `closeBalloon()` | 吹き出しを閉じる |
 | `moveTo(x, y, duration = 1000)` | 移動する (`Move〜` のアニメーションがあれば再生しながら) |
 | `gestureAt(x, y)` | その方向を指す (`Gesture〜`、無ければ `Look〜`) |
@@ -100,7 +101,7 @@ agent.on("animationend", (e) => console.log(e.detail.name));
 | `move` | ドラッグか `moveTo()` で移った | `x`, `y`, `by` (`"drag"` / `"moveTo"`) |
 | `show` / `hide` | 出た / 消えた | なし |
 | `animationstart` / `animationend` | アニメーションが始まった / 終わった | `name`, `idle` (待機動作か) |
-| `speakstart` / `speakend` | しゃべり始めた / 終えた (途中でやめたときも) | `text` |
+| `speakstart` / `speakend` | しゃべり始めた / 終えた (途中でやめたときも。`think()` でも来る) | `text`, `thought` (`think()` か) |
 | `resize` | 大きさが変わった | `width`, `height`, `scale` |
 
 ### 言語
@@ -171,7 +172,7 @@ msagent.load({ name: "Merlin", balloon: { fontFamily: '"Yu Gothic UI", sans-seri
 - `speak()` は声に出して読み、口も動かします (`voice: false` で声なし)。
 - CSS のクラス名は `.clippy-*` ではなく `.msagent-*` です。
 - 吹き出しの色や文字は、キャラクターごとの設定になります。
-- イベント (`agent.on()`) と、言語ごとの名前・紹介文 (`agent.language`) を足しています。
+- イベント (`agent.on()`)、言語ごとの名前・紹介文 (`agent.language`)、考えごとの吹き出し (`think()`) を足しています。
 - 待機動作は、何もしない時間が少し続いてから始まり、放置が長いほど深い動き (居眠りなど) になります。
 
 ## 注意

@@ -259,6 +259,7 @@
           <form id="speak" class="speak needs-agent" hidden>
             <input id="text" class="text-input" type="text" maxlength="500" placeholder="しゃべらせたい言葉 (空欄のままなら自己紹介)" aria-label="しゃべらせたい言葉" autocomplete="off" />
             <button class="btn primary" type="submit" title="agent.speak()">🗣 話す</button>
+            <button id="think" class="btn" type="button" title="agent.think() (考えごとの吹き出し。声は出さない)">💭 考える</button>
           </form>
           <div class="actions needs-agent" hidden>
             <span>クリックで</span>
@@ -355,6 +356,7 @@ msagent.load(<span class="s">"Merlin"</span>, (agent) =&gt; {   <span class="c">
             <li><code>play(name, timeout, cb)</code><span>アニメーションを再生</span></li>
             <li><code>animate()</code><span>待機動作以外から 1 つ選んで再生</span></li>
             <li><code>speak(text, hold)</code><span>吹き出しでしゃべる (読み上げ + 口パク)</span></li>
+            <li><code>think(text)</code><span>考えごとの吹き出し (声は出さない)</span></li>
             <li><code>moveTo(x, y, duration)</code><span>移動前の動き → 移動 → 移動後の動き</span></li>
             <li><code>gestureAt(x, y)</code><span>指した姿勢を、次の動きまで保つ</span></li>
             <li><code>stop()</code> / <code>stopCurrent()</code><span>順番待ちを捨てる / いまの動きを終わらせる</span></li>

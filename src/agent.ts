@@ -60,9 +60,9 @@ export interface AgentEventMap {
   /** アニメーションが始まった / 終わった (idle: 待機動作か) */
   animationstart: { name: string; idle: boolean };
   animationend: { name: string; idle: boolean };
-  /** しゃべり始めた / しゃべり終えた (途中でやめたときも来る) */
-  speakstart: { text: string };
-  speakend: { text: string };
+  /** しゃべり始めた / しゃべり終えた (途中でやめたときも来る)。thought: think() の考えごとか */
+  speakstart: { text: string; thought: boolean };
+  speakend: { text: string; thought: boolean };
 }
 
 export type AgentEventListener<K extends keyof AgentEventMap> = (event: CustomEvent<AgentEventMap[K]>) => void;
@@ -77,6 +77,10 @@ type Task = (complete: () => void) => void;
 const DEFAULT_TIMEOUT_MS = 5000;
 /** 読み上げが終わってから、吹き出しを閉じるまで (clippy.js と同じ) */
 const CLOSE_BALLOON_DELAY_MS = 2000;
+/** think() で文を出しておく時間: 1 文字あたりと、最短・最長 (読み終わるくらい) */
+const THINK_MS_PER_CHAR = 60;
+const THINK_MIN_MS = 1500;
+const THINK_MAX_MS = 10000;
 /** animate() で選ばないもの (待機動作のほかに、登場・退場など) */
 const NOT_FOR_ANIMATE = /^(Show|Hide|RestPose)$/i;
 
@@ -122,6 +126,8 @@ export class Agent extends EventTarget {
   private hold = false;
   private speechComplete: (() => void) | undefined;
   private balloonTimer: number | undefined;
+  /** think() の文を出しておく時間のタイマー (過ぎたら次の命令へ) */
+  private thinkTimer: number | undefined;
   private destroyed = false;
   private readonly cleanups: (() => void)[] = [];
 
@@ -150,7 +156,7 @@ export class Agent extends EventTarget {
       this.idle = new IdleController({
         player: () => this.player,
         character: () => this.character,
-        busy: () => this.hidden || this.running || this.speaker.speaking || this.hold || this.player.isPaused,
+        busy: () => this.hidden || this.running || this.speaking || this.player.isPaused,
       });
       this.idle.start();
     }
@@ -278,7 +284,8 @@ export class Agent extends EventTarget {
       window.clearTimeout(this.balloonTimer);
       this.hold = !!hold;
       this.speechComplete = complete;
-      this.emit("speakstart", { text });
+      this.emit("speakstart", { text, thought: false });
+      this.balloon.setThink(false);
       this.balloon.setText("");
       this.balloon.show();
       this.speaker.speak(
@@ -286,7 +293,7 @@ export class Agent extends EventTarget {
         {
           onProgress: (shown) => this.balloon.setText(shown),
           onEnd: () => {
-            this.emit("speakend", { text });
+            this.emit("speakend", { text, thought: false });
             if (this.hold) return;
             this.completeSpeech();
             this.balloonTimer = window.setTimeout(() => this.balloon.hide(), CLOSE_BALLOON_DELAY_MS);
@@ -299,9 +306,37 @@ export class Agent extends EventTarget {
   }
 
   /** 吹き出しを閉じる (読み上げ中ならやめる) */
+  /**
+   * 考えごとの吹き出し (雲形) に文を出す (本家の Think と同じ)。声は出さず、口も動かさない。
+   * 読み終わるくらいの時間 (文の長さから決める) が過ぎたら次の命令に進み、少しして吹き出しを閉じる
+   */
+  think(text: string): void {
+    this.addToQueue((complete) => {
+      window.clearTimeout(this.balloonTimer);
+      this.hold = false;
+      this.speechComplete = complete;
+      this.emit("speakstart", { text, thought: true });
+      this.balloon.setThink(true);
+      this.balloon.setText(text);
+      this.balloon.show();
+      const ms = Math.min(THINK_MAX_MS, Math.max(THINK_MIN_MS, [...text].length * THINK_MS_PER_CHAR));
+      this.thinkTimer = window.setTimeout(() => {
+        this.thinkTimer = undefined;
+        this.emit("speakend", { text, thought: true });
+        this.completeSpeech();
+        this.balloonTimer = window.setTimeout(() => this.balloon.hide(), CLOSE_BALLOON_DELAY_MS);
+      }, ms);
+    });
+  }
+
   closeBalloon(): void {
     this.hold = false;
     this.speaker.cancel();
+    if (this.thinkTimer !== undefined) {
+      window.clearTimeout(this.thinkTimer);
+      this.thinkTimer = undefined;
+      this.emit("speakend", { text: this.balloon.text, thought: true });
+    }
     this.completeSpeech();
     window.clearTimeout(this.balloonTimer);
     this.balloon.hide();
@@ -438,7 +473,7 @@ export class Agent extends EventTarget {
 
   /** しゃべっている途中か (speak(text, true) で吹き出しを出したままのときも true) */
   get speaking(): boolean {
-    return this.speaker.speaking || this.hold;
+    return this.speaker.speaking || this.hold || this.thinkTimer !== undefined;
   }
 
   /** イベントを受け取る (addEventListener と同じ。detail に中身が入る) */

@@ -354,6 +354,9 @@ function selfIntroduction(a: Agent): string {
   if (description) return description;
   return `こんにちは、${a.name ?? (nameLabel.dataset.file ?? "").replace(/\.ac[st]$/i, "")}です。`;
 }
+$("think").onclick = () => {
+  agent?.think($<HTMLInputElement>("text").value.trim() || "うーん、何をお手伝いしようかな…");
+};
 $("animate").onclick = () => agent?.animate();
 $("stop").onclick = () => agent?.stop();
 filter.oninput = renderList;
