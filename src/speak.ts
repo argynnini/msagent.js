@@ -34,7 +34,7 @@ export interface SpeakHandlers {
 }
 
 /** ひらがな・カタカナ・漢字・半角カナを含めば日本語として読む */
-const hasJapanese = (text: string) => /[぀-ヿ㐀-鿿ｦ-ﾟ]/.test(text);
+const hasJapanese = (text: string) => /[\u3040-\u30ff\u3400-\u9fff\uff66-\uff9f]/.test(text); // ひらがな・カタカナ・漢字・半角カナ
 
 /**
  * 吹き出しの文を、.lwv の単語の時刻に合わせて出すための区切り (単語 i を出したときの文)。
@@ -51,7 +51,7 @@ function wordSteps(text: string, words: readonly LwvWord[]): { at: number; shown
 /** charIndex から始まる単語の長さ (charLength を教えてくれない音声のため) */
 function wordLength(text: string, start: number): number {
   const rest = text.slice(start);
-  const end = rest.search(/[\s、。，．,.!?！？]/);
+  const end = rest.search(/[\s\u3001\u3002\uff0c\uff0e,.!?\uff01\uff1f]/); // 空白と句読点 (、。，．！？ など)
   return end < 0 ? rest.length : end + 1;
 }
 

@@ -35,14 +35,14 @@ export class GrammarError extends Error {
 }
 
 /** カタカナをひらがなにする */
-const toHiragana = (s: string) => s.replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
+const toHiragana = (s: string) => s.replace(/[\u30a1-\u30f6]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
 
 /**
  * 照らし合わせるための形にする: 全角半角をそろえ (NFKC)、小文字・ひらがなにし、記号を除いて、空白を 1 つにする
  */
 export function normalizeSpeech(text: string): string {
   return toHiragana(text.normalize("NFKC").toLowerCase())
-    .replace(/[​']/g, "")
+    .replace(/[\u200b']/g, "") // ゼロ幅スペースとアポストロフィ
     .replace(/[\p{P}\p{S}]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -51,7 +51,7 @@ export function normalizeSpeech(text: string): string {
 function tokenize(grammar: string): string[] {
   const tokens: string[] = [];
   const re = /\.\.\.|[()[\]|*+]|[^\s()[\]|*+]+/g;
-  for (const m of grammar.replace(/​/g, " ").matchAll(re)) {
+  for (const m of grammar.replace(/\u200b/g, " ").matchAll(re)) {
     // 言葉の途中の ... (例: "wait...") は、言葉と ... に分ける
     const t = m[0];
     const dots = t.indexOf("...");

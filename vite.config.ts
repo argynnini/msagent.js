@@ -5,6 +5,8 @@ import { defineConfig } from "vite";
 export default defineConfig(({ mode }) => {
   const global = mode === "global";
   return {
+    // 出力を ASCII だけにする (日本語は \uXXXX)。ページが Shift_JIS などでも、<script> で読み込める
+    esbuild: { charset: "ascii" },
     build: {
       outDir: resolve(__dirname, "dist"),
       emptyOutDir: !global,

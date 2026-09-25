@@ -27,7 +27,7 @@ const KANA_VOWELS: [string, string][] = [
 const KANA_VOWEL = new Map<string, string>(KANA_VOWELS.flatMap(([v, chars]) => [...chars].map((c): [string, string] => [c, v])));
 /** 前の拍と合わさって 1 拍になる小さい文字 (きゃ・しゅ など) */
 const SMALL_KANA = "ゃゅょぁぃぅぇぉゎ";
-const PAUSE_CHAR = /[\s、。，．,.!?！？…・「」『』（）()]/;
+const PAUSE_CHAR = /[\s\u3001\u3002\uff0c\uff0e,.!?\uff01\uff1f\u2026\u30fb\u300c\u300d\u300e\u300f\uff08\uff09()]/; // 空白・句読点・かっこ (、。！？…・「」『』（） など)
 
 /** カタカナをひらがなに (口の形を決めるだけなので、細かい違いは気にしない) */
 const toHiragana = (c: string) => {
