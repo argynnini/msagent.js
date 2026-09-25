@@ -259,7 +259,8 @@
           <form id="speak" class="speak needs-agent" hidden>
             <input id="text" class="text-input" type="text" maxlength="500" placeholder="しゃべらせたい言葉 (空欄のままなら自己紹介)" aria-label="しゃべらせたい言葉" autocomplete="off" />
             <button class="btn primary" type="submit" title="agent.speak()">🗣 話す</button>
-            <button id="think" class="btn" type="button" title="agent.think() (考えごとの吹き出し。声は出さない)">💭 考える</button>
+            <button id="think" class="btn" type="button" title="agent.think() (考えごとの吹き出し。声は出さない。空欄のままなら自己紹介)">💭 考える</button>
+            <button id="listen" class="btn" type="button" aria-pressed="false" title="agent.listen(true) (声のコマンドを 10 秒聞く。「こんにちは」「自己紹介して」「手を振って」「おまかせ」「考えて」「隠れて」)">🎤 聞く</button>
           </form>
           <div class="actions needs-agent" hidden>
             <span>クリックで</span>

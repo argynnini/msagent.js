@@ -49,7 +49,6 @@ function open(file: File) {
       placeOnStage(a);
       a.show();
       toggle(visibleButton, true);
-      a.speak(`${a.name ?? "キャラクター"}です。ドラッグで動かせます。ダブルクリックすると、何か動きます。`);
       showCharacter(a, file.name);
     },
     failCb: (error) => {
@@ -252,17 +251,26 @@ langSelect.onchange = () => {
   renderName(agent, nameLabel.dataset.file ?? "");
 };
 
+/** 時間に合わせたあいさつ */
+function greeting(): string {
+  const h = new Date().getHours();
+  return h < 10 ? "おはようございます！" : h < 18 ? "こんにちは！" : "こんばんは！";
+}
+
 /** 右クリックのメニューに項目を足す (agent.commands) */
 function addCommands(a: Agent) {
-  a.commands.add("animate", "おまかせの動き(&A)");
-  a.commands.add("intro", "自己紹介(&I)");
-  a.commands.add("think", "考える(&T)");
-  a.commands.add("wave", "手を振る(&W)", { enabled: a.hasAnimation("Wave") });
+  // voice: 声で選ぶときの言葉 (「🎤 聞く」のあとに言う)
+  a.commands.add("hello", "あいさつ(&G)", { voice: "[...] (こんにちは | こんばんは | おはよう | hello | hi) [...]" });
+  a.commands.add("animate", "おまかせの動き(&A)", { voice: "[...] (おまかせ | なにか して | 何か して | animate) [...]" });
+  a.commands.add("intro", "自己紹介(&I)", { voice: "[...] (自己紹介 | じこしょうかい | introduce yourself | who are you) [...]" });
+  a.commands.add("think", "考える(&T)", { voice: "[...] (考えて | かんがえて | think) [...]" });
+  a.commands.add("wave", "手を振る(&W)", { enabled: a.hasAnimation("Wave"), voice: "[...] (手を振って | てをふって | wave) [...]" });
   a.commands.defaultCommand = "intro";
   a.on("command", (e) => {
-    if (e.detail.name === "animate") a.animate();
+    if (e.detail.name === "hello") a.speak(greeting());
+    else if (e.detail.name === "animate") a.animate();
     else if (e.detail.name === "intro") a.speak(selfIntroduction(a));
-    else if (e.detail.name === "think") a.think("うーん、何をお手伝いしようかな…");
+    else if (e.detail.name === "think") a.think(selfIntroduction(a));
     else if (e.detail.name === "wave") a.play("Wave");
   });
 }
@@ -273,7 +281,11 @@ function watchEvents(a: Agent) {
     "click", "dblclick", "dragstart", "dragend", "move", "resize", "show", "hide",
     "animationstart", "animationend", "speakstart", "speakend", "bookmark",
     "requeststart", "requestcomplete", "balloonshow", "balloonhide", "idlestart", "idlecomplete", "command",
+    "listenstart", "listencomplete",
   ];
+  // 聞いている間は「🎤 聞く」を押した見た目にする
+  a.on("listenstart", () => toggle($("listen"), true));
+  a.on("listencomplete", () => toggle($("listen"), false));
   for (const type of types) {
     a.on(type, (e) => {
       const detail = { ...(e.detail as object) } as Record<string, unknown>;
@@ -384,8 +396,13 @@ function selfIntroduction(a: Agent): string {
   if (description) return description;
   return `こんにちは、${a.name ?? (nameLabel.dataset.file ?? "").replace(/\.ac[st]$/i, "")}です。`;
 }
+$("listen").onclick = () => {
+  if (!agent) return;
+  if (agent.listening) agent.listen(false);
+  else if (!agent.listen(true)) agent.speak("このブラウザでは音声認識が使えません (Chrome・Edge・Safari で試してください)");
+};
 $("think").onclick = () => {
-  agent?.think($<HTMLInputElement>("text").value.trim() || "うーん、何をお手伝いしようかな…");
+  if (agent) agent.think($<HTMLInputElement>("text").value.trim() || selfIntroduction(agent));
 };
 $("animate").onclick = () => agent?.animate();
 $("stop").onclick = () => agent?.stop();
