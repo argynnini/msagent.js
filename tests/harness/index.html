@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>msagent.js test harness</title>
+  </head>
+  <body>
+    <!-- 押し比べ用 (キャラクターの下に置いて、透明な部分のクリックが届くか確かめる) -->
+    <button id="under" style="position: fixed; left: 0; top: 0; width: 1px; height: 1px">under</button>
+    <script type="module">
+      import * as M from "../../src/index.ts";
+      window.M = M;
+      // テストから、名前でキャラクターを読む (/characters/<名前> の中身は、テストが返す)
+      window.loadAgent = (name, options = {}) =>
+        M.default.load({ name: `/characters/${name}`, voice: false, idle: false, ...options });
+      window.ready = true;
+    </script>
+  </body>
+</html>

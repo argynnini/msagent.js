@@ -275,4 +275,27 @@ msagent.load({ name: "Merlin", balloon: { fontFamily: '"Yu Gothic UI", sans-seri
 npm install
 npm run dev     # example/ のデモ (キャラクターファイルを選んで試す)
 npm run build   # dist/ に ESM・<script> 用・型定義を出力
+npm test        # テスト (下を参照)
 ```
+
+### テスト
+
+[Playwright](https://playwright.dev/) で、次の 3 つに分けて確かめます。
+
+| 種類 | 中身 |
+| --- | --- |
+| `unit` | ブラウザを使わないもの (制御タグの解析・言語の選び方・声の選び方・口の形・命令の順番待ち・キャラクターファイルの読み込み) |
+| `browser` | テスト用のページ (`tests/harness`) でキャラクターを動かす (状態・命令・しゃべる・考える・吹き出し・マウス・メニュー・大きさ・待機動作など) |
+| `demo` | `example` のデモのページを操作する |
+
+キャラクターファイルは同梱していないので、置き場所を環境変数 `MSAGENT_CHARACTERS` に書きます (複数なら Windows は `;`、Mac / Linux は `:` で区切る)。使うのは `Merlin.acs`・`finfin.acs`・`CLIPPIT.ACS`・`ROCKY.act`・`dolphin.act` で、無いファイルを使うテストは飛ばします。
+
+```sh
+# Windows (PowerShell)
+$env:MSAGENT_CHARACTERS = "C:\agents;C:\Users\me\Downloads"; npm test
+# Mac / Linux
+MSAGENT_CHARACTERS=~/agents npm test
+npm run test:unit   # ブラウザを使わないものだけ (速い)
+```
+
+ブラウザは、インストール済みの Chrome を使います (`PW_CHANNEL=msedge` などで変えられる。Playwright のブラウザを使うときは `npx playwright install chromium` の後に `PW_CHANNEL=chromium`)。
