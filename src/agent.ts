@@ -97,6 +97,15 @@ export interface HideOptions {
   immediate?: boolean;
 }
 
+/** stop() / stopAll() / stopCurrent() の設定 */
+export interface StopOptions {
+  /**
+   * true なら、アニメーションを終わりの動き (終了分岐) をせずに、その場で切り、止まっているときの絵に戻す。
+   * 省略時 (false) は、本家と同じく終わりの動きをたどって自然に終わらせる
+   */
+  immediate?: boolean;
+}
+
 /** stopAll() で選べる種類 (本家の StopAll と同じ。play には gestureAt、speak には think も含む) */
 export type StopType = "play" | "speak" | "move";
 
@@ -549,37 +558,41 @@ export class Agent extends EventTarget {
     return queue ? this.enqueue("get", task) : this.queue.runNow("get", task);
   }
 
-  /** いまのアニメーションを、終了分岐で自然に終わらせる (しゃべっている途中なら、読み終えたら吹き出しを閉じる) */
-  stopCurrent(): void {
-    void this.player.release();
+  /**
+   * いまのアニメーションを、終了分岐で自然に終わらせる (しゃべっている途中なら、読み終えたら吹き出しを閉じる)。
+   * { immediate: true } なら、アニメーションをその場で切る
+   */
+  stopCurrent(options: StopOptions = {}): void {
+    this.endAnimation(options);
     this.talk.stopCurrent();
   }
 
   /**
    * 順番待ちを全部捨て、いまのアニメーションを終わらせ、吹き出しを閉じる。
    * 登場・退場のアニメーションの途中なら、それは最後まで再生する (本家と同じ)。
-   * request を渡すと、その命令だけを止める (実行中なら終わらせて次へ、順番待ちなら取り除く)
+   * request を渡すと、その命令だけを止める (実行中なら終わらせて次へ、順番待ちなら取り除く)。
+   * { immediate: true } なら、アニメーションを終わりの動きをせずに、その場で切る
    */
-  stop(request?: AgentRequest): void {
-    if (request) return this.stopRequest(request);
+  stop(request?: AgentRequest, options: StopOptions = {}): void {
+    if (request) return this.stopRequest(request, options);
     if (this.transition) {
       this.queue.drop(() => true);
       this.talk.close();
       return;
     }
     this.queue.clear();
-    void this.player.release();
+    this.endAnimation(options);
     this.talk.close();
   }
 
   /**
    * 命令を種類ごとに止める (本家の StopAll と同じ)。types: "play" (play / gestureAt) / "speak" (speak / think) / "move" (moveTo)。
-   * 省略すると、登場・退場の途中も含めて、全部止める
+   * 省略すると、登場・退場の途中も含めて、全部止める。{ immediate: true } なら、アニメーションをその場で切る
    */
-  stopAll(types?: StopType | readonly StopType[]): void {
+  stopAll(types?: StopType | readonly StopType[], options: StopOptions = {}): void {
     if (types === undefined) {
       this.transition = undefined;
-      this.stop();
+      this.stop(undefined, options);
       return;
     }
     const wanted = new Set(Array.isArray(types) ? types : [types as StopType]);
@@ -589,7 +602,7 @@ export class Agent extends EventTarget {
     };
     this.queue.drop(matches);
     const current = this.queue.current;
-    if (current && matches(current)) this.interruptCurrent();
+    if (current && matches(current)) this.interruptCurrent(options);
   }
 
   /** アニメーションを一時停止する */
@@ -973,7 +986,8 @@ export class Agent extends EventTarget {
       const name = fast ? undefined : stateAnimation(this.character, "Hiding", ["Hide"]);
       if (name) await this.playTransition("hide", name);
       this.hidden = true;
-      this.player.stop();
+      // 退場のアニメーションの効果音は最後まで鳴らす (アニメーションなしで隠れたなら、前の動きの音を止める)
+      this.player.stop({ keepSounds: name !== undefined });
       this.canvas.getContext("2d")?.clearRect(0, 0, this.canvas.width, this.canvas.height);
       this.element.style.display = "none";
       this.balloon.hide();
@@ -1066,22 +1080,29 @@ export class Agent extends EventTarget {
   }
 
   /** 命令を 1 つだけ止める: 実行中なら終わらせて次へ、順番待ちなら取り除く */
-  private stopRequest(request: AgentRequest) {
-    if (request.agent !== this) return request.agent.stop(request);
+  private stopRequest(request: AgentRequest, options: StopOptions) {
+    if (request.agent !== this) return request.agent.stop(request, options);
     if (request.done) return;
-    if (this.queue.current === request) this.interruptCurrent();
+    if (this.queue.current === request) this.interruptCurrent(options);
     else this.queue.drop((r) => r === request);
   }
 
   /**
    * 実行中の命令を終わらせて、次の命令へ進める (本家の Interrupt と同じ。順番待ちは捨てない)。
-   * アニメーションは終了分岐で自然に終わらせ、しゃべり・考えごとは途中でやめ、待ちはすぐやめる
+   * アニメーションは終了分岐で自然に終わらせ ({ immediate: true } ならその場で切り)、しゃべり・考えごとは途中でやめ、待ちはすぐやめる
    */
-  private interruptCurrent() {
+  private interruptCurrent(options: StopOptions = {}) {
     this.queue.interruptCurrent(() => {
-      void this.player.release();
+      this.endAnimation(options);
       if (this.speaking) this.talk.close();
     });
+  }
+
+  /** いまのアニメーションを終わらせる: 終了分岐で自然に、または (immediate) その場で切って止まっているときの絵に戻す */
+  private endAnimation({ immediate = false }: StopOptions) {
+    if (!immediate) return void this.player.release();
+    this.player.stop();
+    if (!this.hidden) this.drawRestPose();
   }
 
   // --- 内部: イベント・アニメーション ---

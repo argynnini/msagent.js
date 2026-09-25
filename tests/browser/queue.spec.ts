@@ -169,3 +169,19 @@ test("raiseRequestErrors: 失敗した命令は await で AgentRequestError、�
     interrupted: "interrupted", // 止められたのは例外にしない (本家と同じ)
   });
 });
+
+test("stop(request, { immediate: true }): 終わりの動きをせずに、その場で切る", async ({ harness }) => {
+  const r = await harness.evaluate(async () => {
+    const a = await window.loadAgent("Merlin.acs");
+    await a.show(true);
+    const loop = a.play("Processing", 0) as ReturnType<typeof a.show>;
+    await new Promise((res) => setTimeout(res, 500));
+    const t0 = performance.now();
+    a.stop(loop, { immediate: true });
+    const status = await loop;
+    return { status, ms: performance.now() - t0, playing: a.player.requestedAnimation ?? null };
+  });
+  expect(r.status).toBe("interrupted");
+  expect(r.ms).toBeLessThan(50);
+  expect(r.playing).toBeNull();
+});

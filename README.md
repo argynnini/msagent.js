@@ -82,13 +82,15 @@ const agent = await msagent.load(name); // Promise でも受け取れる
 | `gestureAt(x, y)` | その方向を指す (Gesturing〜 の状態のアニメーション。無ければ `Gesture〜`、`Look〜`)。指した姿勢は次の動きまで保つ |
 | `delay(ms = 250)` | 次の命令まで待つ |
 | `get(type, name, queue = true)` | 先に取り寄せる (本家の Get と同じ)。`type` は `"animation"` / `"state"` / `"wavefile"`、`name` はカンマ区切りで複数。ファイルは丸ごと読み込み済みなので、アニメーション・状態はあるかを確かめるだけ (無ければ `failed`)。`"wavefile"` は URL を読み込んでおく (`speak(text, { url })` が速くなる)。`queue` が `false` なら順番待ちに入らない |
-| `stopCurrent()` / `stop(request?)` | いまの動きを終わらせる / 順番待ちも全部捨てる (登場・退場の途中なら、それは最後まで)。`request` を渡すと、その命令だけ止める |
-| `stopAll(types?)` | 種類ごとに止める (`"play"` / `"speak"` / `"move"`。省略すると登場・退場の途中も含めて全部) |
+| `stopCurrent(options?)` / `stop(request?, options?)` | いまの動きを終わらせる / 順番待ちも全部捨てる (登場・退場の途中なら、それは最後まで)。`request` を渡すと、その命令だけ止める |
+| `stopAll(types?, options?)` | 種類ごとに止める (`"play"` / `"speak"` / `"move"`。省略すると登場・退場の途中も含めて全部) |
 | `wait(request)` | 別のキャラクターの命令が終わるまで待つ (2 体の掛け合い) |
 | `interrupt(request)` | 順番が来たら、別のキャラクターの命令を止める |
 | `pause()` / `resume()` | 一時停止・再開 |
 | `reposition()` | 画面の中に収める |
 | `listen(on)` | 声のコマンドを聞く (下の「音声認識」を参照)。`true` なら 10 秒聞き、1 つ言い終えたらやめる。`false` ならやめる。音声認識が使えなければ `false` |
+
+止めたアニメーションは、本家と同じく終わりの動き (終了分岐) をたどって自然に終わります。`{ immediate: true }` を渡すと、終わりの動きをせずにその場で切り、止まっているときの絵に戻します (例: `agent.stop(request, { immediate: true })`)。アニメーションを止めると、そのアニメーションの効果音も止まります (退場のアニメーションの音は、隠れた後も最後まで鳴らします)。
 
 本家のプロパティ: `visible`、`left` / `top`、`idleOn`、`moveCause`、`visibilityCause`、`balloonVisible` (`false` を代入すると閉じる。しゃべっている途中なら読み終えてから。`true` なら最後の文をもう一度出す)、`extraData`、`version`、`guid`、`originalWidth` / `originalHeight`、`speed` / `pitch`、`soundEffectsOn`、`listening`、`srStatus` (音声入力が使えるか)、`listeningKey`、`listeningTip`、`helpModeOn` / `helpContextId` (下の「ヘルプモード」)、`commandsWindow` (音声コマンドの窓)、`raiseRequestErrors`、`activate()` / `active` (いちばん手前に出す。表示・クリック・ドラッグでも手前に出る)
 

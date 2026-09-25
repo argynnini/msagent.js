@@ -30,6 +30,8 @@ export class AcsPlayer {
   soundEnabled = true;
   private audioCtx: AudioContext | undefined;
   private readonly buffers = new Map<number, AudioBuffer | null>();
+  /** 鳴っている効果音 (アニメーションを止めたら止める) */
+  private readonly sounds = new Set<AudioBufferSourceNode>();
   private timer: number | undefined;
   /** 次のフレームへ進む処理 (pause() 中は、resume() まで取っておく) */
   private pendingStep: (() => void) | undefined;
@@ -106,7 +108,12 @@ export class AcsPlayer {
     this.onPlayingChange?.(v);
   }
 
-  stop() {
+  /**
+   * 再生をやめる (いまのコマのまま止まる)。鳴っている効果音も止める
+   * (待機動作の途中で hide したときなどに、前のアニメーションの音が残らないように)。keepSounds なら、音は最後まで鳴らす
+   */
+  stop(options: { keepSounds?: boolean } = {}) {
+    if (!options.keepSounds) this.stopSounds();
     this.requested = undefined;
     this.setCurrent(undefined);
     this.setActive(false);
@@ -276,7 +283,7 @@ export class AcsPlayer {
           this.draw(frame);
           last = index;
         }
-        if (frame.soundIndex >= 0) void this.playSound(frame.soundIndex);
+        if (frame.soundIndex >= 0) void this.playSound(frame.soundIndex, token);
         const next = this.nextIndex(frame, index);
         this.schedule(() => step(next), timed ? Math.max(frame.duration, 10) : 0);
       };
@@ -315,11 +322,13 @@ export class AcsPlayer {
     return this.audioCtx;
   }
 
-  private async playSound(index: number) {
+  /** 効果音を鳴らす (token: 鳴らしたアニメーション。止められていれば鳴らさない) */
+  private async playSound(index: number, token: number) {
     if (!this.soundEnabled || !audioOutput.soundEffects) return;
     this.audioCtx ??= new AudioContext();
     const ctx = this.audioCtx;
     if (ctx.state === "suspended") await ctx.resume().catch(() => undefined);
+    if (token !== this.token) return;
     let decoded = this.buffers.get(index);
     if (decoded === undefined) {
       const wav = this.character.getSound(index);
@@ -334,7 +343,23 @@ export class AcsPlayer {
     const src = ctx.createBufferSource();
     src.buffer = decoded;
     src.connect(ctx.destination);
+    // アニメーションを止めたら音も止めるので、鳴っている間は覚えておく
+    this.sounds.add(src);
+    src.onended = () => this.sounds.delete(src);
     src.start();
+  }
+
+  /** 鳴っている効果音を止める */
+  private stopSounds() {
+    for (const src of this.sounds) {
+      src.onended = null;
+      try {
+        src.stop();
+      } catch {
+        // もう止まっている
+      }
+    }
+    this.sounds.clear();
   }
 
   private sprite(index: number): HTMLCanvasElement {

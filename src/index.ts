@@ -25,8 +25,9 @@ export type {
   PointerDetail,
   SpeakOptions,
   SrStatus,
-  ThinkOptions,
+  StopOptions,
   StopType,
+  ThinkOptions,
   VisibilityCause,
 } from "./agent";
 export { AgentRequest, AgentRequestError, RequestError } from "./request";

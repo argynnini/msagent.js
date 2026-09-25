@@ -179,3 +179,31 @@ test("指した姿勢を次の動きまで保ち、次の動きの前に戻り�
   });
   expect(r).toEqual({ holding: true, firstIsReturn: true });
 });
+
+test("hide やほかのアニメーションを始めると、前のアニメーションの効果音を止める", async ({ harness }) => {
+  requireCharacters(CHARACTERS.merlin);
+  const r = await harness.evaluate(async () => {
+    const log: string[] = [];
+    const start = AudioBufferSourceNode.prototype.start;
+    const stop = AudioBufferSourceNode.prototype.stop;
+    AudioBufferSourceNode.prototype.start = function (...args) {
+      log.push("start");
+      return start.apply(this, args);
+    };
+    AudioBufferSourceNode.prototype.stop = function (...args) {
+      log.push("stop");
+      return stop.apply(this, args);
+    };
+    const a = await window.loadAgent("Merlin.acs");
+    await a.show(true);
+    // 最初のコマで効果音を鳴らすアニメーション
+    const name = [...a.character.animations].find(([, anim]) => anim.frames[0]!.soundIndex >= 0)![0];
+    a.play(name);
+    while (!log.includes("start")) await new Promise((res) => setTimeout(res, 20));
+    // 鳴っている途中で隠れる (待機動作の途中で hide したときと同じく、いまの動きを捨てて隠れる)
+    await a.hide(false, undefined, { immediate: true });
+    return { name, log };
+  });
+  // 前の動きの音は止め (退場のアニメーションを始めるとき)、退場のアニメーションの音は最後まで鳴らす
+  expect(r.log).toEqual(["start", "stop", "start"]);
+});
