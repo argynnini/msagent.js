@@ -327,7 +327,10 @@ $("copy").onclick = async (e) => {
 document.addEventListener("click", (e) => {
   if (!agent || !pressed(visibleButton)) return;
   const target = e.target as Element;
-  if (target.closest("a, button, input, label, .seg, pre, .msagent, .msagent-balloon")) return;
+  // 操作するもの (リンク・ボタン・入力欄・選択肢など) と、プレイヤーの操作パネル (ステージ以外) は除く
+  const controls = "a, button, input, select, option, textarea, label, summary, details, pre, [contenteditable]";
+  const panels = ".player > :not(.stage)";
+  if (target.closest(`${controls}, ${panels}, .msagent, .msagent-balloon`)) return;
   const mode = document.querySelector<HTMLInputElement>('input[name="click"]:checked')?.value;
   if (mode === "none") return;
   showMarker(e.clientX, e.clientY);
