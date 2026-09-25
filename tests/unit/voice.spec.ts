@@ -54,5 +54,8 @@ test("口の形: かなは母音から、ん・っは閉じる、小さいかな
 test("音の大きさから口の形を決める", () => {
   expect(mouthForLevel(0)).toBe(MOUTH_CLOSED);
   expect(mouthForLevel(0.03)).toBe(1);
+  // 本家と同じく、大きいほど 0 → 1 → 2 → 3 → 4
+  expect(mouthForLevel(0.07)).toBe(2);
+  expect(mouthForLevel(0.15)).toBe(3);
   expect(mouthForLevel(0.5)).toBe(4);
 });

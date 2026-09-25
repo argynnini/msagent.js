@@ -1,5 +1,6 @@
 import type { AcsPlayer } from "./acs/player";
-import { MORA_MS, MOUTH_CLOSED, PAUSE_MS, mouthForLevel, mouthSteps, randomVowelMouth, stepsDuration, type MouthStep } from "./mouth";
+import { ipaAt, LWV_MOUTH_RATE, type LwvInfo, type LwvWord } from "./lwv";
+import { MORA_MS, MOUTH_CLOSED, PAUSE_MS, mouthForIpa, mouthForLevel, mouthSteps, randomVowelMouth, stepsDuration, type MouthStep } from "./mouth";
 import { paceText } from "./pace";
 import { bookmarkNotifier, parseSpeechTags, shownText, type SpeechPart } from "./tags";
 import { pickVoice, type SpeakParams } from "./voice";
@@ -34,6 +35,18 @@ export interface SpeakHandlers {
 
 /** ひらがな・カタカナ・漢字・半角カナを含めば日本語として読む */
 const hasJapanese = (text: string) => /[぀-ヿ㐀-鿿ｦ-ﾟ]/.test(text);
+
+/**
+ * 吹き出しの文を、.lwv の単語の時刻に合わせて出すための区切り (単語 i を出したときの文)。
+ * 文の単語の数が .lwv の単語の数と合わなければ undefined (そのときは音の長さに合わせて少しずつ出す)
+ */
+function wordSteps(text: string, words: readonly LwvWord[]): { at: number; shown: string }[] | undefined {
+  const tokens = text.match(/\S+\s*/g) ?? [];
+  if (words.length === 0 || tokens.length !== words.length) return undefined;
+  const lead = text.length - text.trimStart().length;
+  let shown = text.slice(0, lead);
+  return words.map((w, i) => ({ at: w.start, shown: (shown += tokens[i]!).trimEnd() }));
+}
 
 /** charIndex から始まる単語の長さ (charLength を教えてくれない音声のため) */
 function wordLength(text: string, start: number): number {
@@ -97,7 +110,8 @@ export class Speaker {
 
   /**
    * 音声ファイル (デコード済み) でしゃべる (本家の Speak の Url と同じ)。音の大きさに合わせて口を動かし、
-   * 吹き出しの文 (parts。目印も含めてよい) は、音の長さに合わせて少しずつ出す。volume が 0 なら音は出さず、口だけ動かす
+   * 吹き出しの文 (parts。目印も含めてよい) は、音の長さに合わせて少しずつ出す。volume が 0 なら音は出さず、口だけ動かす。
+   * lwv (.lwv の単語と音素) があれば、口は音素から決め (1 秒に 30 回。本家と同じ)、吹き出しの文は単語の時刻に合わせて出す
    */
   speakAudio(
     audio: AudioBuffer,
@@ -105,6 +119,7 @@ export class Speaker {
     parts: readonly SpeechPart[],
     handlers: SpeakHandlers,
     volume = 1,
+    lwv?: LwvInfo,
   ) {
     const run = this.begin(parts, { handlers, synth: undefined, lang: "", gender: undefined });
     if (context.state === "suspended") void context.resume().catch(() => undefined);
@@ -120,22 +135,36 @@ export class Speaker {
     gain.connect(context.destination);
     this.source = source;
 
-    // 吹き出し: 音の長さに合わせて文字を出し、通り過ぎた目印を知らせる
+    // 吹き出し: 単語の時刻 (.lwv) か、音の長さに合わせて文字を出し、通り過ぎた目印を知らせる
     const notifyBookmarks = bookmarkNotifier(parts, (id) => run.handlers.onBookmark?.(id));
-    this.stopPace = paceText(this.text, audio.duration * 1000, (shown, count) => {
+    const show = (shown: string) => {
       if (this.run !== run) return;
       run.handlers.onProgress(shown);
-      notifyBookmarks(count);
-    });
-    // 口: 音の大きさ (RMS) で開き方を決める
+      notifyBookmarks([...shown].length);
+    };
+    const words = lwv && wordSteps(this.text, lwv.words);
+    if (!words) this.stopPace = paceText(this.text, audio.duration * 1000, show);
+    let wordIndex = 0;
+    // 口: 音素 (.lwv) があればそこから、無ければ音の大きさ (RMS) で開き方を決める
+    const phonemes = lwv?.phonemes.length ? lwv.phonemes : undefined;
     const samples = new Float32Array(analyser.fftSize);
+    let mouth: number = MOUTH_CLOSED;
+    let startedAt = 0;
     const tick = () => {
       if (this.run !== run) return;
-      analyser.getFloatTimeDomainData(samples);
-      let sum = 0;
-      for (const v of samples) sum += v * v;
-      this.player()?.setMouth(mouthForLevel(Math.sqrt(sum / samples.length)));
-      this.mouthTimer = window.setTimeout(tick, LEVEL_TICK_MS);
+      const t = context.currentTime - startedAt;
+      while (words && wordIndex < words.length && words[wordIndex]!.at <= t) show(words[wordIndex++]!.shown);
+      if (phonemes) {
+        // 表に無い音は、口の形を変えない
+        mouth = mouthForIpa(ipaAt(phonemes, t)) ?? mouth;
+      } else {
+        analyser.getFloatTimeDomainData(samples);
+        let sum = 0;
+        for (const v of samples) sum += v * v;
+        mouth = mouthForLevel(Math.sqrt(sum / samples.length));
+      }
+      this.player()?.setMouth(mouth);
+      this.mouthTimer = window.setTimeout(tick, phonemes ? 1000 / LWV_MOUTH_RATE : LEVEL_TICK_MS);
     };
     source.onended = () => {
       if (this.run !== run) return;
@@ -143,6 +172,7 @@ export class Speaker {
       this.finish();
     };
     source.start();
+    startedAt = context.currentTime;
     tick();
   }
 

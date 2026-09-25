@@ -1,4 +1,5 @@
 import { CHARACTERS, requireCharacters } from "../characters";
+import { makeLwv } from "../lwv";
 import { expect, makeWav, test } from "./fixtures";
 
 // 文の中の \ は、JavaScript の文字列では "\\" と書く
@@ -240,4 +241,32 @@ test("balloonVisible の代入: false は読み終えてから閉じ、true は�
     stays: true,
     closed: false,
   });
+});
+
+test(".lwv でしゃべる: 口は音素から、吹き出しは単語の時刻に合わせて出す。文が空ならファイルの単語", async ({ harness }) => {
+  const r = await harness.evaluate(async (lwv) => {
+    const a = await window.loadAgent("Merlin.acs");
+    a.moveTo(100, 100, 0);
+    await a.show(true);
+    const mouths: number[] = [];
+    const setMouth = a.player.setMouth.bind(a.player);
+    a.player.setMouth = (m) => (m !== undefined && mouths.at(-1) !== m && mouths.push(m), setMouth(m));
+    const content = document.querySelector(".msagent-content")!;
+    const seen: string[] = [];
+    new MutationObserver(() => seen.at(-1) !== content.textContent && seen.push(content.textContent!)).observe(content, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+    const status = await a.speak("", { url: new Uint8Array(lwv).buffer });
+    return { status, mouths, seen };
+  }, makeLwv(makeWav(1.2, 0), 0x0409, [[0, 0.4, "ah"], [0.4, 0.8, "oo"], [0.8, 1.2, "mm"]], [
+    [0, 0.4, "0x0061"], // a → 4
+    [0.4, 0.8, "0x0075"], // u → 6
+    [0.8, 1.2, "0x006D"], // m → 0
+  ]));
+  expect(r.status).toBe("complete");
+  // 音は無音なので、音の大きさではなく音素で口が動く
+  expect(r.mouths).toEqual([4, 6, 0]);
+  expect(r.seen.filter(Boolean)).toEqual(["ah", "ah oo", "ah oo mm"]);
 });

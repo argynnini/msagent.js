@@ -77,11 +77,34 @@ export function mouthSteps(text: string, moraMs: number, pauseMs = 0): MouthStep
 /** 口の動きの並びの長さ (ms) */
 export const stepsDuration = (steps: readonly MouthStep[]) => steps.reduce((sum, [, ms]) => sum + ms, 0);
 
-/** 音の大きさ (RMS、0〜1) から口の形を決める (音声ファイルでしゃべるとき) */
+/**
+ * 音の大きさ (RMS、0〜1) から口の形を決める (音声ファイルでしゃべるとき)。
+ * 本家 (mslwvtts.dll) と同じく、大きいほど 0 → 1 → 2 → 3 → 4 と開く
+ */
 export function mouthForLevel(rms: number): number {
   if (rms < 0.02) return MOUTH_CLOSED;
   if (rms < 0.05) return 1;
-  if (rms < 0.1) return 5;
-  if (rms < 0.18) return 2;
+  if (rms < 0.1) return 2;
+  if (rms < 0.18) return 3;
   return 4;
 }
+
+/**
+ * IPA (国際音声記号) の 1 文字ごとの口の形。本家の Microsoft Agent 2.0 (AgentDpv.dll) の表と同じ (空白と _ は無音)。
+ * 0 閉じる, 1〜4 大きく開く (段階), 5 中くらい, 6 すぼめる
+ */
+const IPA_MOUTH_GROUPS: readonly string[] = [
+  " _bmpɓɸʘβ",
+  "finvɨɩɪɯɱʇʋ",
+  "cdeklqstzðŋɖɗɘɟɡɢɬɭɮɲɳɺɽɾɿʂʈʐʔʗʣʥʦʨθ",
+  "jxçɑəɛɠɣɥɧɰɴʀʁʆʌʎʓχ",
+  "ahæħɜɦʕʖ",
+  "œɒɔɕɚɝɞɤɫɶɹɻʃʄʅʑʒʤʧ",
+  "oruwyøɵɷɼʉʊʍʏ",
+];
+const IPA_MOUTH = new Map<number, number>(
+  IPA_MOUTH_GROUPS.flatMap((chars, shape) => [...chars].map((c): [number, number] => [c.codePointAt(0)!, shape])),
+);
+
+/** IPA の 1 文字 (コードポイント) の口の形。表に無ければ undefined */
+export const mouthForIpa = (code: number): number | undefined => IPA_MOUTH.get(code);

@@ -3,6 +3,7 @@ import { speakingAnimation } from "./animations";
 import type { Balloon } from "./balloon";
 import type { BalloonStyle, Character } from "./character";
 import type { Emit } from "./events";
+import { readLwv, type LwvInfo } from "./lwv";
 import { paceText } from "./pace";
 import type { Task } from "./queue";
 import { RequestError } from "./request";
@@ -68,11 +69,15 @@ export class Talk {
    */
   async speak(text: string, hold: boolean, url: string | URL | Blob | ArrayBuffer | undefined, complete: Complete, isStale: () => boolean) {
     const { player } = this.host;
-    // 音声ファイルでしゃべるときは、先に読み込んでおく
+    // 音声ファイルでしゃべるときは、先に読み込んでおく (.lwv なら、単語と音素も)
     let audio: AudioBuffer | undefined;
+    let lwv: LwvInfo | undefined;
     if (url !== undefined) {
       try {
-        audio = await player.audioContext().decodeAudioData(await readAudio(url));
+        const data = await readAudio(url);
+        // decodeAudioData は data を使えなくするので、先に読む
+        lwv = readLwv(data);
+        audio = await player.audioContext().decodeAudioData(data);
       } catch (e) {
         return complete("failed", `音声ファイルを読み込めません: ${e instanceof Error ? e.message : String(e)}`, RequestError.invalidSound);
       }
@@ -87,6 +92,8 @@ export class Talk {
     }
     // \Lst\ だけなら、直前の発言を繰り返す (目印は繰り返さない。本家と同じ)
     let said = text;
+    // 文が無ければ、.lwv の単語を吹き出しに出す (本家と同じ)
+    if (!said.trim() && lwv?.words.length) said = lwv.words.map((w) => w.text).join(" ");
     if (isRepeatTag(said)) {
       if (this.lastSpoken === undefined) return complete();
       said = removeBookmarks(this.lastSpoken);
@@ -120,7 +127,7 @@ export class Talk {
         this.finish();
       },
     };
-    if (audio) this.host.speaker.speakAudio(audio, player.audioContext(), parts, handlers, this.host.voice() ? 1 : 0);
+    if (audio) this.host.speaker.speakAudio(audio, player.audioContext(), parts, handlers, this.host.voice() ? 1 : 0, lwv);
     else this.host.speaker.speak(parts, handlers, params, this.host.voice());
   }
 
