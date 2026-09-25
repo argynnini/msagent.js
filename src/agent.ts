@@ -488,8 +488,18 @@ export class Agent extends EventTarget {
       }
       const d = this.direction(x, y);
       const name = stateAnimation(this.character, `Moving${d}`, [`Move${d}`]);
+      // stop() で捨てられたら (request.done)、その場でやめる。続けると、次の命令 (例: 別の場所への moveTo) と
+      // 位置を取り合い、着いたときの戻りの動きで次の命令の移動のアニメーションを止めてしまう (歩かずに滑る)
+      const dropped = () => {
+        if (!request.done) return false;
+        // 次の命令が無ければ、移動の姿勢のまま固まらないよう、戻りの動きだけ再生する
+        if (name && !this.queue.current) void this.player.playReturn();
+        return true;
+      };
       if (name) await this.player.play(name, { hold: true });
+      if (dropped()) return;
       await this.slide(x, y, duration, request);
+      if (dropped()) return;
       this.emit("move", { ...this.position, by: "moveTo" });
       if (name) await this.player.playReturn();
       complete();
@@ -1385,7 +1395,7 @@ export class Agent extends EventTarget {
     const start = performance.now();
     return new Promise((resolve) => {
       const frame = (now: number) => {
-        if (request?.interruptRequested) return resolve();
+        if (request?.interruptRequested || request?.done) return resolve();
         const t = Math.min(1, (now - start) / duration);
         this.setPosition(r.left + (x - r.left) * t, r.top + (y - r.top) * t);
         if (t < 1 && !this.destroyed) requestAnimationFrame(frame);

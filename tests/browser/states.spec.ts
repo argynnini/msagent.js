@@ -207,3 +207,75 @@ test("hide やほかのアニメーションを始めると、前のアニメー
   // 前の動きの音は止め (退場のアニメーションを始めるとき)、退場のアニメーションの音は最後まで鳴らす
   expect(r.log).toEqual(["start", "stop", "start"]);
 });
+
+test("移動の途中で stop() して別の場所へ moveTo すると、前の移動はやめ、新しい移動は歩いて (移動のアニメーションで) 進む", async ({ harness }) => {
+  requireCharacters(CHARACTERS.finfin);
+  const r = await harness.evaluate(async () => {
+    const a = await window.loadAgent("finfin.acs");
+    a.moveTo(700, 400, 0);
+    await a.show(true);
+    a.moveTo(100, 400, 800);
+    await new Promise((res) => setTimeout(res, 700)); // 移動の途中
+    const log: string[] = [];
+    a.on("animationstart", (e) => log.push(e.detail.name));
+    // 描いたコマと、そのときの位置 (動いている途中は、移動のコマのままか)
+    const owner = new Map<object, string>();
+    for (const [n, anim] of a.character.animations) for (const f of anim.frames) owner.set(f, n);
+    const drawn: [string, number][] = [];
+    const draw = a.player.draw.bind(a.player);
+    a.player.draw = (f) => (drawn.push([owner.get(f) ?? "?", a.left]), draw(f));
+    a.stop();
+    const from = a.left;
+    await a.moveTo(1000, 400, 800);
+    // 動き出す直前に描いたコマと、動いている途中に描いたコマ (移動のコマのまま動くなら、途中は描き直さない)
+    const posed = drawn.filter(([, x]) => x === from).at(-1)?.[0];
+    const slid = [...new Set(drawn.filter(([, x]) => x > from && x < 1000).map(([n]) => n))];
+    return { from, log, posed, slid, end: [a.left, a.top] };
+  });
+  expect(r.from).toBeGreaterThan(100); // stop() で止まった (前の移動は着いていない)
+  // 前の移動の戻り → 新しい移動 → その戻り。前の移動の戻りが、新しい移動の途中に割り込まない
+  expect(r.log).toEqual(["MoveRightReturn", "MoveLeft", "MoveLeftReturn"]);
+  expect(r.posed).toBe("MoveLeft"); // 移動のアニメーションの最後のコマのまま動き出し、
+  expect(r.slid.filter((n) => n !== "MoveLeft")).toEqual([]); // 途中でほかの絵 (前の移動の戻りなど) にならない
+  expect(r.end).toEqual([1000, 400]);
+});
+
+test("移動の途中で stop() すると、その場で止まり、戻りの動きで元の姿勢に戻る", async ({ harness }) => {
+  requireCharacters(CHARACTERS.finfin);
+  const r = await harness.evaluate(async () => {
+    const a = await window.loadAgent("finfin.acs");
+    a.moveTo(700, 400, 0);
+    await a.show(true);
+    const log: string[] = [];
+    a.on("animationstart", (e) => log.push(e.detail.name));
+    a.moveTo(100, 400, 800);
+    await new Promise((res) => setTimeout(res, 700));
+    a.stop();
+    const stoppedAt = a.left;
+    await new Promise((res) => setTimeout(res, 1500));
+    return { stoppedAt, left: a.left, log, holding: a.player.isHolding };
+  });
+  expect(r.left).toBe(r.stoppedAt);
+  expect(r.left).toBeGreaterThan(100);
+  expect(r.log).toEqual(["MoveRight", "MoveRightReturn"]);
+  expect(r.holding).toBe(false);
+});
+
+test("最後のコマの絵が空 (0x0) のアニメーションは、止まっているときの絵で終わる (フィンフィンの MoveLeftReturn)", async ({ harness }) => {
+  requireCharacters(CHARACTERS.finfin);
+  const r = await harness.evaluate(async () => {
+    const a = await window.loadAgent("finfin.acs");
+    a.moveTo(100, 400, 0);
+    await a.show(true);
+    let last: object | undefined;
+    const draw = a.player.draw.bind(a.player);
+    a.player.draw = (f) => ((last = f), draw(f));
+    await a.moveTo(700, 400, 300); // 画面の右へ = MoveLeft → MoveLeftReturn
+    const ret = a.character.animations.get("MoveLeftReturn")!;
+    return {
+      emptyLast: (a.player as unknown as { sprite(i: number): HTMLCanvasElement }).sprite(ret.frames.at(-1)!.images[0]!.imageIndex).width === 0,
+      rest: last === a.character.animations.get("RestPose")!.frames[0],
+    };
+  });
+  expect(r).toEqual({ emptyLast: true, rest: true });
+});

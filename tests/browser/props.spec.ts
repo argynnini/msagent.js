@@ -126,3 +126,13 @@ test("待機状態: 何もしないと idlestart、次の命令で idlecomplete�
   expect(r.log).toEqual(["idlestart", "idlecomplete"]);
   expect(r.bIdle).toBe(0);
 });
+
+test("load: 設定をまとめて渡したときも、後ろの引数のコールバックを呼ぶ", async ({ harness }) => {
+  const r = await harness.evaluate(
+    () =>
+      new Promise<string>((resolve) => {
+        window.M.default.load({ name: "/characters/Merlin.acs", voice: false, idle: false }, (agent) => resolve(agent.name ?? ""));
+      }),
+  );
+  expect(r).toBeTruthy();
+});

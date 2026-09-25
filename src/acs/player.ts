@@ -2,6 +2,7 @@ import { audioOutput } from "../audio";
 import { decodeWav } from "./wav";
 import type { Character } from "../character";
 import type { Animation, Frame } from "./reader";
+import { restFrame } from "../animations";
 
 /**
  * 描画の色空間。ACS の色は、Windows (GDI) では、色の変換なしで、そのまま画面に出る (本家 = VSTO 版の見た目)。
@@ -278,13 +279,18 @@ export class AcsPlayer {
         if (this.releasing && ++releasedSteps > anim.frames.length * 3) return resolve();
         // 画像なし・0 秒のフレームは、描かずにすぐ次へ (ACT の分岐・効果音の命令。描くと一瞬消えてちらつく)
         const timed = frame.images.length > 0 || frame.duration > 0;
-        // 未使用の画像 (0x0) だけのコマは、前の絵のまま待つ (例: フィンフィンの MoveLeftReturn の最後。描くと消えてしまう)
+        const next = this.nextIndex(frame, index);
+        // 未使用の画像 (0x0) だけのコマは、描くと消えてしまうので描かない。途中なら前の絵のまま待ち、
+        // アニメーションの最後なら止まっているときの絵にする (例: フィンフィンの MoveLeftReturn の最後。
+        // 前の絵のままだと、着地の途中の姿勢で止まって見える)
         if (timed && !this.onlyPlaceholders(frame)) {
           this.draw(frame);
           last = index;
+        } else if (timed && !anim.frames[next]) {
+          const rest = restFrame(this.character);
+          if (rest && !this.onlyPlaceholders(rest)) this.draw(rest);
         }
         if (frame.soundIndex >= 0) void this.playSound(frame.soundIndex, token);
-        const next = this.nextIndex(frame, index);
         this.schedule(() => step(next), timed ? Math.max(frame.duration, 10) : 0);
       };
       step(start);

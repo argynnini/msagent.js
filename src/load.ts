@@ -43,6 +43,7 @@ function isLoadOptions(v: unknown): v is LoadOptions {
  * ```js
  * msagent.load("Merlin", (agent) => agent.show());              // msagent.BASE_PATH + "Merlin.acs"
  * msagent.load({ name: "Merlin", successCb: (agent) => agent.show() });
+ * msagent.load({ name: "Merlin", scale: 2 }, (agent) => agent.show()); // 設定とコールバックを分けても同じ
  * const agent = await msagent.load(file);                        // Promise でも受け取れる
  * ```
  */
@@ -52,7 +53,10 @@ export function load(
   failCb?: (error: unknown) => void,
   path?: string,
 ): Promise<Agent> {
-  const options: LoadOptions = isLoadOptions(name) ? name : { name, successCb, failCb, path };
+  // 設定をまとめて渡したときも、後ろの引数のコールバックを使う (設定の中にあれば、そちらを使う)
+  const options: LoadOptions = isLoadOptions(name)
+    ? { ...name, successCb: name.successCb ?? successCb, failCb: name.failCb ?? failCb, path: name.path ?? path }
+    : { name, successCb, failCb, path };
   const promise = (async () => {
     const data = await toArrayBuffer(options.name, options.path ?? msagent.BASE_PATH);
     const container = options.selector ? (document.querySelector<HTMLElement>(options.selector) ?? undefined) : options.container;
