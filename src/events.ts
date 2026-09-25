@@ -104,8 +104,8 @@ export interface AgentEventMap {
   /** しゃべり始めた / しゃべり終えた (途中でやめたときも来る)。text は吹き出しに出す文 (タグを除いたもの)。thought: think() か */
   speakstart: { text: string; thought: boolean };
   speakend: { text: string; thought: boolean };
-  /** 読み上げの目印 (\Mrk=番号\) まで来た (本家の Bookmark と同じ) */
-  bookmark: { id: number };
+  /** 読み上げの目印 (\Mrk=番号\ か SAPI 5 の <bookmark mark="…"/>) まで来た (本家の Bookmark と同じ)。id は番号 (数字でない SAPI 5 の目印は NaN)、mark は書いてあったとおりの文字 */
+  bookmark: { id: number; mark: string };
 }
 
 export type AgentEventListener<K extends keyof AgentEventMap> = (event: CustomEvent<AgentEventMap[K]>) => void;

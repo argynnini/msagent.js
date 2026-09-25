@@ -57,6 +57,6 @@ export type { LwvInfo, LwvPhoneme, LwvWord } from "./lwv";
 export { pickVoice, voiceParams } from "./voice";
 export type { SpeakParams } from "./voice";
 export { parseSpeechTags, shownText } from "./tags";
-export type { SpeechPart, SpeechText } from "./tags";
+export type { Bookmark, SpeechPart, SpeechText } from "./tags";
 export { IdleController, idleLevel, isIdleAnimation, pickIdle, pickIdleFor } from "./idle";
 export type { IdleDeps } from "./idle";

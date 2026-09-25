@@ -43,6 +43,57 @@ test("声あり: 制御タグで部分ごとに速さ・高さ・音量を変え
   ]);
 });
 
+test("声あり: SAPI 5 のタグでも、部分ごとに速さ・言語を変え、目印 (名前でもよい) を知らせ、吹き出しにはタグを除いた文", async ({ harness }) => {
+  const r = await harness.evaluate(async (fake) => {
+    const log: string[] = [];
+    (0, eval)(fake)(log);
+    const a = await window.loadAgent("Merlin.acs", { voice: true });
+    await a.show(true);
+    a.on("bookmark", (e) => log.push(`bookmark ${e.detail.id} ${e.detail.mark}`));
+    let shown = "";
+    a.on("speakend", (e) => (shown = e.detail.text));
+    await a.speak('Hello <rate absspeed="-10">slow</rate> <bookmark mark="chapter"/><lang langid="407">Guten Tag</lang> &amp; <bookmark mark="2"/>bye');
+    return { log, shown };
+  }, FAKE_SYNTH);
+  expect(r.shown).toBe("Hello slow Guten Tag & bye");
+  expect(r.log).toEqual([
+    'utter "Hello " lang=en-US r=0.92 p=0.50 v=1.00',
+    'utter "slow" lang=en-US r=0.31 p=0.50 v=1.00',
+    "bookmark NaN chapter",
+    'utter "Guten Tag" lang=de-DE r=0.92 p=0.50 v=1.00',
+    'utter " & " lang=en-US r=0.92 p=0.50 v=1.00',
+    "bookmark 2 2",
+    'utter "bye" lang=en-US r=0.92 p=0.50 v=1.00',
+  ]);
+});
+
+test("tags: false なら、タグも文字としてそのまま読んで出す (キャラクターごと・1 回ごと)", async ({ harness }) => {
+  const r = await harness.evaluate(async (fake) => {
+    const log: string[] = [];
+    (0, eval)(fake)(log);
+    const a = await window.loadAgent("Merlin.acs", { voice: true, tags: false });
+    await a.show(true);
+    const shown: string[] = [];
+    a.on("speakend", (e) => shown.push(e.detail.text));
+    a.on("bookmark", (e) => log.push(`bookmark ${e.detail.id}`));
+    await a.speak('a \Mrk=1\<silence msec="100"/>b');
+    await a.speak("\Lst\\");
+    await a.speak('c<silence msec="10"/>d', { tags: true });
+    a.tags = true;
+    await a.speak("e\Pau=10\f", { tags: false });
+    await a.think("<emph>g</emph>", { tags: false });
+    return { log: log.map((l) => l.replace(/ lang=.*/, "")), shown };
+  }, FAKE_SYNTH);
+  expect(r.shown).toEqual(['a \Mrk=1\<silence msec="100"/>b', "\Lst\\", "cd", "e\Pau=10\f", "<emph>g</emph>"]);
+  expect(r.log).toEqual([
+    'utter "a \Mrk=1\<silence msec="100"/>b"',
+    'utter "\Lst\\"',
+    'utter "c"',
+    'utter "d"',
+    'utter "e\Pau=10\f"',
+  ]);
+});
+
 test("読み上げの言語: agent.language を指定すればそれ、無ければ文から推測", async ({ harness }) => {
   const log = await harness.evaluate(async (fake) => {
     const log: string[] = [];

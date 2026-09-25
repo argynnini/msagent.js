@@ -41,6 +41,11 @@ export interface AgentOptions {
   sound?: boolean;
   /** speak() で声に出して読み上げるか (既定: true)。false なら吹き出しと口の動きだけ */
   voice?: boolean;
+  /**
+   * speak() / think() の文の、読み上げの制御タグ (\Pau=500\ や SAPI 5 の <silence/> など) を使うか (既定: true)。
+   * false なら、タグも文字としてそのまま読み、吹き出しに出す (agent.tags と同じ。msagent.js で足したもの)
+   */
+  tags?: boolean;
   /** 何もしていない間、ときどき待機動作 (Idle 系) を再生するか (既定: true) */
   idle?: boolean;
   /** name / description の言語 (BCP 47 の "ja" など、または Windows の言語 ID)。省略時はブラウザの言語 */
@@ -78,6 +83,8 @@ export interface SpeakOptions {
    * 声に出すか (この 1 回だけ。省略時は agent.voice)。false なら、吹き出しと口の動きだけ
    */
   voice?: boolean;
+  /** 読み上げの制御タグを使うか (この 1 回だけ。省略時は agent.tags)。false なら、タグも文字としてそのまま */
+  tags?: boolean;
 }
 
 /** think() の 2 つ目の引数 */
@@ -87,6 +94,8 @@ export interface ThinkOptions {
    * 読み上げの制御タグも使える
    */
   voice?: boolean;
+  /** 読み上げの制御タグを使うか (この 1 回だけ。省略時は agent.tags)。false なら、タグも文字としてそのまま */
+  tags?: boolean;
 }
 
 export interface HideOptions {
@@ -167,6 +176,8 @@ export class Agent extends EventTarget {
   readonly player: AcsPlayer;
   /** speak() で声に出すか */
   voice: boolean;
+  /** speak() / think() の文の、読み上げの制御タグを使うか。false なら、タグも文字としてそのまま (AgentOptions の tags を参照) */
+  tags: boolean;
   /** name / description の言語 (BCP 47 か Windows の言語 ID)。undefined ならブラウザの言語 */
   language: Language | readonly Language[] | undefined;
   /** 右クリックのメニューに足す項目 (本家の Commands と同じ) */
@@ -231,6 +242,7 @@ export class Agent extends EventTarget {
     this.player = new AcsPlayer(character, this.canvas);
     this.player.soundEnabled = options.sound ?? true;
     this.voice = options.voice ?? true;
+    this.tags = options.tags ?? true;
     this.language = options.language;
     this.autoPopupMenu = options.autoPopupMenu ?? true;
     this.listeningKey = options.listeningKey;
@@ -431,12 +443,12 @@ export class Agent extends EventTarget {
    */
   speak(text: string, options?: boolean | SpeakOptions): AgentRequest {
     text = pickAlternative(text);
-    const { hold, url, voice } = typeof options === "object" ? options : { hold: options, url: undefined, voice: undefined };
+    const { hold, url, voice, tags } = typeof options === "object" ? options : { hold: options, url: undefined, voice: undefined, tags: undefined };
     return this.enqueue("speak", (complete) => {
       // 隠れている間は、吹き出しも声も出せない (本家も隠れたキャラクターは音を出せず、失敗になる)
       if (this.hidden) return complete("failed", HIDDEN, RequestError.hidden);
       const gen = this.queue.generation;
-      void this.talk.speak(text, { hold: !!hold, url, voice }, complete, () => gen !== this.queue.generation);
+      void this.talk.speak(text, { hold: !!hold, url, voice, tags: tags ?? this.tags }, complete, () => gen !== this.queue.generation);
     });
   }
 
@@ -449,10 +461,11 @@ export class Agent extends EventTarget {
     text = pickAlternative(text);
     return this.enqueue("think", (complete) => {
       if (this.hidden) return complete("failed", HIDDEN, RequestError.hidden);
-      if (!options.voice) return this.talk.think(text, this.withThinkingPose(complete));
+      const tags = options.tags ?? this.tags;
+      if (!options.voice) return this.talk.think(text, this.withThinkingPose(complete), tags);
       // 声に出して考える: 考えごとの吹き出しで speak と同じように読む
       const gen = this.queue.generation;
-      void this.talk.speak(text, { voice: true, thought: true }, complete, () => gen !== this.queue.generation);
+      void this.talk.speak(text, { voice: true, thought: true, tags }, complete, () => gen !== this.queue.generation);
     });
   }
 

@@ -2,7 +2,7 @@ import type { AcsPlayer } from "./acs/player";
 import { ipaAt, LWV_MOUTH_RATE, type LwvInfo, type LwvWord } from "./lwv";
 import { MORA_MS, MOUTH_CLOSED, PAUSE_MS, mouthForIpa, mouthForLevel, mouthSteps, randomVowelMouth, stepsDuration, type MouthStep } from "./mouth";
 import { paceText, withTrailingPunctuation } from "./pace";
-import { bookmarkNotifier, parseSpeechTags, shownText, type SpeechPart } from "./tags";
+import { bookmarkNotifier, parseSpeechTags, shownText, type Bookmark, type SpeechPart } from "./tags";
 import { pickVoice, type SpeakParams } from "./voice";
 
 /**
@@ -29,8 +29,8 @@ export interface SpeakHandlers {
   onProgress(shown: string): void;
   /** 読み上げが終わった (cancel() でも呼ばれる) */
   onEnd(): void;
-  /** 目印 (\Mrk=番号\) まで読んだ */
-  onBookmark?(id: number): void;
+  /** 目印 (\Mrk=番号\ か <bookmark/>) まで読んだ */
+  onBookmark?(bookmark: Bookmark): void;
 }
 
 /** ひらがな・カタカナ・漢字・半角カナを含めば日本語として読む */
@@ -136,7 +136,7 @@ export class Speaker {
     this.source = source;
 
     // 吹き出し: 単語の時刻 (.lwv) か、音の長さに合わせて文字を出し、通り過ぎた目印を知らせる
-    const notifyBookmarks = bookmarkNotifier(parts, (id) => run.handlers.onBookmark?.(id));
+    const notifyBookmarks = bookmarkNotifier(parts, (bookmark) => run.handlers.onBookmark?.(bookmark));
     const show = (shown: string) => {
       if (this.run !== run) return;
       run.handlers.onProgress(shown);
@@ -203,7 +203,7 @@ export class Speaker {
     const next = (shown: string): void => this.speakPart(run, parts, i + 1, shown);
 
     if (part.kind === "bookmark") {
-      run.handlers.onBookmark?.(part.id);
+      run.handlers.onBookmark?.({ id: part.id, mark: part.mark });
       return next(shownBefore);
     }
     if (part.kind === "pause") {
@@ -236,12 +236,12 @@ export class Speaker {
     }
 
     const u = new SpeechSynthesisUtterance(part.spoken);
-    u.lang = run.lang;
+    u.lang = part.lang ?? run.lang;
     u.rate = part.rate;
     u.pitch = part.pitch;
     u.volume = part.volume;
     // その言語 (と性別) に合う声があれば選ぶ (無ければブラウザ任せ)
-    const voice = pickVoice(run.synth.getVoices(), u.lang, run.gender);
+    const voice = pickVoice(run.synth.getVoices(), u.lang, part.gender ?? run.gender);
     if (voice) u.voice = voice;
     let gotBoundary = false;
     // 声が出始めてから口を動かす。区切りの通知が来ない音声なら、全文を見積もって動かし、吹き出しにも全文を出す

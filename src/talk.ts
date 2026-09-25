@@ -10,7 +10,7 @@ import { paceText } from "./pace";
 import type { Task } from "./queue";
 import { RequestError } from "./request";
 import type { Speaker } from "./speak";
-import { bookmarkNotifier, isRepeatTag, parseSpeechTags, removeBookmarks, shownText } from "./tags";
+import { bookmarkNotifier, isRepeatTag, parseSpeechTags, plainSpeech, removeBookmarks, shownText, type Bookmark } from "./tags";
 import type { SpeakParams } from "./voice";
 
 /** 読み上げが終わってから、吹き出しを閉じるまで (clippy.js と同じ) */
@@ -30,6 +30,8 @@ export interface TalkOptions {
   voice?: boolean | undefined;
   /** 考えごとの吹き出し (雲形) に出す (think(text, { voice: true })) */
   thought?: boolean;
+  /** 読み上げの制御タグを使うか (既定: true)。false なら、タグも文字としてそのまま */
+  tags?: boolean;
 }
 
 /** しゃべる・考えるために、キャラクター (Agent) から借りるもの */
@@ -86,7 +88,7 @@ export class Talk {
    */
   async speak(text: string, options: TalkOptions, complete: Complete, isStale: () => boolean) {
     const { player } = this.host;
-    const { hold = false, url, thought = false } = options;
+    const { hold = false, url, thought = false, tags = true } = options;
     // 全キャラクターの声を切っていれば (audioOutput.enabled)、声は出さない。
     // 聞き取り中にユーザーの声が聞こえている間も、声は出さない (吹き出しは出す。本家と同じ)
     const aloud = (options.voice ?? this.host.voice()) && audioOutput.enabled && audioOutput.status !== 3;
@@ -115,14 +117,14 @@ export class Talk {
     let said = text;
     // 文が無ければ、.lwv の単語を吹き出しに出す (本家と同じ)
     if (!said.trim() && lwv?.words.length) said = lwv.words.map((w) => w.text).join(" ");
-    if (isRepeatTag(said)) {
+    if (tags && isRepeatTag(said)) {
       if (this.lastSpoken === undefined) return complete();
       said = removeBookmarks(this.lastSpoken);
     } else if (!thought) {
       this.lastSpoken = said;
     }
     const params = this.host.speakParams();
-    const parts = parseSpeechTags(said, params);
+    const parts = tags ? parseSpeechTags(said, params) : plainSpeech(said, params);
     const shown = shownText(parts);
     const { balloon, emit } = this.host;
     this.begin(complete, hold);
@@ -143,7 +145,7 @@ export class Talk {
       onProgress: (progress: string) => {
         if (style.enabled && style.autoPace) balloon.setText(progress);
       },
-      onBookmark: (id: number) => emit("bookmark", { id }),
+      onBookmark: (bookmark: Bookmark) => emit("bookmark", bookmark),
       onEnd: () => {
         emit("speakend", { text: shown, thought });
         if (this.hold) return;
@@ -158,15 +160,15 @@ export class Talk {
    * 考えごとの吹き出しに出す (think の命令の中身)。声は出さず、口も動かさない。
    * 声なしの speak と同じく、キャラクターの声の速さで読んだときの時間をかけて文字を出し、出し終えたら complete を呼ぶ
    */
-  think(text: string, complete: Complete) {
+  think(text: string, complete: Complete, tags = true) {
     // 吹き出しを使わないキャラクターは、何も出さない (本家と同じ)
     const style = this.host.balloonStyle();
     if (!style.enabled) return complete();
     // 本家と同じく、\Mrk\ (目印) だけを使い、ほかのタグは取り除く
-    const parts = parseSpeechTags(text, undefined, true);
+    const parts = tags ? parseSpeechTags(text, undefined, true) : plainSpeech(text);
     const shown = shownText(parts);
     const { balloon, emit } = this.host;
-    const notifyBookmarks = bookmarkNotifier(parts, (id) => emit("bookmark", { id }));
+    const notifyBookmarks = bookmarkNotifier(parts, (bookmark) => emit("bookmark", bookmark));
     this.begin(complete, false);
     this.aloud = false;
     emit("speakstart", { text: shown, thought: true });
