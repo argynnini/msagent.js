@@ -54,12 +54,33 @@ const CSS = `
 .msagent-top-right .msagent-tip, .msagent-bottom-right .msagent-tip { left: 24px; }
 `;
 
+/* 右クリックのメニュー (showPopupMenu) */
+const MENU_CSS = `
+.msagent-menu {
+  position: fixed; z-index: 1001; min-width: 150px; padding: 4px 0; box-sizing: border-box;
+  background: #fff; color: #1b1b1b; border: 1px solid #a0a0a0; border-radius: 4px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22); font: 13px/1.4 "Segoe UI", "Yu Gothic UI", "Hiragino Sans", sans-serif;
+}
+.msagent-menu-item {
+  display: block; width: 100%; padding: 5px 22px; border: 0; background: none; color: inherit;
+  font: inherit; text-align: left; cursor: default; white-space: nowrap;
+}
+.msagent-menu-item:hover:not(:disabled), .msagent-menu-item:focus-visible { background: #0078d4; color: #fff; outline: none; }
+.msagent-menu-item:disabled { color: #9a9a9a; }
+.msagent-menu-separator { height: 1px; margin: 4px 0; background: #d6d6d6; }
+@media (prefers-color-scheme: dark) {
+  .msagent-menu { background: #2b2b2b; color: #f0f0f0; border-color: #555; }
+  .msagent-menu-item:disabled { color: #777; }
+  .msagent-menu-separator { background: #484848; }
+}
+`;
+
 const STYLE_ID = "msagent-styles";
 
 export function injectStyles() {
   if (document.getElementById(STYLE_ID)) return;
   const style = document.createElement("style");
   style.id = STYLE_ID;
-  style.textContent = CSS;
+  style.textContent = CSS + MENU_CSS;
   document.head.prepend(style);
 }

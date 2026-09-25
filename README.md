@@ -58,6 +58,7 @@ const agent = await msagent.load(name); // Promise でも受け取れる
 - `idle`: 待機動作 (既定: `true`)
 - `language`: `name` / `description` の言語 (下の「言語」を参照。既定: ブラウザの言語)
 - `scale`: 表示の倍率 (既定: `1`)
+- `autoPopupMenu`: 右クリックでメニューを出すか (既定: `true`)
 - `balloon`: 吹き出しの見た目 (下の「見た目」を参照。キャラクターファイルの設定の上に重ねる)
 
 ### Agent
@@ -106,10 +107,29 @@ agent.on("animationend", (e) => console.log(e.detail.name));
 | `requeststart` / `requestcomplete` | 命令を始めた / 終えた | `request` |
 | `balloonshow` / `balloonhide` | 吹き出しが出た / 閉じた | なし |
 | `idlestart` / `idlecomplete` | 待機状態に入った / 抜けた (次の命令が始まった) | なし |
+| `command` | 右クリックのメニューで、`commands` に足した項目が選ばれた | `name` |
 | `animationstart` / `animationend` | アニメーションが始まった / 終わった | `name`, `idle` (待機動作か) |
 | `speakstart` / `speakend` | しゃべり始めた / 終えた (途中でやめたときも。`think()` でも来る) | `text`, `thought` (`think()` か) |
 | `resize` | 大きさが変わった | `width`, `height`, `scale` |
 | `bookmark` | 読み上げの目印 (`\Mrk=番号\`) まで来た (`think()` でも来る) | `id` |
+
+### 右クリックのメニュー
+
+キャラクターを右クリックすると、本家と同じくメニューが出ます。`agent.commands` に足した項目と、「隠す」が並びます。
+
+```js
+agent.commands.add("search", "検索(&S)");                    // & の次の文字がアクセスキー
+agent.commands.add("help", "ヘルプ(&H)", { enabled: false }); // 灰色で選べない
+agent.commands.defaultCommand = "search";                   // 太字にする
+agent.on("command", (e) => {
+  if (e.detail.name === "search") agent.speak("何を探しますか？");
+});
+
+agent.autoPopupMenu = false;   // 右クリックでは出さない
+agent.showPopupMenu(x, y);     // 自分で出す
+```
+
+メニューは矢印キー・Enter・アクセスキー・Esc でも操作できます。「隠す」で隠れたときは、`hide` イベントの `cause` が `"user"` になります。見た目はクラス `.msagent-menu` / `.msagent-menu-item` / `.msagent-menu-separator` で変えられます。
 
 ### 命令 (Request)
 

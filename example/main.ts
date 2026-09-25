@@ -45,6 +45,7 @@ function open(file: File) {
       // コンソールから試せるように (例: agent.moveTo(100, 100))
       (window as unknown as { agent: Agent }).agent = a;
       watchEvents(a);
+      addCommands(a);
       placeOnStage(a);
       a.show();
       toggle(visibleButton, true);
@@ -251,12 +252,27 @@ langSelect.onchange = () => {
   renderName(agent, nameLabel.dataset.file ?? "");
 };
 
+/** 右クリックのメニューに項目を足す (agent.commands) */
+function addCommands(a: Agent) {
+  a.commands.add("animate", "おまかせの動き(&A)");
+  a.commands.add("intro", "自己紹介(&I)");
+  a.commands.add("think", "考える(&T)");
+  a.commands.add("wave", "手を振る(&W)", { enabled: a.hasAnimation("Wave") });
+  a.commands.defaultCommand = "intro";
+  a.on("command", (e) => {
+    if (e.detail.name === "animate") a.animate();
+    else if (e.detail.name === "intro") a.speak(selfIntroduction(a));
+    else if (e.detail.name === "think") a.think("うーん、何をお手伝いしようかな…");
+    else if (e.detail.name === "wave") a.play("Wave");
+  });
+}
+
 /** 届いたイベントを、プレイヤーの下に新しい順で出す */
 function watchEvents(a: Agent) {
   const types: (keyof AgentEventMap)[] = [
     "click", "dblclick", "dragstart", "dragend", "move", "resize", "show", "hide",
     "animationstart", "animationend", "speakstart", "speakend", "bookmark",
-    "requeststart", "requestcomplete", "balloonshow", "balloonhide", "idlestart", "idlecomplete",
+    "requeststart", "requestcomplete", "balloonshow", "balloonhide", "idlestart", "idlecomplete", "command",
   ];
   for (const type of types) {
     a.on(type, (e) => {
@@ -392,7 +408,7 @@ document.addEventListener("click", (e) => {
   // 操作するもの (リンク・ボタン・入力欄・選択肢など) と、プレイヤーの操作パネル (ステージ以外) は除く
   const controls = "a, button, input, select, option, textarea, label, summary, details, pre, [contenteditable]";
   const panels = ".player > :not(.stage)";
-  if (target.closest(`${controls}, ${panels}, .msagent, .msagent-balloon`)) return;
+  if (target.closest(`${controls}, ${panels}, .msagent, .msagent-balloon, .msagent-menu`)) return;
   const mode = document.querySelector<HTMLInputElement>('input[name="click"]:checked')?.value;
   if (mode === "none") return;
   showMarker(e.clientX, e.clientY);

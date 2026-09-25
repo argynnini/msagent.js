@@ -2,6 +2,8 @@ import { AcsPlayer } from "./acs/player";
 import { AcsCharacter } from "./acs/reader";
 import { ActCharacter, isActFile } from "./act/reader";
 import { Balloon } from "./balloon";
+import { AgentCommands } from "./commands";
+import { PopupMenu, type MenuEntry } from "./menu";
 import { DEFAULT_BALLOON_STYLE, type BalloonStyle, type Character } from "./character";
 import { IdleController, isIdleAnimation } from "./idle";
 import { languageTag, type Language } from "./language";
@@ -25,6 +27,8 @@ export interface AgentOptions {
   scale?: number;
   /** 吹き出しの見た目。キャラクターファイルの設定の上に、指定した項目だけを重ねる (agent.balloonStyle と同じ) */
   balloon?: Partial<BalloonStyle>;
+  /** キャラクターを右クリックしたときに、メニューを出すか (既定: true。本家の AutoPopupMenu と同じ) */
+  autoPopupMenu?: boolean;
 }
 
 
@@ -71,6 +75,8 @@ export interface AgentEventMap {
   /** 待機状態 (Idling) に入った / 抜けた (次の命令が始まった) */
   idlestart: Record<string, never>;
   idlecomplete: Record<string, never>;
+  /** 右クリックのメニューで、commands に足した項目が選ばれた (本家の Command と同じ) */
+  command: { name: string };
   /** アニメーションが始まった / 終わった (idle: 待機動作か) */
   animationstart: { name: string; idle: boolean };
   animationend: { name: string; idle: boolean };
@@ -160,6 +166,10 @@ export class Agent extends EventTarget {
   voice: boolean;
   /** name / description の言語 (BCP 47 か Windows の言語 ID)。undefined ならブラウザの言語 */
   language: Language | readonly Language[] | undefined;
+  /** 右クリックのメニューに足す項目 (本家の Commands と同じ) */
+  readonly commands = new AgentCommands();
+  /** キャラクターを右クリックしたときに、メニューを出すか (本家の AutoPopupMenu と同じ) */
+  autoPopupMenu: boolean;
 
   private currentScale = 1;
   /** balloonStyle で指定された項目 (キャラクターファイルの設定の上に重ねる) */
@@ -172,6 +182,8 @@ export class Agent extends EventTarget {
   private currentAbort: (() => void) | undefined;
   /** 待機状態 (Idling) か */
   private idling = false;
+  /** 開いている右クリックのメニュー */
+  private menu: PopupMenu | undefined;
   /** stop() / hide() で順番待ちを捨てるたびに増やし、捨てたものの complete を無視する */
   private generation = 0;
   private hidden = true;
@@ -205,6 +217,7 @@ export class Agent extends EventTarget {
     this.player.soundEnabled = options.sound ?? true;
     this.voice = options.voice ?? true;
     this.language = options.language;
+    this.autoPopupMenu = options.autoPopupMenu ?? true;
     this.balloonOverrides = { ...options.balloon };
     this.balloon = new Balloon(this.element, this.balloonStyle, (visible) =>
       this.emit(visible ? "balloonshow" : "balloonhide", {}),
@@ -255,7 +268,13 @@ export class Agent extends EventTarget {
       middleDown = false;
       if (this.hitTest(ev.clientX, ev.clientY)) this.emit("click", pointerDetail(ev));
     });
-    this.listen(this.element, "contextmenu", (e) => this.emit("click", pointerDetail(e as MouseEvent)));
+    this.listen(this.element, "contextmenu", (e) => {
+      const ev = e as MouseEvent;
+      this.emit("click", pointerDetail(ev));
+      if (!this.autoPopupMenu) return;
+      ev.preventDefault();
+      this.showPopupMenu(ev.clientX, ev.clientY);
+    });
     // ブラウザの窓が小さくなったら、画面の中に戻す
     this.listen(window, "resize", () => {
       const before = this.position;
@@ -761,6 +780,43 @@ export class Agent extends EventTarget {
     return this.player.hitTest(clientX, clientY);
   }
 
+  /**
+   * 右クリックのメニューを、画面上の (x, y) に出す (本家の ShowPopupMenu と同じ)。
+   * commands に足した項目と、「隠す」が並ぶ。隠れている間は出せず、false を返す
+   */
+  showPopupMenu(x: number, y: number): boolean {
+    if (this.hidden || this.destroyed) return false;
+    const entries: MenuEntry[] = [];
+    if (this.commands.visible) {
+      for (const c of this.commands.list()) {
+        if (!c.visible) continue;
+        entries.push({
+          kind: "item",
+          caption: c.caption,
+          enabled: c.enabled,
+          bold: c.name === this.commands.defaultCommand,
+          onSelect: () => this.emit("command", { name: c.name }),
+        });
+      }
+    }
+    if (entries.length > 0) entries.push({ kind: "separator" });
+    // 本家と同じく、キャラクターを隠す項目を足す (ユーザーが隠したので、hide の cause は "user")
+    entries.push({
+      kind: "item",
+      caption: this.isJapanese ? "隠す(&H)" : "&Hide",
+      enabled: true,
+      onSelect: () => void this.queueHide(false, undefined, { immediate: true }, "user"),
+    });
+    this.menu = new PopupMenu(entries, x, y);
+    return true;
+  }
+
+  /** メニューなどの文言を日本語にするか (agent.language、無ければブラウザの言語) */
+  private get isJapanese(): boolean {
+    const lang = this.speechLanguage ?? (typeof navigator === "undefined" ? "en" : navigator.language);
+    return lang.toLowerCase().startsWith("ja");
+  }
+
   /** 後片付け: 再生・読み上げ・待機動作をやめ、要素を取り除く */
   destroy(): void {
     if (this.destroyed) return;
@@ -770,6 +826,7 @@ export class Agent extends EventTarget {
     this.idle?.stop();
     this.player.stop();
     this.player.onPlayingChange = undefined;
+    this.menu?.close();
     for (const cleanup of this.cleanups) cleanup();
     this.element.remove();
     this.balloon.element.remove();
