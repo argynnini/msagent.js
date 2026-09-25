@@ -16,5 +16,7 @@ export { AcsPlayer } from "./acs/player";
 export { imageToDataUrl } from "./acs/icon";
 export { Speaker, mouthSteps, pickVoice, voiceParams } from "./speak";
 export type { SpeakHandlers, SpeakParams } from "./speak";
+export { parseSpeechTags, shownText } from "./tags";
+export type { SpeechPart, SpeechText } from "./tags";
 export { IdleController, idleLevel, isIdleAnimation, pickIdle, pickIdleFor } from "./idle";
 export type { IdleDeps } from "./idle";

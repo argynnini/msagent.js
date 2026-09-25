@@ -1,4 +1,5 @@
 import type { AcsPlayer } from "./acs/player";
+import { parseSpeechTags, shownText, type SpeechPart } from "./tags";
 
 /**
  * キャラクターにしゃべらせる: ブラウザの音声合成 (Web Speech API) で読み上げ、その間は口の形 (ACS の口の画像) を切り替える。
@@ -25,7 +26,6 @@ const MORA_MS = 130;
 const PAUSE_MS = 250;
 /** 単語の区切りの通知 (boundary) が来ない音声とみなすまでの時間 (過ぎたら、全文を見積もって口を動かし、吹き出しにも全文を出す) */
 const BOUNDARY_WAIT_MS = 400;
-const SILENT_MIN_MS = 1200;
 
 /**
  * ACS の声の設定 (SAPI 4 の値) を、ブラウザの読み上げの速さ・高さ (どちらも標準 = 1) に直すときの基準。
@@ -151,10 +151,12 @@ export interface SpeakHandlers {
   onProgress(shown: string): void;
   /** 読み上げが終わった (cancel() でも呼ばれる) */
   onEnd(): void;
+  /** 目印 (\Mrk=番号\) まで読んだ */
+  onBookmark?(id: number): void;
 }
 
 /** ひらがな・カタカナ・漢字・半角カナを含めば日本語として読む */
-const hasJapanese = (text: string) => /[\u3040-\u30ff\u3400-\u9fff\uff66-\uff9f]/.test(text);
+const hasJapanese = (text: string) => /[぀-ヿ㐀-鿿ｦ-ﾟ]/.test(text);
 
 /** charIndex から始まる単語の長さ (charLength を教えてくれない音声のため) */
 function wordLength(text: string, start: number): number {
@@ -163,76 +165,62 @@ function wordLength(text: string, start: number): number {
   return end < 0 ? rest.length : end + 1;
 }
 
+/** 声を出さないとき、読み上げる部分 1 つにかける最短の時間 */
+const SILENT_PART_MIN_MS = 300;
+
+/** 1 回の speak() で、部分をまたいで使うもの */
+interface Run {
+  handlers: SpeakHandlers;
+  synth: SpeechSynthesis | undefined;
+  lang: string;
+  gender: SpeakParams["gender"];
+}
+
 export class Speaker {
   private mouthTimer: number | undefined;
   private fallbackTimer: number | undefined;
-  private silentTimer: number | undefined;
+  /** 間 (\Pau\) や、声を出さないときの部分の長さのタイマー */
+  private partTimer: number | undefined;
   /** 声を出さないときに、吹き出しの文を少しずつ出すタイマー */
   private paceTimer: number | undefined;
   /** 口の動きの並びを出すたびに増やし、古い並びを止める */
   private mouthToken = 0;
   /** 読み上げ中の発話 (Chrome では参照を持っていないと、途中で GC されてイベントが来なくなることがある) */
   private utterance: SpeechSynthesisUtterance | undefined;
-  private handlers: SpeakHandlers | undefined;
-  /** 読み上げ中の文 (途中で止めても、吹き出しには全文を残すため) */
+  private run: Run | undefined;
+  /** 吹き出しに出す全文 (途中で止めても、吹き出しには全文を残すため) */
   private text = "";
 
   constructor(private readonly player: () => AcsPlayer | undefined) {}
 
   get speaking(): boolean {
-    return this.handlers !== undefined;
+    return this.run !== undefined;
   }
 
   /**
-   * params: 読み上げの速さ・高さ (ブラウザの値。標準 = 1。voiceParams() で ACS の設定から作る)。
-   * aloud が false なら声を出さず、見積もった時間だけ口を動かす
+   * 読み上げる。input は文 (読み上げの制御タグ \Pau=500\ などを含んでよい) か、parseSpeechTags() で作った部分の並び。
+   * params: 読み上げの速さ・高さ (ブラウザの値。標準 = 1。voiceParams() で ACS の設定から作る)・言語・声の性別。
+   * aloud が false なら声を出さず、見積もった時間だけ口を動かし、吹き出しの文も少しずつ出す
    */
-  speak(text: string, handlers: SpeakHandlers, params: SpeakParams = { rate: 1, pitch: 1 }, aloud = true) {
+  speak(
+    input: string | readonly SpeechPart[],
+    handlers: SpeakHandlers,
+    params: SpeakParams = { rate: 1, pitch: 1 },
+    aloud = true,
+  ) {
     this.cancel();
-    this.handlers = handlers;
-    this.text = text;
+    const parts = typeof input === "string" ? parseSpeechTags(input, params) : input;
+    this.text = shownText(parts);
+    const spoken = parts.map((p) => (p.kind === "text" ? p.spoken : "")).join("");
+    const run: Run = {
+      handlers,
+      synth: !aloud || typeof speechSynthesis === "undefined" ? undefined : speechSynthesis,
+      lang: params.lang ?? (hasJapanese(spoken) ? "ja-JP" : "en-US"),
+      gender: params.gender,
+    };
+    this.run = run;
     handlers.onProgress("");
-
-    const synth = !aloud || typeof speechSynthesis === "undefined" ? undefined : speechSynthesis;
-    if (!synth) {
-      const steps = mouthSteps(text, MORA_MS / params.rate, PAUSE_MS / params.rate);
-      this.playMouth(steps);
-      const total = Math.max(SILENT_MIN_MS, steps.reduce((sum, [, ms]) => sum + ms, 0));
-      this.pace(text, total, handlers);
-      this.silentTimer = window.setTimeout(() => this.finish(), total);
-      return;
-    }
-
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = params.lang ?? (hasJapanese(text) ? "ja-JP" : "en-US");
-    u.rate = params.rate;
-    u.pitch = params.pitch;
-    // その言語 (と性別) に合う声があれば選ぶ (無ければブラウザ任せ)
-    const voice = pickVoice(synth.getVoices(), u.lang, params.gender);
-    if (voice) u.voice = voice;
-    let gotBoundary = false;
-    // 声が出始めてから口を動かす。区切りの通知が来ない音声なら、全文を見積もって動かし、吹き出しにも全文を出す
-    u.onstart = () => {
-      if (this.utterance !== u) return;
-      this.fallbackTimer = window.setTimeout(() => {
-        if (gotBoundary || this.utterance !== u) return;
-        handlers.onProgress(text);
-        this.playMouth(mouthSteps(text, MORA_MS / u.rate, PAUSE_MS / u.rate), true);
-      }, BOUNDARY_WAIT_MS);
-    };
-    // 単語の区切り: その単語の口の動きを出し直す (前の単語の残りは打ち切る)
-    u.onboundary = (e) => {
-      if (this.utterance !== u || e.name === "sentence") return;
-      gotBoundary = true;
-      const end = e.charIndex + (e.charLength || wordLength(text, e.charIndex));
-      handlers.onProgress(text.slice(0, end));
-      this.playMouth(mouthSteps(text.slice(e.charIndex, end), MORA_MS / u.rate));
-    };
-    u.onend = u.onerror = () => {
-      if (this.utterance === u) this.finish();
-    };
-    this.utterance = u;
-    synth.speak(u);
+    this.speakPart(run, parts, 0, "");
   }
 
   /** 読み上げを途中でやめる (読み上げ中でなければ何もしない) */
@@ -243,6 +231,83 @@ export class Speaker {
       speechSynthesis.cancel();
     }
     this.finish();
+  }
+
+  /** i 番目の部分を読む。読み終えたら次へ (shownBefore: それまでに吹き出しに出した文) */
+  private speakPart(run: Run, parts: readonly SpeechPart[], i: number, shownBefore: string): void {
+    if (this.run !== run) return;
+    const part = parts[i];
+    if (!part) return this.finish();
+    const next = (shown: string): void => this.speakPart(run, parts, i + 1, shown);
+
+    if (part.kind === "bookmark") {
+      run.handlers.onBookmark?.(part.id);
+      return next(shownBefore);
+    }
+    if (part.kind === "pause") {
+      this.mouthToken++;
+      this.player()?.setMouth(MOUTH_CLOSED);
+      this.partTimer = window.setTimeout(() => next(shownBefore), part.ms);
+      return;
+    }
+
+    const after = shownBefore + part.shown;
+    if (!part.spoken.trim()) {
+      run.handlers.onProgress(after);
+      return next(after);
+    }
+    // \Map\ で読みと表示を変えたときは、読み始めに表示の文を全部出す
+    const mapped = part.spoken !== part.shown;
+    const progress = (shown: string) => {
+      if (this.run === run) run.handlers.onProgress(shownBefore + (mapped ? part.shown : shown));
+    };
+
+    if (!run.synth) {
+      const steps = mouthSteps(part.spoken, MORA_MS / part.rate, PAUSE_MS / part.rate);
+      this.playMouth(steps);
+      const total = Math.max(SILENT_PART_MIN_MS, steps.reduce((sum, [, ms]) => sum + ms, 0));
+      if (mapped) progress(part.shown);
+      else this.pace(run, part.spoken, total, progress);
+      this.partTimer = window.setTimeout(() => next(after), total);
+      return;
+    }
+
+    const u = new SpeechSynthesisUtterance(part.spoken);
+    u.lang = run.lang;
+    u.rate = part.rate;
+    u.pitch = part.pitch;
+    u.volume = part.volume;
+    // その言語 (と性別) に合う声があれば選ぶ (無ければブラウザ任せ)
+    const voice = pickVoice(run.synth.getVoices(), u.lang, run.gender);
+    if (voice) u.voice = voice;
+    let gotBoundary = false;
+    // 声が出始めてから口を動かす。区切りの通知が来ない音声なら、全文を見積もって動かし、吹き出しにも全文を出す
+    u.onstart = () => {
+      if (this.utterance !== u) return;
+      this.fallbackTimer = window.setTimeout(() => {
+        if (gotBoundary || this.utterance !== u) return;
+        progress(part.spoken);
+        this.playMouth(mouthSteps(part.spoken, MORA_MS / u.rate, PAUSE_MS / u.rate), true);
+      }, BOUNDARY_WAIT_MS);
+    };
+    // 単語の区切り: その単語の口の動きを出し直す (前の単語の残りは打ち切る)
+    u.onboundary = (e) => {
+      if (this.utterance !== u || e.name === "sentence") return;
+      gotBoundary = true;
+      const end = e.charIndex + (e.charLength || wordLength(part.spoken, e.charIndex));
+      progress(part.spoken.slice(0, end));
+      this.playMouth(mouthSteps(part.spoken.slice(e.charIndex, end), MORA_MS / u.rate));
+    };
+    u.onend = u.onerror = () => {
+      if (this.utterance !== u) return;
+      this.utterance = undefined;
+      window.clearTimeout(this.fallbackTimer);
+      this.mouthToken++;
+      this.player()?.setMouth(MOUTH_CLOSED);
+      next(after);
+    };
+    this.utterance = u;
+    run.synth.speak(u);
   }
 
   /**
@@ -271,19 +336,19 @@ export class Speaker {
    * 声を出さないとき: 口を動かす時間に合わせて、吹き出しの文を少しずつ出す。
    * 英語などは単語の区切りまで、日本語などは文字ごとに出す
    */
-  private pace(text: string, total: number, handlers: SpeakHandlers) {
+  private pace(run: Run, text: string, total: number, onProgress: (shown: string) => void) {
     const chars = [...text];
     const start = performance.now();
     let shown = -1;
     const tick = () => {
-      if (this.handlers !== handlers) return;
+      if (this.run !== run) return;
       const t = Math.min(1, (performance.now() - start) / total);
       let n = Math.ceil(chars.length * t);
       // 単語の途中で切らない (空白で区切る言葉のとき)
-      while (n < chars.length && /[A-Za-z0-9'\-]/.test(chars[n - 1] ?? "") && /[A-Za-z0-9'\-]/.test(chars[n]!)) n++;
+      while (n < chars.length && /[A-Za-z0-9'-]/.test(chars[n - 1] ?? "") && /[A-Za-z0-9'-]/.test(chars[n]!)) n++;
       if (n !== shown) {
         shown = n;
-        handlers.onProgress(chars.slice(0, n).join(""));
+        onProgress(chars.slice(0, n).join(""));
       }
       if (n < chars.length) this.paceTimer = window.setTimeout(tick, 60);
     };
@@ -291,15 +356,15 @@ export class Speaker {
   }
 
   private finish() {
-    const handlers = this.handlers;
-    if (!handlers) return;
-    this.handlers = undefined;
+    const run = this.run;
+    if (!run) return;
+    this.run = undefined;
     this.utterance = undefined;
     this.mouthToken++;
-    for (const t of [this.mouthTimer, this.fallbackTimer, this.silentTimer, this.paceTimer]) window.clearTimeout(t);
-    this.mouthTimer = this.fallbackTimer = this.silentTimer = this.paceTimer = undefined;
+    for (const t of [this.mouthTimer, this.fallbackTimer, this.partTimer, this.paceTimer]) window.clearTimeout(t);
+    this.mouthTimer = this.fallbackTimer = this.partTimer = this.paceTimer = undefined;
     this.player()?.setMouth(undefined);
-    handlers.onProgress(this.text);
-    handlers.onEnd();
+    run.handlers.onProgress(this.text);
+    run.handlers.onEnd();
   }
 }

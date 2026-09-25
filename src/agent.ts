@@ -7,6 +7,7 @@ import { IdleController, isIdleAnimation } from "./idle";
 import { languageTag, type Language } from "./language";
 import { Speaker, voiceParams, type SpeakParams } from "./speak";
 import { injectStyles } from "./styles";
+import { isRepeatTag, parseSpeechTags, removeBookmarks, shownText } from "./tags";
 
 export interface AgentOptions {
   /** キャラクターを置く要素 (既定: document.body) */
@@ -45,9 +46,11 @@ export interface AgentEventMap {
   /** アニメーションが始まった / 終わった (idle: 待機動作か) */
   animationstart: { name: string; idle: boolean };
   animationend: { name: string; idle: boolean };
-  /** しゃべり始めた / しゃべり終えた (途中でやめたときも来る)。thought: think() の考えごとか */
+  /** しゃべり始めた / しゃべり終えた (途中でやめたときも来る)。text は吹き出しに出す文 (タグを除いたもの)。thought: think() か */
   speakstart: { text: string; thought: boolean };
   speakend: { text: string; thought: boolean };
+  /** 読み上げの目印 (\Mrk=番号\) まで来た (本家の Bookmark と同じ) */
+  bookmark: { id: number };
 }
 
 export type AgentEventListener<K extends keyof AgentEventMap> = (event: CustomEvent<AgentEventMap[K]>) => void;
@@ -134,6 +137,8 @@ export class Agent extends EventTarget {
   private thinkTimer: number | undefined;
   /** think() の文を少しずつ出すタイマー */
   private thinkPaceTimer: number | undefined;
+  /** 最後にしゃべった文 (\Lst\ で繰り返すため) */
+  private lastSpoken: string | undefined;
   private destroyed = false;
   private readonly cleanups: (() => void)[] = [];
 
@@ -325,34 +330,46 @@ export class Agent extends EventTarget {
         if (speaking) await this.player.play(speaking, { hold: true });
         if (gen !== this.generation) return; // 切り替えの間に stop() された
       }
+      // \Lst\ だけなら、直前の発言を繰り返す (目印は繰り返さない。本家と同じ)
+      let said = text;
+      if (isRepeatTag(said)) {
+        if (this.lastSpoken === undefined) return complete();
+        said = removeBookmarks(this.lastSpoken);
+      } else {
+        this.lastSpoken = said;
+      }
+      const params = this.speakParams();
+      const parts = parseSpeechTags(said, params);
+      const shown = shownText(parts);
       window.clearTimeout(this.balloonTimer);
       this.hold = !!hold;
       this.speechComplete = complete;
-      this.emit("speakstart", { text, thought: false });
+      this.emit("speakstart", { text: shown, thought: false });
       const style = this.balloonStyle;
       this.balloon.element.lang = this.speechLanguage ?? "";
       if (style.enabled) {
         this.balloon.setThink(false);
         // 少しずつ出さない (autoPace: false) なら、最初から全文
-        this.balloon.setText(style.autoPace ? "" : text);
+        this.balloon.setText(style.autoPace ? "" : shown);
         this.balloon.show();
       } else {
         this.balloon.hide();
       }
       this.speaker.speak(
-        text,
+        parts,
         {
-          onProgress: (shown) => {
-            if (style.enabled && style.autoPace) this.balloon.setText(shown);
+          onProgress: (progress) => {
+            if (style.enabled && style.autoPace) this.balloon.setText(progress);
           },
+          onBookmark: (id) => this.emit("bookmark", { id }),
           onEnd: () => {
-            this.emit("speakend", { text, thought: false });
+            this.emit("speakend", { text: shown, thought: false });
             if (this.hold) return;
             this.completeSpeech();
             this.scheduleBalloonHide();
           },
         },
-        this.speakParams(),
+        params,
         this.voice,
       );
     });
@@ -368,29 +385,45 @@ export class Agent extends EventTarget {
       // 隠れている間と、吹き出しを使わないキャラクターは、何も出さない (本家と同じ)
       const style = this.balloonStyle;
       if (this.hidden || !style.enabled) return complete();
+      // 本家と同じく、\Mrk\ (目印) だけを使い、ほかのタグは取り除く
+      const parts = parseSpeechTags(text, undefined, true);
+      const shownAll = shownText(parts);
+      // 目印の位置 (その前までの文字数)
+      const bookmarks: { at: number; id: number }[] = [];
+      let offset = 0;
+      for (const p of parts) {
+        if (p.kind === "text") offset += [...p.shown].length;
+        else if (p.kind === "bookmark") bookmarks.push({ at: offset, id: p.id });
+      }
+      const fireBookmarks = (upTo: number) => {
+        while (bookmarks.length > 0 && bookmarks[0]!.at <= upTo) this.emit("bookmark", { id: bookmarks.shift()!.id });
+      };
       window.clearTimeout(this.balloonTimer);
       this.hold = false;
       this.speechComplete = complete;
-      this.emit("speakstart", { text, thought: true });
+      this.emit("speakstart", { text: shownAll, thought: true });
       this.balloon.setThink(true);
-      const chars = [...text];
+      const chars = [...shownAll];
       const ms = Math.min(THINK_MAX_MS, Math.max(THINK_MIN_MS, chars.length * THINK_MS_PER_CHAR));
       // 少しずつ出すときは、出しておく時間に合わせて文字を出していく
       let shown = style.autoPace ? 0 : chars.length;
       this.balloon.setText(chars.slice(0, shown).join(""));
       this.balloon.show();
+      fireBookmarks(shown);
       const started = performance.now();
       const pace = () => {
         if (this.thinkTimer === undefined) return;
         shown = Math.min(chars.length, Math.ceil((chars.length * (performance.now() - started)) / (ms * 0.8)));
         this.balloon.setText(chars.slice(0, shown).join(""));
+        fireBookmarks(shown);
         if (shown < chars.length) this.thinkPaceTimer = window.setTimeout(pace, 60);
       };
       this.thinkTimer = window.setTimeout(() => {
         this.thinkTimer = undefined;
         window.clearTimeout(this.thinkPaceTimer);
-        this.balloon.setText(text);
-        this.emit("speakend", { text, thought: true });
+        this.balloon.setText(shownAll);
+        fireBookmarks(Infinity);
+        this.emit("speakend", { text: shownAll, thought: true });
         this.completeSpeech();
         this.scheduleBalloonHide();
       }, ms);
