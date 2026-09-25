@@ -1,6 +1,6 @@
 import type { BalloonStyle } from "./character";
 
-/** 吹き出しを出す向き (clippy.js と同じ名前。例: top-left = キャラクターの左上) */
+/** 吹き出しを出す向き (例: top-left = キャラクターの左上) */
 type Side = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 const SIDES: Side[] = ["top-left", "top-right", "bottom-left", "bottom-right"];
 

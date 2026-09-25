@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>msagent.js</title>
-    <meta name="description" content="Microsoft Agent (.acs) と Office 97 のアシスタント (.act) のキャラクターを、ブラウザだけで動かす JavaScript ライブラリ。clippy.js と同じ API で使えます。" />
+    <meta name="description" content="Microsoft Agent (.acs) と Office 97 のアシスタント (.act) のキャラクターを、ブラウザだけで動かす JavaScript ライブラリ。変換も依存パッケージも要りません。" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%AC%3C/text%3E%3C/svg%3E" />
     <style>
       /*
@@ -171,7 +171,7 @@
       section { padding: 56px 0; border-top: 1px solid var(--border); }
       h2 { margin: 0 0 8px; font-size: 24px; }
       .section-lead { margin: 0 0 28px; color: var(--muted); }
-      .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+      .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
       .card { padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
       .card .icon { font-size: 26px; line-height: 1; }
       .card h3 { margin: 12px 0 6px; font-size: 16px; }
@@ -180,6 +180,21 @@
       .code .c { color: var(--code-muted); }
       .code .k { color: var(--code-key); }
       .code .s { color: var(--code-str); }
+      .steps { margin: 0 0 32px; padding: 0; list-style: none; counter-reset: step; }
+      .steps > li { position: relative; padding-left: 44px; counter-increment: step; }
+      .steps > li + li { margin-top: 28px; }
+      .steps > li::before {
+        content: counter(step); position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%;
+        display: grid; place-items: center; background: var(--accent); color: var(--accent-fg); font-weight: 700; font-size: 14px;
+      }
+      .steps h3 { margin: 2px 0 8px; font-size: 17px; }
+      .steps p { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
+      .steps .code { margin-bottom: 12px; }
+      @media (max-width: 480px) { .steps > li { padding-left: 0; padding-top: 40px; } }
+      .api-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 28px 32px; }
+      .api-groups h3 { margin: 0 0 4px; font-size: 16px; }
+      .api-groups .api { grid-template-columns: 1fr; }
+      .more { margin: 20px 0 0; font-size: 14px; color: var(--muted); }
       .api { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px 24px; margin: 0; padding: 0; list-style: none; font-size: 14px; }
       .api li { padding: 8px 0; border-bottom: 1px solid var(--border); }
       .api code { font-weight: 600; }
@@ -215,7 +230,7 @@
     <main id="top">
       <div class="wrap hero">
         <div>
-          <p class="eyebrow">JavaScript ライブラリ · clippy.js と同じ API</p>
+          <p class="eyebrow">JavaScript ライブラリ · 依存なし</p>
           <h1>Microsoft Agent を、<br />ブラウザで。</h1>
           <p class="lead">
             Microsoft Agent のキャラクター (.acs) と Office 97 のアシスタント (.act) を、変換せずにそのまま読み込んで動かします。
@@ -320,23 +335,33 @@
           <div class="cards">
             <div class="card">
               <div class="icon">🎞️</div>
-              <h3>本物のアニメーション</h3>
-              <p>.acs も .act もブラウザ内で解析して canvas に描画。分岐・終了分岐・戻りアニメ・効果音まで再生します。</p>
+              <h3>本家どおりのアニメーション</h3>
+              <p>.acs も .act もブラウザ内で解析して canvas に描画。分岐・終了分岐・戻りアニメ・効果音、移動や指さしの動きまで、Microsoft Agent と同じ順番で再生します。</p>
             </div>
             <div class="card">
               <div class="icon">🗣️</div>
-              <h3>しゃべって口パク</h3>
-              <p>吹き出しと一緒に Web Speech API で読み上げ、キャラクターの口の画像を切り替えて口を動かします。</p>
+              <h3>しゃべって、口を動かす</h3>
+              <p>吹き出しと Web Speech API の読み上げに合わせて口の画像を切り替えます。音声ファイルでも、言語情報つきの .lwv なら音素に合わせて口が動きます。</p>
             </div>
             <div class="card">
-              <div class="icon">📎</div>
-              <h3>clippy.js と同じ API</h3>
-              <p><code>clippy</code> を <code>msagent</code> に書き換えるだけ。play・speak・moveTo・gestureAt は順番待ちで 1 つずつ実行します。</p>
+              <div class="icon">🎙️</div>
+              <h3>声で呼びかける</h3>
+              <p>音声コマンドに対応。右クリックのメニューと同じコマンドを声でも選べ、聞き取りのヒントやコマンドの窓も本家と同じに出ます。</p>
+            </div>
+            <div class="card">
+              <div class="icon">🖱️</div>
+              <h3>触って遊べる</h3>
+              <p>ドラッグで動かし、ダブルクリックでアニメーション。透明な部分はクリックがページに届くので、邪魔になりません。</p>
+            </div>
+            <div class="card">
+              <div class="icon">⏱️</div>
+              <h3>命令は順番に</h3>
+              <p>play・speak・moveTo・gestureAt は順番待ちで 1 つずつ実行します。<code>await</code> で終わりを待て、途中で止めることもできます。</p>
             </div>
             <div class="card">
               <div class="icon">📦</div>
-              <h3>依存なし・軽量</h3>
-              <p>jQuery も変換ツールも要りません。ESM と &lt;script&gt; 用の両方を用意し、型定義付きです。</p>
+              <h3>依存なし・変換なし</h3>
+              <p>jQuery も変換ツールも要りません。ファイルを置くだけで動き、ESM と &lt;script&gt; の両方に型定義付きで対応します。</p>
             </div>
           </div>
         </div>
@@ -345,29 +370,60 @@
       <section id="usage">
         <div class="wrap">
           <h2>使い方</h2>
-          <p class="section-lead">キャラクターファイルを置いて、<code>msagent.load()</code> で呼び出します。</p>
+          <p class="section-lead">キャラクターファイルを置いて、3 つの手順で動かします。</p>
+          <ol class="steps">
+            <li>
+              <h3>インストール</h3>
+<pre class="code"><code>npm install msagent.js</code></pre>
+              <p class="step-or">または <code>&lt;script&gt;</code> で読み込む (<code>window.msagent</code> で使えます)</p>
+<pre class="code"><code>&lt;script src=<span class="s">"https://cdn.jsdelivr.net/npm/msagent.js"</span>&gt;&lt;/script&gt;</code></pre>
+            </li>
+            <li>
+              <h3>読み込んで動かす</h3>
+              <p>命令は順番待ちに入り、1 つずつ実行します。<code>await</code> すると、その命令が終わるまで待てます。</p>
 <pre class="code"><code><span class="k">import</span> msagent <span class="k">from</span> <span class="s">"msagent.js"</span>;
 
-msagent.BASE_PATH = <span class="s">"/agents/"</span>;
+<span class="k">const</span> agent = <span class="k">await</span> msagent.load(<span class="s">"/agents/Merlin.acs"</span>);
+agent.show();
+<span class="k">await</span> agent.speak(<span class="s">"こんにちは！"</span>);   <span class="c">// 読み終わるまで待つ</span>
+agent.play(<span class="s">"Congratulate"</span>);
+agent.moveTo(<span class="k">100</span>, <span class="k">100</span>);</code></pre>
+            </li>
+            <li>
+              <h3>反応させる</h3>
+              <p>クリックや、右クリックのメニュー・声で選ばれたコマンドを、イベントで受け取ります。</p>
+<pre class="code"><code>agent.on(<span class="s">"click"</span>, () =&gt; agent.animate());
 
-msagent.load(<span class="s">"Merlin"</span>, (agent) =&gt; {   <span class="c">// → /agents/Merlin.acs</span>
-  agent.show();
-  agent.speak(<span class="s">"こんにちは！"</span>);
-  agent.play(<span class="s">"Congratulate"</span>);
-  agent.moveTo(<span class="k">100</span>, <span class="k">100</span>);
-  agent.gestureAt(<span class="k">0</span>, <span class="k">0</span>);
+<span class="c">// 右クリックのメニューに出し、「こんにちは」と話しかけても選べる</span>
+agent.commands.add(<span class="s">"hello"</span>, <span class="s">"あいさつ(&amp;H)"</span>, { voice: <span class="s">"こんにちは"</span> });
+agent.on(<span class="s">"command"</span>, (e) =&gt; {
+  <span class="k">if</span> (e.detail.name === <span class="s">"hello"</span>) agent.play(<span class="s">"Greet"</span>);
 });</code></pre>
-          <ul class="api">
-            <li><code>show()</code> / <code>hide()</code><span>登場・退場</span></li>
-            <li><code>play(name, timeout, cb)</code><span>アニメーションを再生</span></li>
-            <li><code>animate()</code><span>待機動作以外から 1 つ選んで再生</span></li>
-            <li><code>speak(text, hold)</code><span>吹き出しでしゃべる (読み上げ + 口パク)</span></li>
-            <li><code>think(text)</code><span>考えごとの吹き出し (声は出さない)</span></li>
-            <li><code>moveTo(x, y, duration)</code><span>移動前の動き → 移動 → 移動後の動き</span></li>
-            <li><code>gestureAt(x, y)</code><span>指した姿勢を、次の動きまで保つ</span></li>
-            <li><code>stop()</code> / <code>stopCurrent()</code><span>順番待ちを捨てる / いまの動きを終わらせる</span></li>
-            <li><code>delay(ms)</code> / <code>pause()</code> / <code>resume()</code><span>待つ・一時停止・再開</span></li>
-          </ul>
+            </li>
+          </ol>
+          <div class="api-groups">
+            <div>
+              <h3>おもな命令</h3>
+              <ul class="api">
+                <li><code>show()</code> / <code>hide()</code><span>登場・退場</span></li>
+                <li><code>play(name)</code> / <code>animate()</code><span>アニメーションを再生 / 1 つ選んで再生</span></li>
+                <li><code>speak(text)</code> / <code>think(text)</code><span>しゃべる (読み上げ + 口パク) / 考えごとの吹き出し</span></li>
+                <li><code>moveTo(x, y)</code> / <code>gestureAt(x, y)</code><span>移動する / その方向を指す</span></li>
+                <li><code>stop()</code><span>順番待ちを捨てて、いまの動きを終わらせる</span></li>
+              </ul>
+            </div>
+            <div>
+              <h3>おもなイベント</h3>
+              <ul class="api">
+                <li><code>click</code> / <code>dblclick</code><span>キャラクターを押された</span></li>
+                <li><code>command</code><span>メニューか声で、コマンドが選ばれた</span></li>
+                <li><code>move</code><span>移った (ドラッグ・moveTo)</span></li>
+                <li><code>animationstart</code> / <code>animationend</code><span>アニメーションが始まった / 終わった</span></li>
+                <li><code>speakstart</code> / <code>speakend</code><span>しゃべり始めた / 終えた</span></li>
+              </ul>
+            </div>
+          </div>
+          <p class="more">ほかの命令・設定・イベントは <a href="https://github.com/argynnini/msagent.js#readme" target="_blank" rel="noopener noreferrer">README ↗</a> にあります。</p>
           <div class="note">
             <strong>.acs / .act ファイルについて:</strong>
             キャラクターは Microsoft などのもので再配布できないため、同梱していません。

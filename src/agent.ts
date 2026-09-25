@@ -64,7 +64,7 @@ export interface AgentOptions {
   /** 聞いている間、キャラクターの下に聞き取りのヒントを出すか (既定: true。本家の Listening Tip) */
   listeningTip?: boolean;
   /**
-   * 命令の失敗を例外にするか (既定: false。本家の RaiseRequestErrors。本家の既定は true だが、clippy.js に合わせる)。
+   * 命令の失敗を例外にするか (既定: false。本家の RaiseRequestErrors。本家の既定は true だが、msagent.js では false)。
    * true なら、失敗した命令を await すると AgentRequestError になり、無いアニメーションの play() などはその場で例外を投げる
    */
   raiseRequestErrors?: boolean;
@@ -100,7 +100,7 @@ export interface ThinkOptions {
 
 export interface HideOptions {
   /**
-   * true なら、順番待ちを捨てて、すぐに隠れる (clippy.js と同じ)。
+   * true なら、順番待ちを捨てて、すぐに隠れる。
    * 省略時 (false) は Microsoft Agent と同じく順番待ちに入り、前の命令が終わってから隠れる
    */
   immediate?: boolean;
@@ -137,7 +137,7 @@ const STATE_GROUPS: Record<string, readonly string[]> = {
 type Direction = "Right" | "Up" | "Left" | "Down";
 const DIRECTIONS: readonly Direction[] = ["Right", "Up", "Left", "Down"];
 
-/** play() の timeout の既定値 (clippy.js と同じ) */
+/** play() の timeout の既定値 */
 const DEFAULT_TIMEOUT_MS = 5000;
 /** 音声コマンドの窓を開く・閉じる声のコマンド (本家の Global Commands) */
 const OPEN_COMMANDS_VOICE =
@@ -166,7 +166,7 @@ let zIndexCounter = 1000;
 let topmost: Agent | undefined;
 
 /**
- * キャラクター 1 体。clippy.js の Agent と同じ使い方ができる。
+ * キャラクター 1 体。
  * show / hide / play / speak / think / moveTo / gestureAt / delay は順番待ちに入り、前のものが終わってから 1 つずつ実行される
  */
 export class Agent extends EventTarget {
@@ -371,7 +371,7 @@ export class Agent extends EventTarget {
     this.listenTo(window, "keydown", unlock, true);
   }
 
-  // --- clippy.js と同じ API ---
+  // --- 基本の命令 ---
 
   /**
    * 登場する。キャラクターの Showing の状態に割り当てられたアニメーション (多くは Show) を再生する。
@@ -383,7 +383,7 @@ export class Agent extends EventTarget {
       this.hidden = false;
       this.element.style.display = "block";
       if (!this.element.style.left) {
-        // clippy.js と同じく、画面の右下寄り (はみ出す分は reposition で戻す)
+        // 画面の右下寄り (はみ出す分は reposition で戻す)
         this.element.style.left = `${window.innerWidth * 0.8}px`;
         this.element.style.top = `${window.innerHeight * 0.8}px`;
       }
@@ -982,7 +982,7 @@ export class Agent extends EventTarget {
 
   // --- 内部: 命令 ---
 
-  /** 命令を作る前に分かった失敗: raiseRequestErrors なら例外、そうでなければ false (clippy.js と同じ) */
+  /** 命令を作る前に分かった失敗: raiseRequestErrors なら例外、そうでなければ false */
   private fail(number: number, description: string): false {
     if (this.raiseRequestErrors) throw new AgentRequestError(number, description);
     return false;
@@ -995,7 +995,7 @@ export class Agent extends EventTarget {
   /** hide() の中身。cause: 誰が隠したか (右クリックのメニューなら "user") */
   private queueHide(fast: boolean | undefined, callback: (() => void) | undefined, options: HideOptions, cause: VisibilityCause) {
     if (options.immediate) {
-      // clippy.js と同じ: いまの動き (登場・退場の途中でも) と順番待ちを捨てて、すぐ隠れる
+      // いまの動き (登場・退場の途中でも) と順番待ちを捨てて、すぐ隠れる
       this.transition = undefined;
       this.queue.clear();
       this.talk.close();
@@ -1388,7 +1388,7 @@ export class Agent extends EventTarget {
   }
 
   /**
-   * (x, y) がキャラクターから見てどちらか (clippy.js と同じ判定)。
+   * (x, y) がキャラクターから見てどちらか。
    * キャラクターの向きで数えるので、画面の左が "Right" になる
    */
   private direction(x: number, y: number): Direction {

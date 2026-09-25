@@ -1,6 +1,6 @@
 import { msagent } from "./load";
 
-// 読み込み (clippy.js と同じ msagent.load)
+// 読み込み (msagent.load)
 export default msagent;
 export { msagent, load } from "./load";
 export { audioOutput } from "./audio";

@@ -13,7 +13,7 @@ import type { Speaker } from "./speak";
 import { bookmarkNotifier, isRepeatTag, parseSpeechTags, plainSpeech, removeBookmarks, shownText, type Bookmark } from "./tags";
 import type { SpeakParams } from "./voice";
 
-/** 読み上げが終わってから、吹き出しを閉じるまで (clippy.js と同じ) */
+/** 読み上げが終わってから、吹き出しを閉じるまで */
 const CLOSE_BALLOON_DELAY_MS = 2000;
 /** think() で文を出しておく、最短の時間 (ms) */
 const THINK_MIN_MS = 300;

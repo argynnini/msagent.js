@@ -38,7 +38,7 @@ function isLoadOptions(v: unknown): v is LoadOptions {
 }
 
 /**
- * キャラクターを読み込む (clippy.js と同じ呼び方)。
+ * キャラクターを読み込む。
  *
  * ```js
  * msagent.load("Merlin", (agent) => agent.show());              // msagent.BASE_PATH + "Merlin.acs"
@@ -66,7 +66,7 @@ export function load(
   return promise;
 }
 
-/** clippy.js の clippy オブジェクトと同じ形 (<script> で読み込むと window.msagent になる) */
+/** ライブラリの入り口 (<script> で読み込むと window.msagent になる) */
 export const msagent = {
   /** 名前だけで load() したときに、前に付ける場所 (例: "/agents/") */
   BASE_PATH: "",
