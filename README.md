@@ -20,7 +20,8 @@ Microsoft Agent のキャラクター (`.acs`) と、Office 97 のアシスタ�
 [見た目](#見た目) ·
 [プロパティ一覧](#プロパティ一覧) ·
 [注意](#注意) ·
-[開発](#開発)
+[開発](#開発) ·
+[ライセンス](#ライセンス)
 
 ## はじめる
 
@@ -560,3 +561,7 @@ npm run test:unit   # ブラウザを使わないものだけ (速い)
 ```
 
 ブラウザは、インストール済みの Chrome を使います (`PW_CHANNEL=msedge` などで変えられる。Playwright のブラウザを使うときは `npx playwright install chromium` の後に `PW_CHANNEL=chromium`)。
+
+## ライセンス
+
+[MIT](LICENSE)。キャラクターファイル (.acs / .act) は含まれず、このライセンスの対象ではありません (著作権は、それぞれの権利者にあります)。
