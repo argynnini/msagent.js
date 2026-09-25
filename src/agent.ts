@@ -4,8 +4,8 @@ import { ActCharacter, isActFile } from "./act/reader";
 import { Balloon } from "./balloon";
 import { DEFAULT_BALLOON_STYLE, type BalloonStyle, type Character } from "./character";
 import { IdleController, isIdleAnimation } from "./idle";
-import type { Language } from "./language";
-import { Speaker, voiceParams } from "./speak";
+import { languageTag, type Language } from "./language";
+import { Speaker, voiceParams, type SpeakParams } from "./speak";
 import { injectStyles } from "./styles";
 
 export interface AgentOptions {
@@ -83,6 +83,12 @@ const NOT_FOR_ANIMATE = /^(Show|Hide|RestPose)$/i;
 /** ACS (Microsoft Agent) か ACT (Office 97 のアシスタント) を、中身から見分けて読み込む */
 export function parseCharacter(data: ArrayBuffer): Character {
   return isActFile(data) ? new ActCharacter(data) : new AcsCharacter(data);
+}
+
+/** "A|B|C" のように | で区切った候補から、1 つをランダムに選ぶ (本家の Speak / Think と同じ) */
+function pickAlternative(text: string): string {
+  const alternatives = text.split("|");
+  return alternatives[Math.floor(Math.random() * alternatives.length)]!;
 }
 
 /** 大文字小文字を問わず、実在するアニメーション名に直す (無ければ undefined) */
@@ -307,6 +313,7 @@ export class Agent extends EventTarget {
    * hold なら、読み終えても吹き出しを閉じず、closeBalloon() まで次の命令に進まない
    */
   speak(text: string, hold?: boolean): void {
+    text = pickAlternative(text);
     this.addToQueue(async (complete) => {
       // 隠れている間は、吹き出しも声も出せない (本家も隠れたキャラクターは音を出せない)
       if (this.hidden) return complete();
@@ -323,6 +330,7 @@ export class Agent extends EventTarget {
       this.speechComplete = complete;
       this.emit("speakstart", { text, thought: false });
       const style = this.balloonStyle;
+      this.balloon.element.lang = this.speechLanguage ?? "";
       if (style.enabled) {
         this.balloon.setThink(false);
         // 少しずつ出さない (autoPace: false) なら、最初から全文
@@ -344,7 +352,7 @@ export class Agent extends EventTarget {
             this.scheduleBalloonHide();
           },
         },
-        voiceParams(this.character.voice),
+        this.speakParams(),
         this.voice,
       );
     });
@@ -355,6 +363,7 @@ export class Agent extends EventTarget {
    * 読み終わるくらいの時間 (文の長さから決める) が過ぎたら次の命令に進み、少しして吹き出しを閉じる
    */
   think(text: string): void {
+    text = pickAlternative(text);
     this.addToQueue((complete) => {
       // 隠れている間と、吹き出しを使わないキャラクターは、何も出さない (本家と同じ)
       const style = this.balloonStyle;
@@ -681,6 +690,22 @@ export class Agent extends EventTarget {
       if (found) return found;
     }
     return undefined;
+  }
+
+  /**
+   * 読み上げの設定: 速さ・高さと声の性別はキャラクターの設定から。言語は agent.language を指定していればそれ
+   * (本家の LanguageID と同じ)、無ければ文から推測する
+   */
+  private speakParams(): SpeakParams {
+    const lang = this.speechLanguage;
+    return { ...voiceParams(this.character.voice), gender: this.character.voice.gender, ...(lang ? { lang } : {}) };
+  }
+
+  /** agent.language から決めた読み上げ・吹き出しの言語 (BCP 47)。指定が無ければ undefined */
+  private get speechLanguage(): string | undefined {
+    const first = Array.isArray(this.language) ? this.language[0] : this.language;
+    if (first === undefined) return undefined;
+    return typeof first === "number" ? languageTag(first) : first;
   }
 
   /** しゃべるとき用のアニメーション (Speaking の状態、無ければ RestPose)。口の画像があるものだけ */

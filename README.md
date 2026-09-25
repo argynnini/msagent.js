@@ -71,7 +71,7 @@ const agent = await msagent.load(name); // Promise でも受け取れる
 | `play(name, timeout = 5000, callback?)` | 再生する。`timeout` を過ぎたら、終了分岐で自然に終わらせる。無いアニメーションなら `false` |
 | `animate()` | 待機動作以外から、1 つ選んで再生する |
 | `animations()` / `hasAnimation(name)` | アニメーションの一覧・あるかどうか |
-| `speak(text, hold?)` | 吹き出しでしゃべる。`hold` なら、`closeBalloon()` まで吹き出しを閉じない |
+| `speak(text, hold?)` | 吹き出しでしゃべる。`hold` なら、`closeBalloon()` まで吹き出しを閉じない。`"A\|B\|C"` のように `\|` で区切ると、毎回 1 つをランダムに選ぶ |
 | `think(text)` | 考えごとの吹き出し (雲形) に出す。声は出さず、口も動かさない (本家の Think と同じ) |
 | `closeBalloon()` | 吹き出しを閉じる |
 | `moveTo(x, y, duration = 1000)` | 移動する (Moving〜 の状態のアニメーション → 最後のコマのまま移動 → 戻りの動き)。`duration` が 0 か、隠れている間は、すぐ移る |
@@ -116,7 +116,10 @@ agent.character.getDescription(0x0411);  // Windows の言語 ID でもよい
 agent.character.languages;               // 入っている言語 (例: ["en", "ja-JP", "zh-TW", …])
 ```
 
-指定した言語が無ければ、同じ言語の別の地域 → 英語 → 最初に入っているもの、の順に選びます。`.act` には言語ごとの名前が無いので、いつも同じ名前です。
+指定した言語が無ければ、同じ言語の別の地域 → 英語 → 最初に入っているもの、の順に選びます。
+
+`agent.language` を指定すると、読み上げと吹き出しの言語にもなります (本家の LanguageID と同じ)。指定しなければ、読み上げの言語は文から推測します (かな・漢字があれば日本語、無ければ英語)。
+読み上げの声は、本家と同じく言語 → 性別の順に合うものを選びます。ブラウザの声には性別の情報が無いので、声の名前 (Haruka、Ichiro、David など) から推測します。年齢は、ブラウザからは分からないので使いません。`.act` には言語ごとの名前が無いので、いつも同じ名前です。
 
 ### 大きさ
 

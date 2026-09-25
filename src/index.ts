@@ -14,7 +14,7 @@ export type { AcsImage, Animation, Branch, Frame, FrameImage, Overlay } from "./
 export { ActCharacter, isActFile } from "./act/reader";
 export { AcsPlayer } from "./acs/player";
 export { imageToDataUrl } from "./acs/icon";
-export { Speaker, mouthSteps, voiceParams } from "./speak";
-export type { SpeakHandlers } from "./speak";
+export { Speaker, mouthSteps, pickVoice, voiceParams } from "./speak";
+export type { SpeakHandlers, SpeakParams } from "./speak";
 export { IdleController, idleLevel, isIdleAnimation, pickIdle, pickIdleFor } from "./idle";
 export type { IdleDeps } from "./idle";
