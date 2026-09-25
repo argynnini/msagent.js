@@ -190,6 +190,8 @@ export class Speaker {
   private run: Run | undefined;
   /** 吹き出しに出す全文 (途中で止めても、吹き出しには全文を残すため) */
   private text = "";
+  /** 音声ファイルでしゃべっているときの、再生している音 */
+  private source: AudioBufferSourceNode | undefined;
 
   constructor(private readonly player: () => AcsPlayer | undefined) {}
 
@@ -221,6 +223,69 @@ export class Speaker {
     this.run = run;
     handlers.onProgress("");
     this.speakPart(run, parts, 0, "");
+  }
+
+  /**
+   * 音声ファイル (デコード済み) でしゃべる (本家の Speak の Url と同じ)。音の大きさに合わせて口を動かし、
+   * 吹き出しの文 (parts。目印も含めてよい) は、音の長さに合わせて少しずつ出す。volume が 0 なら音は出さず、口だけ動かす
+   */
+  speakAudio(
+    audio: AudioBuffer,
+    context: AudioContext,
+    parts: readonly SpeechPart[],
+    handlers: SpeakHandlers,
+    volume = 1,
+  ) {
+    this.cancel();
+    this.text = shownText(parts);
+    const run: Run = { handlers, synth: undefined, lang: "", gender: undefined };
+    this.run = run;
+    handlers.onProgress("");
+    if (context.state === "suspended") void context.resume().catch(() => undefined);
+
+    const source = context.createBufferSource();
+    source.buffer = audio;
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 1024;
+    const gain = context.createGain();
+    gain.gain.value = volume;
+    source.connect(analyser);
+    analyser.connect(gain);
+    gain.connect(context.destination);
+    this.source = source;
+
+    // 吹き出しの文と目印の位置 (その前までの文字数)
+    const chars = [...this.text];
+    const bookmarks: { at: number; id: number }[] = [];
+    let offset = 0;
+    for (const p of parts) {
+      if (p.kind === "text") offset += [...p.shown].length;
+      else if (p.kind === "bookmark") bookmarks.push({ at: offset, id: p.id });
+    }
+    const total = Math.max(1, audio.duration * 1000);
+    const started = performance.now();
+    const samples = new Float32Array(analyser.fftSize);
+    const tick = () => {
+      if (this.run !== run) return;
+      // 口: 音の大きさ (RMS) で開き方を決める
+      analyser.getFloatTimeDomainData(samples);
+      let sum = 0;
+      for (const v of samples) sum += v * v;
+      const rms = Math.sqrt(sum / samples.length);
+      this.player()?.setMouth(rms < 0.02 ? MOUTH_CLOSED : rms < 0.05 ? 1 : rms < 0.1 ? 5 : rms < 0.18 ? 2 : 4);
+      // 吹き出し: 音の長さに合わせて文字を出し、通り過ぎた目印を知らせる
+      const n = Math.min(chars.length, Math.ceil((chars.length * (performance.now() - started)) / total));
+      run.handlers.onProgress(chars.slice(0, n).join(""));
+      while (bookmarks.length > 0 && bookmarks[0]!.at <= n) run.handlers.onBookmark?.(bookmarks.shift()!.id);
+      this.mouthTimer = window.setTimeout(tick, 60);
+    };
+    source.onended = () => {
+      if (this.run !== run) return;
+      for (const b of bookmarks) run.handlers.onBookmark?.(b.id);
+      this.finish();
+    };
+    source.start();
+    tick();
   }
 
   /** 読み上げを途中でやめる (読み上げ中でなければ何もしない) */
@@ -360,6 +425,15 @@ export class Speaker {
     if (!run) return;
     this.run = undefined;
     this.utterance = undefined;
+    if (this.source) {
+      this.source.onended = null;
+      try {
+        this.source.stop();
+      } catch {
+        // まだ始まっていない・もう終わっている
+      }
+      this.source = undefined;
+    }
     this.mouthToken++;
     for (const t of [this.mouthTimer, this.fallbackTimer, this.partTimer, this.paceTimer]) window.clearTimeout(t);
     this.mouthTimer = this.fallbackTimer = this.partTimer = this.paceTimer = undefined;

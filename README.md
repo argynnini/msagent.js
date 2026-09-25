@@ -72,7 +72,7 @@ const agent = await msagent.load(name); // Promise でも受け取れる
 | `play(name, timeout = 5000, callback?)` | 再生する。`timeout` を過ぎたら、終了分岐で自然に終わらせる。無いアニメーションなら `false` |
 | `animate()` | 待機動作以外から、1 つ選んで再生する |
 | `animations()` / `hasAnimation(name)` | アニメーションの一覧・あるかどうか |
-| `speak(text, hold?)` | 吹き出しでしゃべる。`hold` なら、`closeBalloon()` まで吹き出しを閉じない。`"A\|B\|C"` のように `\|` で区切ると、毎回 1 つをランダムに選ぶ |
+| `speak(text, hold?)` / `speak(text, { hold, url })` | 吹き出しでしゃべる。`hold` なら、`closeBalloon()` まで吹き出しを閉じない。`"A\|B\|C"` のように `\|` で区切ると、毎回 1 つをランダムに選ぶ。`url` を渡すと、その音声ファイル (.wav / .mp3 など) でしゃべり、音の大きさに合わせて口を動かす (本家の Speak の Url と同じ) |
 | `think(text)` | 考えごとの吹き出し (雲形) に出す。声は出さず、口も動かさない (本家の Think と同じ) |
 | `closeBalloon()` | 吹き出しを閉じる |
 | `moveTo(x, y, duration = 1000)` | 移動する (Moving〜 の状態のアニメーション → 最後のコマのまま移動 → 戻りの動き)。`duration` が 0 か、隠れている間は、すぐ移る |

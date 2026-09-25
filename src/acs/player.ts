@@ -274,6 +274,12 @@ export class AcsPlayer {
     if (this.audioCtx.state === "suspended") void this.audioCtx.resume().catch(() => undefined);
   }
 
+  /** 効果音と同じ AudioContext (音声ファイルでしゃべるときにも使う) */
+  audioContext(): AudioContext {
+    this.audioCtx ??= new AudioContext();
+    return this.audioCtx;
+  }
+
   private async playSound(index: number) {
     if (!this.soundEnabled) return;
     this.audioCtx ??= new AudioContext();

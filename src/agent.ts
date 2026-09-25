@@ -32,6 +32,17 @@ export interface AgentOptions {
 }
 
 
+/** speak() の 2 つ目の引数 (true / false なら hold と同じ) */
+export interface SpeakOptions {
+  /** 読み終えても吹き出しを閉じず、closeBalloon() まで次の命令に進まない */
+  hold?: boolean;
+  /**
+   * 音声ファイルでしゃべる (本家の Speak の Url と同じ。.wav / .mp3 など、ブラウザで鳴らせるもの)。
+   * 音の大きさに合わせて口を動かし、text は吹き出しに出す (目印 \Mrk\ も使える)
+   */
+  url?: string | URL | Blob | ArrayBuffer;
+}
+
 /** クリックされたときの、ボタンと Shift / Ctrl / Alt キーの状態 (本家の Click の Button / Shift と同じ) */
 export interface PointerDetail {
   /** 画面上の位置 (clientX / clientY) */
@@ -143,6 +154,15 @@ function pickAlternative(text: string): string {
 let zIndexCounter = 1000;
 const nextZIndex = () => ++zIndexCounter;
 let topmost: Agent | undefined;
+
+/** 音声ファイルの中身を読む (URL なら fetch) */
+async function readAudio(source: string | URL | Blob | ArrayBuffer): Promise<ArrayBuffer> {
+  if (source instanceof ArrayBuffer) return source.slice(0);
+  if (source instanceof Blob) return source.arrayBuffer();
+  const res = await fetch(source);
+  if (!res.ok) throw new Error(`${res.status} ${res.url}`);
+  return res.arrayBuffer();
+}
 
 /** マウスのイベントから、click / dblclick の detail を作る */
 function pointerDetail(e: MouseEvent): PointerDetail {
@@ -425,11 +445,23 @@ export class Agent extends EventTarget {
    * 吹き出しでしゃべる (声に出すのは voice が true のとき)。
    * hold なら、読み終えても吹き出しを閉じず、closeBalloon() まで次の命令に進まない
    */
-  speak(text: string, hold?: boolean): AgentRequest {
+  speak(text: string, options?: boolean | SpeakOptions): AgentRequest {
     text = pickAlternative(text);
+    const { hold, url } = typeof options === "object" ? options : { hold: options, url: undefined };
     return this.addToQueue("speak", async (complete) => {
       // 隠れている間は、吹き出しも声も出せない (本家も隠れたキャラクターは音を出せず、失敗になる)
       if (this.hidden) return complete("failed", "キャラクターが隠れています");
+      // 音声ファイルでしゃべるときは、先に読み込んでおく
+      let audio: AudioBuffer | undefined;
+      if (url !== undefined) {
+        const gen = this.generation;
+        try {
+          audio = await this.player.audioContext().decodeAudioData(await readAudio(url));
+        } catch (e) {
+          return complete("failed", `音声ファイルを読み込めません: ${e instanceof Error ? e.message : String(e)}`);
+        }
+        if (gen !== this.generation) return complete();
+      }
       // 口の画像が無いコマ (待機動作の終わりなど) では口が動かないので、Microsoft Agent と同じく、
       // しゃべるとき用のアニメーション (Speaking の状態。多くは RestPose) に切り替えてから
       if (!this.player.hasMouth) {
@@ -463,23 +495,20 @@ export class Agent extends EventTarget {
       } else {
         this.balloon.hide();
       }
-      this.speaker.speak(
-        parts,
-        {
-          onProgress: (progress) => {
-            if (style.enabled && style.autoPace) this.balloon.setText(progress);
-          },
-          onBookmark: (id) => this.emit("bookmark", { id }),
-          onEnd: () => {
-            this.emit("speakend", { text: shown, thought: false });
-            if (this.hold) return;
-            this.completeSpeech();
-            this.scheduleBalloonHide();
-          },
+      const handlers = {
+        onProgress: (progress: string) => {
+          if (style.enabled && style.autoPace) this.balloon.setText(progress);
         },
-        params,
-        this.voice,
-      );
+        onBookmark: (id: number) => this.emit("bookmark", { id }),
+        onEnd: () => {
+          this.emit("speakend", { text: shown, thought: false });
+          if (this.hold) return;
+          this.completeSpeech();
+          this.scheduleBalloonHide();
+        },
+      };
+      if (audio) this.speaker.speakAudio(audio, this.player.audioContext(), parts, handlers, this.voice ? 1 : 0);
+      else this.speaker.speak(parts, handlers, params, this.voice);
     });
   }
 
