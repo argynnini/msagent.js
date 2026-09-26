@@ -3,7 +3,7 @@ import { ipaAt, LWV_MOUTH_RATE, type LwvInfo, type LwvWord } from "./lwv";
 import { MORA_MS, MOUTH_CLOSED, PAUSE_MS, mouthForIpa, mouthForLevel, mouthSteps, randomVowelMouth, stepsDuration, type MouthStep } from "./mouth";
 import { paceText, withTrailingPunctuation } from "./pace";
 import { bookmarkNotifier, parseSpeechTags, shownText, type Bookmark, type SpeechPart } from "./tags";
-import { pickVoice, type SpeakParams } from "./voice";
+import { findVoice, pickVoice, type SpeakParams } from "./voice";
 
 /**
  * キャラクターにしゃべらせる: ブラウザの音声合成 (Web Speech API) で読み上げ、その間は口の形 (ACS の口の画像) を切り替える。
@@ -61,6 +61,8 @@ interface Run {
   synth: SpeechSynthesis | undefined;
   lang: string;
   gender: SpeakParams["gender"];
+  /** 使う声 (voiceURI か名前。見つからなければ言語・性別から選ぶ) */
+  voice?: string | undefined;
 }
 
 export class Speaker {
@@ -104,6 +106,7 @@ export class Speaker {
       synth: !aloud || typeof speechSynthesis === "undefined" ? undefined : speechSynthesis,
       lang: params.lang ?? (hasJapanese(spoken) ? "ja-JP" : "en-US"),
       gender: params.gender,
+      voice: params.voice,
     });
     this.speakPart(run, parts, 0, "");
   }
@@ -240,8 +243,12 @@ export class Speaker {
     u.rate = part.rate;
     u.pitch = part.pitch;
     u.volume = part.volume;
-    // その言語 (と性別) に合う声があれば選ぶ (無ければブラウザ任せ)
-    const voice = pickVoice(run.synth.getVoices(), u.lang, part.gender ?? run.gender);
+    // 声を指定していれば、その声 (制御タグで言語・性別を変えた部分は除く)。
+    // 指定が無い・見つからなければ、その言語 (と性別) に合う声を選ぶ (無ければブラウザ任せ)
+    const voices = run.synth.getVoices();
+    const fixed = run.voice && !part.lang && !part.gender ? findVoice(voices, run.voice) : undefined;
+    if (fixed) u.lang = fixed.lang;
+    const voice = fixed ?? pickVoice(voices, u.lang, part.gender ?? run.gender);
     if (voice) u.voice = voice;
     let gotBoundary = false;
     // 声が出始めてから口を動かす。区切りの通知が来ない音声なら、全文を見積もって動かし、吹き出しにも全文を出す

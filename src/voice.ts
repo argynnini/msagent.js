@@ -33,6 +33,17 @@ export interface SpeakParams {
   lang?: string;
   /** 声の性別の希望 (合う声があれば、それを選ぶ) */
   gender?: "neutral" | "female" | "male";
+  /**
+   * 使う声 (voiceURI か名前。本家の TTSModeID)。見つかれば、言語・性別から選ぶ代わりにこの声で読む
+   * (制御タグで言語・性別を変えた部分は除く)。見つからなければ、言語・性別から選ぶ
+   */
+  voice?: string;
+}
+
+/** voiceURI か名前 (大文字小文字は問わない) で声を探す */
+export function findVoice(voices: readonly SpeechSynthesisVoice[], id: string): SpeechSynthesisVoice | undefined {
+  const lower = id.toLowerCase();
+  return voices.find((v) => v.voiceURI === id) ?? voices.find((v) => v.name.toLowerCase() === lower);
 }
 
 /**

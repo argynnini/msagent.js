@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { MOUTH_CLOSED, mouthForLevel, mouthSteps, stepsDuration } from "../../src/mouth";
-import { pickVoice, voiceParams } from "../../src/voice";
+import { findVoice, pickVoice, voiceParams } from "../../src/voice";
 
 const voice = (name: string, lang: string, isDefault = false) => ({ name, lang, default: isDefault }) as SpeechSynthesisVoice;
 const voices = [
@@ -58,4 +58,14 @@ test("音の大きさから口の形を決める", () => {
   expect(mouthForLevel(0.07)).toBe(2);
   expect(mouthForLevel(0.15)).toBe(3);
   expect(mouthForLevel(0.5)).toBe(4);
+});
+
+test("findVoice: voiceURI、無ければ名前 (大文字小文字は問わない) で探す", () => {
+  const list = [
+    { name: "Microsoft Haruka", voiceURI: "urn:a", lang: "ja-JP", default: true },
+    { name: "urn:a", voiceURI: "urn:b", lang: "en-US", default: false },
+  ] as unknown as SpeechSynthesisVoice[];
+  expect(findVoice(list, "urn:a")?.voiceURI).toBe("urn:a");
+  expect(findVoice(list, "microsoft haruka")?.voiceURI).toBe("urn:a");
+  expect(findVoice(list, "nothing")).toBeUndefined();
 });

@@ -2,7 +2,7 @@ import { AcfCharacter, isAcfFile, type AcfOptions } from "./acf/reader";
 import { AcsPlayer } from "./acs/player";
 import { AcsCharacter } from "./acs/reader";
 import { ActCharacter, isActFile } from "./act/reader";
-import { registerAudioClient } from "./audio";
+import { audioOutput, registerAudioClient } from "./audio";
 import { animateCandidates, findAnimation, restFrame, stateAnimation, thinkingAnimation } from "./animations";
 import { Balloon } from "./balloon";
 import { DEFAULT_BALLOON_STYLE, type BalloonStyle, type Character } from "./character";
@@ -21,7 +21,7 @@ import { Speaker } from "./speak";
 import { injectStyles } from "./styles";
 import { Talk } from "./talk";
 import { TaskbarIcon } from "./taskbar";
-import { voiceParams, type SpeakParams } from "./voice";
+import { findVoice, pickVoice, voiceParams, type SpeakParams } from "./voice";
 
 export type {
   AgentEventListener,
@@ -75,6 +75,10 @@ export interface AgentOptions {
    * クリックで隠れたキャラクターを出し直し、右クリックでメニューを出す
    */
   taskbarIcon?: boolean;
+  /**
+   * 読み上げに使う声 (ブラウザの声の voiceURI か名前。本家の TTSModeID)。既定: 言語と、キャラクターの声の性別から選ぶ
+   */
+  ttsModeId?: string;
 }
 
 /** speak() の 2 つ目の引数 (true / false なら hold と同じ) */
@@ -243,6 +247,8 @@ export class Agent extends EventTarget {
   private customName: string | undefined;
   private customDescription: string | undefined;
   private taskbar: TaskbarIcon | undefined;
+  /** 代入した声 (voiceURI か名前。undefined なら言語と性別から選ぶ) */
+  private ttsVoice: string | undefined;
   private readonly cleanups: (() => void)[] = [];
 
   constructor(
@@ -339,6 +345,7 @@ export class Agent extends EventTarget {
     if (this.idleEnabled) this.idle.start();
     this.watchAnimations();
     this.taskbarIcon = options.taskbarIcon ?? false;
+    this.ttsVoice = options.ttsModeId || undefined;
 
     attachPointerInput({
       element: this.element,
@@ -737,6 +744,25 @@ export class Agent extends EventTarget {
   set name(name: string | undefined) {
     this.customName = name;
     this.taskbar?.refresh();
+  }
+
+  /**
+   * 読み上げに使う声 (本家の TTSModeID)。ブラウザの声 (speechSynthesis.getVoices()) の voiceURI か名前を代入すると、
+   * その声で読む (制御タグで言語・性別を変えた部分は除く)。undefined か "" を代入すると、言語と、キャラクターの声の
+   * 性別から選ぶ (既定) に戻る。読み出すと、いま使う声の voiceURI を返す。声に出さない (voice / audioOutput.enabled が
+   * false)、ブラウザが読み上げに対応していない、合う声が無いときは "" (本家と同じ)。
+   * 代入した声が見つからないときは、言語と性別から選ぶ (ブラウザの声の一覧は、あとから届くことがあるので、代入では確かめない)
+   */
+  get ttsModeId(): string {
+    if (!this.voice || !audioOutput.enabled || typeof speechSynthesis === "undefined") return "";
+    const voices = speechSynthesis.getVoices();
+    const fixed = this.ttsVoice ? findVoice(voices, this.ttsVoice) : undefined;
+    const lang = this.speechLanguage ?? (typeof navigator === "undefined" ? "en-US" : navigator.language);
+    return (fixed ?? pickVoice(voices, lang, this.character.voice.gender))?.voiceURI ?? "";
+  }
+
+  set ttsModeId(id: string | undefined) {
+    this.ttsVoice = id || undefined;
   }
 
   /** 紹介文 (language の言語。省略時はブラウザの言語)。代入すると変えられる (本家の Description と同じ)。undefined で戻る */
@@ -1464,7 +1490,12 @@ export class Agent extends EventTarget {
    */
   private speakParams(): SpeakParams {
     const lang = this.speechLanguage;
-    return { ...voiceParams(this.character.voice), gender: this.character.voice.gender, ...(lang ? { lang } : {}) };
+    return {
+      ...voiceParams(this.character.voice),
+      gender: this.character.voice.gender,
+      ...(lang ? { lang } : {}),
+      ...(this.ttsVoice ? { voice: this.ttsVoice } : {}),
+    };
   }
 
   /** agent.language から決めた読み上げ・吹き出しの言語 (BCP 47)。指定が無ければ undefined */

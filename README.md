@@ -87,6 +87,7 @@ msagent.load({ name, scale: 2 }, successCb, failCb);
 | `listeningTip` | 聞いている間、聞き取りのヒントを出すか | `true` |
 | `raiseRequestErrors` | 命令の失敗を例外にするか ([命令を待つ](#命令を待つ-request)) | `false` |
 | `taskbarIcon` | タスクバーのアイコンを出すか (画面の右下。クリックで隠れたキャラクターを出し直す) | `false` |
+| `ttsModeId` | 読み上げに使う声 (ブラウザの声の `voiceURI` か名前) | 言語と、キャラクターの声の性別から選ぶ |
 | `successCb` / `failCb` | 読み込めた / 読み込めなかったときに呼ぶ | なし |
 
 ## 動かす
@@ -507,6 +508,7 @@ agent.character.balloon;  // { background: "#ffffe1", foreground: "#000000", bor
 | `extraData` / `version` / `guid` | 作者が入れたおまけの文字 / ファイルの版 / GUID |
 | `originalWidth` / `originalHeight` | 元の大きさ (px) |
 | `speed` / `pitch` | 読み上げの速さ (語/分) / 高さ (Hz)。キャラクターファイルの設定 (読むだけ) |
+| `ttsModeId` | 読み上げに使う声。`speechSynthesis.getVoices()` の `voiceURI` か名前を代入すると、その声で読む (制御タグで言語・性別を変えた部分は除く)。`undefined` で自動に戻る。読み出すと、いま使う声の `voiceURI` (声に出さない・合う声が無いときは `""`) |
 | `soundEffectsOn` | 効果音を鳴らすか (`sound` と同じ) |
 | `name` / `description` | 名前 / 紹介文 (`language` の言語。[言語](#言語))。代入すると変わり、`undefined` でファイルのものに戻る |
 | `active` | いちばん手前にいるか |

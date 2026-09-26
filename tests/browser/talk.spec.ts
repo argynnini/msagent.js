@@ -440,3 +440,41 @@ test("audioOutput: enabled = false なら全キャラクターの声を出さな
   expect(r.log).toEqual(['utter "Out loud" lang=en-US r=0.92 p=0.50 v=1.00']);
   expect(r.same).toBe(true);
 });
+
+test("ttsModeId: 代入した声で読み (タグで言語を変えた部分は除く)、undefined で言語と性別から選ぶ", async ({ harness }) => {
+  const r = await harness.evaluate(async () => {
+    const log: string[] = [];
+    // 声の一覧と発話を差し替える (本物の SpeechSynthesisVoice でないと voice に入れられないので、発話も差し替える)
+    const voices = [
+      { name: "Zira", voiceURI: "urn:zira", lang: "en-US", default: true },
+      { name: "David", voiceURI: "urn:david", lang: "en-US", default: false },
+      { name: "Haruka", voiceURI: "urn:haruka", lang: "ja-JP", default: true },
+      { name: "Hedda", voiceURI: "urn:hedda", lang: "de-DE", default: true },
+    ];
+    speechSynthesis.getVoices = () => voices as unknown as SpeechSynthesisVoice[];
+    (window as any).SpeechSynthesisUtterance = class {
+      lang = ""; rate = 1; pitch = 1; volume = 1; voice: { name: string } | null = null;
+      onstart?: () => void; onend?: () => void; onboundary?: () => void; onerror?: () => void;
+      constructor(readonly text: string) {}
+    };
+    speechSynthesis.speak = (u) => {
+      log.push(`${u.text.trim()}: ${u.voice?.name} ${u.lang}`);
+      setTimeout(() => u.onend?.(new Event("end") as SpeechSynthesisEvent), 20);
+    };
+    const a = await window.loadAgent("Merlin.acs", { voice: true, ttsModeId: "haruka", language: "en-US" });
+    await a.show(true);
+    const ids = [a.ttsModeId];
+    await a.speak('Hello <lang langid="407">Guten Tag</lang>');
+    a.ttsModeId = undefined;
+    ids.push(a.ttsModeId);
+    await a.speak("Hello");
+    a.ttsModeId = "no such voice";
+    ids.push(a.ttsModeId);
+    a.voice = false;
+    ids.push(a.ttsModeId);
+    return { log, ids };
+  });
+  expect(r.log).toEqual(["Hello: Haruka ja-JP", "Guten Tag: Hedda de-DE", "Hello: David en-US"]);
+  // マーリンは男性の声 (言語は language)。見つからない声は、言語と性別から選ぶ。声に出さないなら ""
+  expect(r.ids).toEqual(["urn:haruka", "urn:david", "urn:david", ""]);
+});
