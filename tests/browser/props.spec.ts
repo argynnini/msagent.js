@@ -83,6 +83,47 @@ test("プロパティ: visible / left / top / 原因 / 版 / おまけの文字 
   expect(r.activeAfterActivate).toEqual([true, false]);
 });
 
+test("activateinput / deactivateinput: 手前のキャラクターが変わると知らせ、隠れたら見えている残りに移す", async ({ harness }) => {
+  requireCharacters(CHARACTERS.merlin, CHARACTERS.finfin, CHARACTERS.clippit);
+  const r = await harness.evaluate(async () => {
+    const log: string[] = [];
+    const a = await window.loadAgent("Merlin.acs");
+    const b = await window.loadAgent("finfin.acs");
+    const c = await window.loadAgent("CLIPPIT.ACS");
+    for (const [name, agent] of [["a", a], ["b", b], ["c", c]] as const) {
+      agent.on("activateinput", () => log.push(`+${name}`));
+      agent.on("deactivateinput", () => log.push(`-${name}`));
+    }
+    const step = (label: string) => log.push(`|${label}`);
+    step("show a");
+    await a.show(true);
+    step("show b");
+    await b.show(true);
+    step("show c");
+    await c.show(true);
+    step("activate a (もう手前でも、2 回目は何も出ない)");
+    a.activate();
+    a.activate();
+    step("hide a → c (b より手前)");
+    await a.hide(true);
+    step("destroy c → b");
+    c.destroy();
+    step("hide b → なし");
+    await b.hide(true);
+    return { log, active: [a.active, b.active, c.active] };
+  });
+  expect(r.log).toEqual([
+    "|show a", "+a",
+    "|show b", "-a", "+b",
+    "|show c", "-b", "+c",
+    "|activate a (もう手前でも、2 回目は何も出ない)", "-c", "+a",
+    "|hide a → c (b より手前)", "-a", "+c",
+    "|destroy c → b", "-c", "+b",
+    "|hide b → なし", "-b",
+  ]);
+  expect(r.active).toEqual([false, false, false]);
+});
+
 test("ブラウザの窓が小さくなったら、画面の中に戻して move (reposition)", async ({ harness }) => {
   const moved = await harness.evaluate(async () => {
     const a = await window.loadAgent("Merlin.acs");

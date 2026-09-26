@@ -327,6 +327,7 @@ agent.on("animationend", (e) => console.log(e.detail.name));
 | `bookmark` | 読み上げの目印 (`\Mrk=番号\` か `<bookmark/>`) まで来た (`think()` でも来る) | `id` (番号。数字でない `<bookmark>` の名前なら `NaN`), `mark` (書いたとおりの文字) |
 | `balloonshow` / `balloonhide` | 吹き出しが出た / 閉じた | なし |
 | `idlestart` / `idlecomplete` | 待機状態に入った / 抜けた (次の命令が始まった) | なし |
+| `activateinput` / `deactivateinput` | いちばん手前のキャラクター (クリック・声のコマンドを受け取る) になった / でなくなった。隠れる・破棄されると、見えている残りのうち一番手前のものに移る | なし |
 | `command` | 右クリックのメニューか声で、コマンドが選ばれた | `name`, `source` (`"menu"` / `"voice"`), `confidence` (0〜100), `voice` (聞き取った文), `count` (合ったコマンドの数), `alternatives` (2 番目・3 番目) |
 | `listenstart` / `listencomplete` | 聞き取りを始めた / 終えた | `mode` (`"program"` / `"key"`) / `cause` (`"program"` / `"timeout"` / `"key"` / `"finished"` / `"error"`) |
 | `helpcomplete` | ヘルプモードで、何かが選ばれた ([ヘルプモード](#ヘルプモード)) | `name`, `cause`, `helpContextId` |

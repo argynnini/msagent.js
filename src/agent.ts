@@ -166,9 +166,11 @@ function pickAlternative(text: string): string {
   return alternatives[Math.floor(Math.random() * alternatives.length)]!;
 }
 
-/** 手前に出すときの z-index (出すたびに増やす) と、いちばん手前のキャラクター */
+/** 手前に出すときの z-index (出すたびに増やす) と、いちばん手前のキャラクター (入力を受け取る。本家の入力アクティブ) */
 let zIndexCounter = 1000;
 let topmost: Agent | undefined;
+/** 破棄していないキャラクター (手前のキャラクターが隠れたときに、次を選ぶ) */
+const agents = new Set<Agent>();
 
 /**
  * キャラクター 1 体。
@@ -238,6 +240,7 @@ export class Agent extends EventTarget {
     options: AgentOptions = {},
   ) {
     super();
+    agents.add(this);
     injectStyles();
     this.element = document.createElement("div");
     this.element.className = "msagent";
@@ -860,8 +863,34 @@ export class Agent extends EventTarget {
     this.element.style.zIndex = z;
     this.balloon.element.style.zIndex = z;
     this.tip.element.style.zIndex = z;
-    topmost = this;
+    Agent.setTopmost(this);
     return true;
+  }
+
+  /**
+   * いちばん手前のキャラクターを変え、変わったら、前のキャラクターに deactivateinput、新しいキャラクターに activateinput を出す
+   * (本家の DeactivateInput / ActivateInput と同じ)
+   */
+  private static setTopmost(next: Agent | undefined) {
+    if (topmost === next) return;
+    const previous = topmost;
+    topmost = next;
+    previous?.emit("deactivateinput", {});
+    next?.emit("activateinput", {});
+  }
+
+  /**
+   * 手前のキャラクターが隠れた・破棄されたら、見えている残りのうち一番手前のものに入力を移す (本家と同じ)。
+   * 見えているものが無ければ、どれも入力を受け取らない
+   */
+  private handOffInput() {
+    if (topmost !== this) return;
+    let next: Agent | undefined;
+    for (const a of agents) {
+      if (a === this || a.hidden) continue;
+      if (!next || Number(a.element.style.zIndex) > Number(next.element.style.zIndex)) next = a;
+    }
+    Agent.setTopmost(next);
   }
 
   /** いちばん手前にいるか (本家の Active と同じ考え方) */
@@ -978,7 +1007,8 @@ export class Agent extends EventTarget {
     this.menu?.close();
     this.listener.abort();
     window.clearTimeout(this.tipTimer);
-    if (topmost === this) topmost = undefined;
+    this.handOffInput();
+    agents.delete(this);
     for (const cleanup of this.cleanups) cleanup();
     this.element.remove();
     this.balloon.element.remove();
@@ -1021,6 +1051,7 @@ export class Agent extends EventTarget {
       this.element.style.display = "none";
       this.balloon.hide();
       this.tip.hide();
+      this.handOffInput();
       this.emit("hide", { cause });
       callback?.();
       complete();

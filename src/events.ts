@@ -85,6 +85,13 @@ export interface AgentEventMap {
   /** 吹き出しが出た / 閉じた */
   balloonshow: Record<string, never>;
   balloonhide: Record<string, never>;
+  /**
+   * いちばん手前のキャラクター (クリック・声のコマンドを受け取る。本家の入力アクティブ) になった / でなくなった
+   * (本家の ActivateInput / DeactivateInput と同じ)。表示・クリック・ドラッグ・activate() でなり、
+   * 別のキャラクターがなるか、隠れる・破棄されるとでなくなる (見えている残りのうち一番手前のものに移る)
+   */
+  activateinput: Record<string, never>;
+  deactivateinput: Record<string, never>;
   /** 待機状態 (Idling) に入った / 抜けた (次の命令が始まった) */
   idlestart: Record<string, never>;
   idlecomplete: Record<string, never>;
