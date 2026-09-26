@@ -84,6 +84,7 @@ msagent.load({ name, scale: 2 }, successCb, failCb);
 | `balloon` | 吹き出しの見た目 ([吹き出し](#吹き出し)。ファイルの設定の上に重ねる) | なし |
 | `autoPopupMenu` | 右クリックでメニューを出すか | `true` |
 | `listeningKey` | 押している間、声のコマンドを聞くキー ([音声認識](#音声認識)) | なし |
+| `listeningKeyTimeout` | 聞き取りキーを離してから聞き続ける秒数 (話している途中なら、言い終えるまで聞く) | `0` (すぐやめる) |
 | `listeningTip` | 聞いている間、聞き取りのヒントを出すか | `true` |
 | `raiseRequestErrors` | 命令の失敗を例外にするか ([命令を待つ](#命令を待つ-request)) | `false` |
 | `taskbarIcon` | タスクバーのアイコンを出すか (画面の右下。クリックで隠れたキャラクターを出し直す) | `false` |
@@ -379,6 +380,7 @@ msagent.load({ name: "Merlin", listeningKey: "ScrollLock" });  // キーを押�
 ```
 
 `listen(true)` は 10 秒聞き、1 つ言い終えたらやめます。`listen(false)` でやめます。音声認識が使えなければ `false` を返します。
+聞き取りキーは、離すとすぐ聞くのをやめます。`listeningKeyTimeout` に秒数を指定すると、離してからその秒数は聞き続け、そのときに話している途中なら言い終えるまで聞きます (本家の既定は 2 秒)。
 
 `voice` の書き方は本家と同じです。ブラウザの音声認識は自由な文を返すので、msagent.js が聞き取った文と照らし合わせます。
 大文字小文字・全角半角・カタカナとひらがな・句読点・空白の違いは気にしません。
@@ -516,7 +518,7 @@ agent.character.balloon;  // { background: "#ffffe1", foreground: "#000000", bor
 | `commandsWindow` | 音声コマンドの窓 ([音声コマンドの窓](#音声コマンドの窓)) |
 | `autoPopupMenu` | 右クリックでメニューを出すか |
 | `listening` / `srStatus` | 聞いているか / 音声入力が使えるか ([音声認識](#音声認識)) |
-| `listeningKey` / `listeningTip` | 聞き取りキー / 聞き取りのヒントを出すか |
+| `listeningKey` / `listeningKeyTimeout` / `listeningTip` | 聞き取りキー / キーを離してから聞き続ける秒数 / 聞き取りのヒントを出すか |
 | `helpModeOn` / `helpContextId` | [ヘルプモード](#ヘルプモード) |
 | `raiseRequestErrors` | 命令の失敗を例外にするか |
 | `taskbarIcon` | タスクバーのアイコン (画面の右下) を出すか。ポインターを重ねると名前、クリックで出す (見えていれば手前に)、右クリックでメニュー (隠れている間は「表示」と音声コマンドの窓だけ) |

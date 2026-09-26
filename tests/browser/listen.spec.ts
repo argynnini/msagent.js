@@ -139,6 +139,36 @@ test("聞き取りキー: 押している間聞き (いくつ言ってもよい)
   expect(entries.filter((l) => l.startsWith("anim")).length).toBeGreaterThan(0);
 });
 
+test("listeningKeyTimeout: キーを離してもその秒数は聞き、話している途中なら言い終えるまで聞く", async ({ harness }) => {
+  await setup(harness, { listeningKey: "F8", listeningKeyTimeout: 0.3 });
+  // 離した後に言っても聞き取り、時間が来たらやめる
+  await harness.keyboard.down("F8");
+  await harness.waitForFunction(() => window.a.listening);
+  await harness.keyboard.up("F8");
+  expect(await harness.evaluate(() => window.a.listening)).toBe(true);
+  await harness.evaluate(() => window.say([["search", 0.9]]));
+  await harness.waitForFunction(() => !window.a.listening);
+
+  // 時間が来たときに話している途中なら、言い終えてからやめる
+  await harness.keyboard.down("F8");
+  await harness.waitForFunction(() => window.a.listening);
+  await harness.keyboard.up("F8");
+  await harness.evaluate(() => (window.recs.at(-1) as unknown as { onspeechstart: () => void }).onspeechstart());
+  await harness.waitForTimeout(600);
+  expect(await harness.evaluate(() => window.a.listening)).toBe(true);
+  await harness.evaluate(() => window.say([["find it", 0.7]]));
+  await harness.waitForFunction(() => !window.a.listening);
+
+  expect(await log(harness)).toEqual([
+    "start key",
+    'command search voice 90 "search" 1 ',
+    "complete key",
+    "start key",
+    'command search voice 70 "find it" 1 ',
+    "complete key",
+  ]);
+});
+
 test("「hide Merlin」「隠れて」: msagent.js が用意したコマンドで隠れる (name は空、hide の cause は user)", async ({ harness }) => {
   await setup(harness);
   await harness.evaluate(() => window.a.on("hide", (e) => window.log.push(`hide ${e.detail.cause}`)));

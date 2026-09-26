@@ -79,6 +79,8 @@ export class Listener {
   private endCause: ListenCause | undefined;
   private status: SrStatus = recognitionClass() ? 0 : 4;
   private speechHeard = false;
+  /** 聞き取りキーを離した後の時間が過ぎたが、話している途中なので、言い終えたらやめる */
+  private stopWhenQuiet = false;
 
   constructor(private readonly host: ListenerHost) {}
 
@@ -108,6 +110,7 @@ export class Listener {
     const Class = recognitionClass();
     if (!Class) return false;
     window.clearTimeout(this.timer);
+    this.stopWhenQuiet = false;
     if (mode === "program" && this.currentMode !== "key") {
       this.timer = window.setTimeout(() => this.stop("timeout"), LISTEN_TIMEOUT_MS);
     }
@@ -139,6 +142,27 @@ export class Listener {
     }
   }
 
+  /**
+   * 聞き取りキーを離した。holdMs (0 以下ならすぐ) 聞き続けてからやめる。そのとき話している途中なら、言い終えるまで待つ
+   * (本家の Listening key の time-out と同じ。待つのは長くても LISTEN_TIMEOUT_MS)
+   */
+  releaseKey(holdMs: number) {
+    if (this.currentMode !== "key" || this.endCause) return;
+    window.clearTimeout(this.timer);
+    if (holdMs <= 0) return this.stop("key");
+    this.timer = window.setTimeout(() => {
+      if (!this.speechHeard) return this.stop("key");
+      this.stopWhenQuiet = true;
+      this.timer = window.setTimeout(() => this.stop("key"), LISTEN_TIMEOUT_MS);
+    }, holdMs);
+  }
+
+  /** 声が聞こえなくなった (言い終えた) */
+  private quiet() {
+    this.speechHeard = false;
+    if (this.stopWhenQuiet) this.stop("key");
+  }
+
   /** すぐやめる (片付け。onEnd は呼ばない) */
   abort() {
     window.clearTimeout(this.timer);
@@ -161,12 +185,12 @@ export class Listener {
       this.speechHeard = true;
       this.host.onHearing();
     };
-    rec.onspeechend = () => (this.speechHeard = false);
+    rec.onspeechend = () => this.quiet();
     rec.onresult = (e) => {
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const result = e.results[i]!;
         if (!result.isFinal) continue;
-        this.speechHeard = false;
+        this.quiet();
         const alternatives: HeardAlternative[] = [];
         for (let k = 0; k < result.length; k++) {
           const a = result[k]!;
@@ -214,6 +238,7 @@ export class Listener {
   private end() {
     const cause = this.endCause ?? "program";
     this.speechHeard = false;
+    this.stopWhenQuiet = false;
     window.clearTimeout(this.timer);
     this.recognition = undefined;
     this.currentMode = undefined;

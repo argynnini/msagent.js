@@ -63,6 +63,11 @@ export interface AgentOptions {
    * (例: "ScrollLock"、"F8")。既定: なし (listen() でだけ聞く)
    */
   listeningKey?: string;
+  /**
+   * 聞き取りキーを離してから、聞き続ける秒数 (既定: 0 = すぐやめる。本家の Listening key の time-out。本家の既定は 2)。
+   * その時に話している途中なら、言い終えるまで聞く
+   */
+  listeningKeyTimeout?: number;
   /** 聞いている間、キャラクターの下に聞き取りのヒントを出すか (既定: true。本家の Listening Tip) */
   listeningTip?: boolean;
   /**
@@ -208,6 +213,8 @@ export class Agent extends EventTarget {
   autoPopupMenu: boolean;
   /** 聞き取りキー (KeyboardEvent の key か code。例: "ScrollLock")。undefined なら使わない (本家の Listening key) */
   listeningKey: string | undefined;
+  /** 聞き取りキーを離してから、聞き続ける秒数 (0 ならすぐやめる。話している途中なら、言い終えるまで聞く) */
+  listeningKeyTimeout: number;
   /** 聞いている間、聞き取りのヒントを出すか (本家の Listening Tip) */
   listeningTip: boolean;
   /** 命令の失敗を例外にするか (本家の RaiseRequestErrors。AgentOptions の raiseRequestErrors を参照) */
@@ -270,6 +277,7 @@ export class Agent extends EventTarget {
     this.language = options.language;
     this.autoPopupMenu = options.autoPopupMenu ?? true;
     this.listeningKey = options.listeningKey;
+    this.listeningKeyTimeout = options.listeningKeyTimeout ?? 0;
     this.listeningTip = options.listeningTip ?? true;
     this.raiseRequestErrors = options.raiseRequestErrors ?? false;
     this.balloonOverrides = { ...options.balloon };
@@ -386,7 +394,7 @@ export class Agent extends EventTarget {
       if (!k.repeat) this.listener.start("key");
     });
     this.listenTo(window, "keyup", (e) => {
-      if (this.isListeningKey(e as KeyboardEvent) && this.listener.mode === "key") this.listener.stop("key");
+      if (this.isListeningKey(e as KeyboardEvent)) this.listener.releaseKey(this.listeningKeyTimeout * 1000);
     });
     this.listenTo(window, "blur", () => {
       if (this.listener.mode === "key") this.listener.stop("key");
