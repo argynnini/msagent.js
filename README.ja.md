@@ -47,7 +47,7 @@ agent.moveTo(100, 100);
 agent.on("click", () => agent.animate()); // 押されたら、何か 1 つ再生する
 ```
 
-`<script>` で読み込むときは、`window.msagent` から使えます。
+`<script>` で読み込むときは、`window.msagent` から使えます。ESM で import できるものも、すべてここにあります (`msagent.RequestError`、`msagent.compileVoiceGrammar` など)。
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/@argynnini/msagent.js"></script>

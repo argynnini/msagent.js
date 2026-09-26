@@ -47,7 +47,7 @@ agent.moveTo(100, 100);
 agent.on("click", () => agent.animate()); // play something when clicked
 ```
 
-When loaded with a `<script>` tag, it is available as `window.msagent`.
+When loaded with a `<script>` tag, it is available as `window.msagent`. Everything the ES module exports is on it too (`msagent.RequestError`, `msagent.compileVoiceGrammar`, …).
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/@argynnini/msagent.js"></script>
