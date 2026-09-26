@@ -956,7 +956,7 @@
           </p>
           <div class="cta">
             <span class="install"
-              ><code>npm install msagent.js</code
+              ><code>npm install @argynnini/msagent.js</code
               ><button id="copy" class="btn small" type="button">コピー</button></span
             >
             <a class="btn" href="#usage">使い方を見る</a>
@@ -1203,20 +1203,20 @@
           <ol class="steps">
             <li>
               <h3>インストール</h3>
-              <pre class="code"><code>npm install msagent.js</code></pre>
+              <pre class="code"><code>npm install @argynnini/msagent.js</code></pre>
               <p class="step-or">
                 または <code>&lt;script&gt;</code> で読み込む (<code>window.msagent</code> で使えます)
               </p>
               <pre
                 class="code"
-              ><code>&lt;script src=<span class="s">"https://cdn.jsdelivr.net/npm/msagent.js"</span>&gt;&lt;/script&gt;</code></pre>
+              ><code>&lt;script src=<span class="s">"https://cdn.jsdelivr.net/npm/@argynnini/msagent.js"</span>&gt;&lt;/script&gt;</code></pre>
             </li>
             <li>
               <h3>読み込んで動かす</h3>
               <p>命令は順番待ちに入り、1 つずつ実行します。<code>await</code> すると、その命令が終わるまで待てます。</p>
               <pre
                 class="code"
-              ><code><span class="k">import</span> msagent <span class="k">from</span> <span class="s">"msagent.js"</span>;
+              ><code><span class="k">import</span> msagent <span class="k">from</span> <span class="s">"@argynnini/msagent.js"</span>;
 
 <span class="k">const</span> agent = <span class="k">await</span> msagent.load(<span class="s">"/agents/Merlin.acs"</span>);
 agent.show();

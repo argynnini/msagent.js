@@ -30,13 +30,13 @@ Extracted from the character playback engine of [OfficeAgent-Web](https://github
 ### Install
 
 ```sh
-npm install msagent.js
+npm install @argynnini/msagent.js
 ```
 
 ### First example
 
 ```js
-import msagent from "msagent.js";
+import msagent from "@argynnini/msagent.js";
 
 const agent = await msagent.load("/agents/Merlin.acs");
 agent.show();
@@ -50,7 +50,7 @@ agent.on("click", () => agent.animate()); // play something when clicked
 When loaded with a `<script>` tag, it is available as `window.msagent`.
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/msagent.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@argynnini/msagent.js"></script>
 <script>
   msagent.load("Merlin.acs").then((agent) => agent.show());
 </script>
@@ -156,7 +156,7 @@ robby.wait(q); // wait until Genie finishes speaking
 robby.speak("I don't know.");
 ```
 
-`request.number` can be compared against `RequestError` from `import { RequestError } from "msagent.js"`: `RequestError.hidden` (the character is hidden), `animationNotFound`, `stateNotFound`, `interrupted` (stopped), `invalidSound`, and so on.
+`request.number` can be compared against `RequestError` from `import { RequestError } from "@argynnini/msagent.js"`: `RequestError.hidden` (the character is hidden), `animationNotFound`, `stateNotFound`, `interrupted` (stopped), `invalidSound`, and so on.
 `speak` / `think` while hidden end as `failed` (same as the original).
 
 With `raiseRequestErrors: true`, awaiting a failed request throws an `AgentRequestError` (`number`, `message`, `request`), and calls such as `play()` with a missing animation throw right away. Interrupted requests don't throw.
@@ -299,7 +299,7 @@ agent.character.languages; // languages included (e.g. ["en", "ja-JP", "zh-TW", 
 
 ### Muting all characters
 
-`msagent.audioOutput` lets you mute all characters at once (the original AudioOutput. In the original it reflects the user's settings and is read-only; here you can change it). In ESM, it's also available as `import { audioOutput } from "msagent.js"`.
+`msagent.audioOutput` lets you mute all characters at once (the original AudioOutput. In the original it reflects the user's settings and is read-only; here you can change it). In ESM, it's also available as `import { audioOutput } from "@argynnini/msagent.js"`.
 
 ```js
 msagent.audioOutput.enabled = false; // no voice for any character (balloon and mouth movement only)

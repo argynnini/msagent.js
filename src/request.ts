@@ -20,7 +20,7 @@ export type RequestType =
  * (Microsoft Agent Error Codes). A request that succeeded or has not finished has number `0`.
  *
  * ```js
- * import { RequestError } from "msagent.js";
+ * import { RequestError } from "@argynnini/msagent.js";
  *
  * const request = agent.get("animation", "Wave");
  * await request;

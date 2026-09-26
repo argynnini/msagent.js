@@ -451,7 +451,7 @@ filter.oninput = renderList;
 $("copy").onclick = async (e) => {
   const button = e.currentTarget as HTMLButtonElement;
   try {
-    await navigator.clipboard.writeText("npm install msagent.js");
+    await navigator.clipboard.writeText("npm install @argynnini/msagent.js");
     button.textContent = "コピーしました";
   } catch {
     button.textContent = "コピーできません";

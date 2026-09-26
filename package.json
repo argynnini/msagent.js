@@ -1,5 +1,5 @@
 {
-  "name": "msagent.js",
+  "name": "@argynnini/msagent.js",
   "version": "0.1.0",
   "description": "Play Microsoft Agent (.acs) and Office 97 Assistant (.act) characters in the browser",
   "type": "module",
@@ -17,6 +17,9 @@
   "files": [
     "dist/msagent.*"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "sideEffects": false,
   "keywords": [
     "msagent",

@@ -30,13 +30,13 @@ Microsoft Agent のキャラクター (`.acs`、Web 用の `.acf` + `.aca`) と�
 ### インストール
 
 ```sh
-npm install msagent.js
+npm install @argynnini/msagent.js
 ```
 
 ### 最初の例
 
 ```js
-import msagent from "msagent.js";
+import msagent from "@argynnini/msagent.js";
 
 const agent = await msagent.load("/agents/Merlin.acs");
 agent.show();
@@ -50,7 +50,7 @@ agent.on("click", () => agent.animate()); // 押されたら、何か 1 つ再�
 `<script>` で読み込むときは、`window.msagent` から使えます。
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/msagent.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@argynnini/msagent.js"></script>
 <script>
   msagent.load("Merlin.acs").then((agent) => agent.show());
 </script>
@@ -156,7 +156,7 @@ robby.wait(q); // genie がしゃべり終えるまで待つ
 robby.speak("わからないなあ");
 ```
 
-`request.number` は、`import { RequestError } from "msagent.js"` の `RequestError.hidden` (隠れている)・`animationNotFound`・`stateNotFound`・`interrupted` (止められた)・`invalidSound` などと比べられます。
+`request.number` は、`import { RequestError } from "@argynnini/msagent.js"` の `RequestError.hidden` (隠れている)・`animationNotFound`・`stateNotFound`・`interrupted` (止められた)・`invalidSound` などと比べられます。
 隠れている間の `speak` / `think` は `failed` になります (本家と同じ)。
 
 `raiseRequestErrors: true` にすると、失敗した命令を `await` したときに `AgentRequestError` (`number`・`message`・`request`) の例外になり、無いアニメーションの `play()` などは、その場で例外を投げます。止められた (`interrupted`) ときは例外にしません。
@@ -299,7 +299,7 @@ agent.character.languages; // 入っている言語 (例: ["en", "ja-JP", "zh-TW
 
 ### 音をまとめて切る
 
-`msagent.audioOutput` で、全キャラクターの音をまとめて切れます (本家の AudioOutput。本家はユーザーの設定なので読むだけですが、ここでは変えられます)。ESM では `import { audioOutput } from "msagent.js"` でも使えます。
+`msagent.audioOutput` で、全キャラクターの音をまとめて切れます (本家の AudioOutput。本家はユーザーの設定なので読むだけですが、ここでは変えられます)。ESM では `import { audioOutput } from "@argynnini/msagent.js"` でも使えます。
 
 ```js
 msagent.audioOutput.enabled = false; // 全キャラクターの声を出さない (吹き出しと口の動きだけ)
