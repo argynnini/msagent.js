@@ -118,12 +118,31 @@ const COMMANDS_WINDOW_CSS = `
 }
 `;
 
+/** タスクバーのアイコン (taskbarIcon): 画面の右下に並べる */
+const TASKBAR_CSS = `
+.msagent-taskbar {
+  position: fixed; right: 8px; bottom: 8px; z-index: 1000; display: flex; gap: 4px; padding: 3px;
+  background: rgba(240, 240, 240, 0.9); border: 1px solid #a0a0a0; border-radius: 6px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+.msagent-taskbar-icon {
+  display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 2px; box-sizing: border-box;
+  border: 1px solid transparent; border-radius: 4px; background: none; cursor: pointer;
+  font: 600 14px/1 "Segoe UI", "Yu Gothic UI", "Hiragino Sans", sans-serif; color: #1b1b1b;
+}
+.msagent-taskbar-icon:hover, .msagent-taskbar-icon:focus-visible { background: rgba(0, 120, 212, 0.12); border-color: rgba(0, 120, 212, 0.5); }
+.msagent-taskbar-icon img, .msagent-taskbar-icon canvas { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+@media (prefers-color-scheme: dark) {
+  .msagent-taskbar { background: rgba(43, 43, 43, 0.9); border-color: #555; }
+  .msagent-taskbar-icon { color: #f0f0f0; }
+}
+`;
+
 const STYLE_ID = "msagent-styles";
 
 export function injectStyles() {
   if (document.getElementById(STYLE_ID)) return;
   const style = document.createElement("style");
   style.id = STYLE_ID;
-  style.textContent = CSS + MENU_CSS + LISTENING_TIP_CSS + COMMANDS_WINDOW_CSS;
+  style.textContent = CSS + MENU_CSS + LISTENING_TIP_CSS + COMMANDS_WINDOW_CSS + TASKBAR_CSS;
   document.head.prepend(style);
 }

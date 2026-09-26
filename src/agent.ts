@@ -20,6 +20,7 @@ import { AgentRequestError, RequestError, type AgentRequest, type RequestType } 
 import { Speaker } from "./speak";
 import { injectStyles } from "./styles";
 import { Talk } from "./talk";
+import { TaskbarIcon } from "./taskbar";
 import { voiceParams, type SpeakParams } from "./voice";
 
 export type {
@@ -69,6 +70,11 @@ export interface AgentOptions {
    * true なら、失敗した命令を await すると AgentRequestError になり、無いアニメーションの play() などはその場で例外を投げる
    */
   raiseRequestErrors?: boolean;
+  /**
+   * タスクバーのアイコンを出すか (既定: false。本家の Character Taskbar Icon)。画面の右下に出し、
+   * クリックで隠れたキャラクターを出し直し、右クリックでメニューを出す
+   */
+  taskbarIcon?: boolean;
 }
 
 /** speak() の 2 つ目の引数 (true / false なら hold と同じ) */
@@ -233,6 +239,10 @@ export class Agent extends EventTarget {
   private lastMoveCause: MoveCause = "none";
   private lastVisibilityCause: VisibilityCause | "none" = "none";
   private destroyed = false;
+  /** 代入した名前・紹介文 (undefined ならキャラクターファイルのもの) */
+  private customName: string | undefined;
+  private customDescription: string | undefined;
+  private taskbar: TaskbarIcon | undefined;
   private readonly cleanups: (() => void)[] = [];
 
   constructor(
@@ -328,6 +338,7 @@ export class Agent extends EventTarget {
     this.idleEnabled = options.idle ?? true;
     if (this.idleEnabled) this.idle.start();
     this.watchAnimations();
+    this.taskbarIcon = options.taskbarIcon ?? false;
 
     attachPointerInput({
       element: this.element,
@@ -386,6 +397,10 @@ export class Agent extends EventTarget {
    * fast なら、アニメーションなしですぐ出す。Microsoft Agent と同じく順番待ちに入る
    */
   show(fast?: boolean): AgentRequest {
+    return this.queueShow(fast, "program");
+  }
+
+  private queueShow(fast: boolean | undefined, cause: VisibilityCause): AgentRequest {
     return this.enqueue("show", async (complete) => {
       if (!this.hidden) return complete();
       this.hidden = false;
@@ -398,7 +413,7 @@ export class Agent extends EventTarget {
       this.reposition();
       this.resume();
       this.activate();
-      this.emit("show", { cause: "program" });
+      this.emit("show", { cause });
       const name = fast ? undefined : stateAnimation(this.character, "Showing", ["Show"]);
       if (!name) {
         this.drawRestPose();
@@ -711,14 +726,51 @@ export class Agent extends EventTarget {
     this.scale = px / this.character.height;
   }
 
-  /** 名前 (language の言語。省略時はブラウザの言語) */
+  /**
+   * 名前 (language の言語。省略時はブラウザの言語)。代入すると変えられる (本家の Name と同じ。聞き取りのヒント・
+   * 「隠れて」の声のコマンド・タスクバーのアイコンにも使う)。undefined を代入すると、キャラクターファイルのものに戻る
+   */
   get name(): string | undefined {
-    return this.character.getName(this.language);
+    return this.customName ?? this.character.getName(this.language);
   }
 
-  /** 紹介文 (language の言語。省略時はブラウザの言語) */
+  set name(name: string | undefined) {
+    this.customName = name;
+    this.taskbar?.refresh();
+  }
+
+  /** 紹介文 (language の言語。省略時はブラウザの言語)。代入すると変えられる (本家の Description と同じ)。undefined で戻る */
   get description(): string | undefined {
-    return this.character.getDescription(this.language);
+    return this.customDescription ?? this.character.getDescription(this.language);
+  }
+
+  set description(description: string | undefined) {
+    this.customDescription = description;
+  }
+
+  /**
+   * タスクバーのアイコンを出すか (本家の Character Taskbar Icon)。画面の右下に出す。ポインターを重ねると名前を出し、
+   * クリックで出す (見えていれば手前に出す)。右クリックでメニュー (隠れている間は「表示」と音声コマンドの窓だけ)。
+   * アイコンのクリックも click / dblclick で知らせる (detail.source が "taskbarIcon")
+   */
+  get taskbarIcon(): boolean {
+    return this.taskbar !== undefined;
+  }
+
+  set taskbarIcon(on: boolean) {
+    if (on === this.taskbarIcon || (on && this.destroyed)) return;
+    if (!on) {
+      this.taskbar!.destroy();
+      this.taskbar = undefined;
+      return;
+    }
+    this.taskbar = new TaskbarIcon({
+      character: this.character,
+      title: () => this.name ?? "",
+      click: (e) => this.onTaskbarClick(e),
+      dblclick: (e) => this.emit("dblclick", pointerDetail(e, "taskbarIcon")),
+      contextmenu: (e) => this.onTaskbarContextMenu(e),
+    });
   }
 
   /** しゃべっている途中か (speak(text, true) で吹き出しを出したままのときも true) */
@@ -904,8 +956,14 @@ export class Agent extends EventTarget {
    */
   showPopupMenu(x: number, y: number): boolean {
     if (this.hidden || this.destroyed) return false;
+    this.openPopupMenu(x, y);
+    return true;
+  }
+
+  /** メニューを出す。隠れている間は、音声コマンドの窓を開く・閉じる項目と「表示」だけ (本家のタスクバーのアイコンと同じ) */
+  private openPopupMenu(x: number, y: number) {
     const entries: MenuEntry[] = [];
-    if (this.commands.visible) {
+    if (this.commands.visible && !this.hidden) {
       for (const c of this.commands.list()) {
         if (!c.visible) continue;
         entries.push({
@@ -936,20 +994,28 @@ export class Agent extends EventTarget {
         },
       });
     }
-    // 本家と同じく、キャラクターを隠す項目を足す (ユーザーが隠したので、hide の cause は "user")
-    entries.push({
-      kind: "item",
-      caption: this.isJapanese ? "隠す(&H)" : "&Hide",
-      enabled: true,
-      onSelect: () => {
-        if (this.helpMode) return this.completeHelp("", "hide");
-        void this.queueHide(false, undefined, { immediate: true }, "user");
-      },
-    });
+    // 本家と同じく、キャラクターを隠す (隠れている間は出す) 項目を足す (ユーザーの操作なので、cause は "user")
+    if (this.hidden) {
+      entries.push({
+        kind: "item",
+        caption: this.isJapanese ? "表示(&S)" : "&Show",
+        enabled: true,
+        onSelect: () => void this.queueShow(false, "user"),
+      });
+    } else {
+      entries.push({
+        kind: "item",
+        caption: this.isJapanese ? "隠す(&H)" : "&Hide",
+        enabled: true,
+        onSelect: () => {
+          if (this.helpMode) return this.completeHelp("", "hide");
+          void this.queueHide(false, undefined, { immediate: true }, "user");
+        },
+      });
+    }
     this.menu = new PopupMenu(entries, x, y, { fontName: this.commands.fontName, fontSize: this.commands.fontSize, help: this.helpMode });
     // どのキャラクターよりも手前に出す (キャラクターは手前に出すたびに z-index が増える)
     this.menu.element.style.zIndex = String(++zIndexCounter);
-    return true;
   }
 
   /**
@@ -1009,6 +1075,7 @@ export class Agent extends EventTarget {
     window.clearTimeout(this.tipTimer);
     this.handOffInput();
     agents.delete(this);
+    this.taskbarIcon = false;
     for (const cleanup of this.cleanups) cleanup();
     this.element.remove();
     this.balloon.element.remove();
@@ -1220,6 +1287,20 @@ export class Agent extends EventTarget {
     if (!this.autoPopupMenu) return;
     e.preventDefault();
     this.showPopupMenu(e.clientX, e.clientY);
+  }
+
+  /** タスクバーのアイコンのクリック: click として知らせ、隠れていれば出す (見えていれば手前に出す) */
+  private onTaskbarClick(e: MouseEvent) {
+    this.emit("click", pointerDetail(e, "taskbarIcon"));
+    if (this.hidden) void this.queueShow(false, "user");
+    else this.activate();
+  }
+
+  /** タスクバーのアイコンの右クリック: click として知らせ、メニューを出す (autoPopupMenu のとき) */
+  private onTaskbarContextMenu(e: MouseEvent) {
+    e.preventDefault();
+    this.emit("click", pointerDetail(e, "taskbarIcon"));
+    if (this.autoPopupMenu && !this.destroyed) this.openPopupMenu(e.clientX, e.clientY);
   }
 
   /** 止まっているときの絵を描く */

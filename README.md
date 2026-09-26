@@ -86,6 +86,7 @@ msagent.load({ name, scale: 2 }, successCb, failCb);
 | `listeningKey` | 押している間、声のコマンドを聞くキー ([音声認識](#音声認識)) | なし |
 | `listeningTip` | 聞いている間、聞き取りのヒントを出すか | `true` |
 | `raiseRequestErrors` | 命令の失敗を例外にするか ([命令を待つ](#命令を待つ-request)) | `false` |
+| `taskbarIcon` | タスクバーのアイコンを出すか (画面の右下。クリックで隠れたキャラクターを出し直す) | `false` |
 | `successCb` / `failCb` | 読み込めた / 読み込めなかったときに呼ぶ | なし |
 
 ## 動かす
@@ -317,7 +318,7 @@ agent.on("animationend", (e) => console.log(e.detail.name));
 
 | イベント | いつ | `detail` |
 | --- | --- | --- |
-| `click` / `dblclick` | 絵の部分を押した (ドラッグの後は来ない) | `x`, `y`, `button` (`"left"` / `"middle"` / `"right"`), `shift`, `ctrl`, `alt`, `originalEvent` |
+| `click` / `dblclick` | 絵の部分かタスクバーのアイコンを押した (ドラッグの後は来ない) | `x`, `y`, `button` (`"left"` / `"middle"` / `"right"`), `shift`, `ctrl`, `alt`, `source` (`"character"` / `"taskbarIcon"`), `originalEvent` |
 | `dragstart` / `dragend` | ドラッグで動かし始めた / 終えた | `x`, `y` (キャラクターの左上) |
 | `move` | 移った | `x`, `y`, `by` (`"drag"` / `"moveTo"` / `"reposition"`) |
 | `show` / `hide` | 出た / 消えた | `cause` (`"program"` / `"user"`) |
@@ -507,6 +508,7 @@ agent.character.balloon;  // { background: "#ffffe1", foreground: "#000000", bor
 | `originalWidth` / `originalHeight` | 元の大きさ (px) |
 | `speed` / `pitch` | 読み上げの速さ (語/分) / 高さ (Hz)。キャラクターファイルの設定 (読むだけ) |
 | `soundEffectsOn` | 効果音を鳴らすか (`sound` と同じ) |
+| `name` / `description` | 名前 / 紹介文 (`language` の言語。[言語](#言語))。代入すると変わり、`undefined` でファイルのものに戻る |
 | `active` | いちばん手前にいるか |
 | `commands` | 右クリックのメニューと声のコマンド ([右クリックのメニュー](#右クリックのメニュー)) |
 | `commandsWindow` | 音声コマンドの窓 ([音声コマンドの窓](#音声コマンドの窓)) |
@@ -515,12 +517,13 @@ agent.character.balloon;  // { background: "#ffffe1", foreground: "#000000", bor
 | `listeningKey` / `listeningTip` | 聞き取りキー / 聞き取りのヒントを出すか |
 | `helpModeOn` / `helpContextId` | [ヘルプモード](#ヘルプモード) |
 | `raiseRequestErrors` | 命令の失敗を例外にするか |
+| `taskbarIcon` | タスクバーのアイコン (画面の右下) を出すか。ポインターを重ねると名前、クリックで出す (見えていれば手前に)、右クリックでメニュー (隠れている間は「表示」と音声コマンドの窓だけ) |
 
 **msagent.js で足したもの**
 
 | プロパティ | 中身 |
 | --- | --- |
-| `name` / `description` / `language` | 名前 / 紹介文 / その言語 ([言語](#言語)) |
+| `language` | 名前・紹介文・読み上げの言語 ([言語](#言語)) |
 | `scale` / `width` / `height` | 大きさ ([大きさ](#大きさ)) |
 | `balloonStyle` | 吹き出しの見た目 ([吹き出し](#吹き出し)) |
 | `speaking` | しゃべっている途中か |

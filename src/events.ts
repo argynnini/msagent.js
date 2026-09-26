@@ -10,6 +10,8 @@ export interface PointerDetail {
   shift: boolean;
   ctrl: boolean;
   alt: boolean;
+  /** どこを押したか: キャラクター / タスクバーのアイコン (taskbarIcon。本家と同じく、アイコンのクリックも click で知らせる) */
+  source: "character" | "taskbarIcon";
   originalEvent: MouseEvent;
 }
 
@@ -121,7 +123,7 @@ export type AgentEventListener<K extends keyof AgentEventMap> = (event: CustomEv
 export type Emit = <K extends keyof AgentEventMap>(type: K, detail: AgentEventMap[K], cancelable?: boolean) => boolean;
 
 /** マウスのイベントから、click / dblclick の detail を作る */
-export function pointerDetail(e: MouseEvent): PointerDetail {
+export function pointerDetail(e: MouseEvent, source: PointerDetail["source"] = "character"): PointerDetail {
   const button = e.button === 1 ? "middle" : e.button === 2 ? "right" : "left";
-  return { x: e.clientX, y: e.clientY, button, shift: e.shiftKey, ctrl: e.ctrlKey, alt: e.altKey, originalEvent: e };
+  return { x: e.clientX, y: e.clientY, button, shift: e.shiftKey, ctrl: e.ctrlKey, alt: e.altKey, source, originalEvent: e };
 }
