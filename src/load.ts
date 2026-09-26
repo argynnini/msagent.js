@@ -1,11 +1,12 @@
 import { Agent, parseCharacter, type AgentOptions } from "./agent";
 import { audioOutput } from "./audio";
+import type { Character } from "./character";
 
 /** キャラクターファイルの中身。文字列 / URL なら fetch で取ってくる */
 export type CharacterSource = ArrayBuffer | ArrayBufferView | Blob | string | URL;
 
 export interface LoadOptions extends AgentOptions {
-  /** キャラクター名 ("Merlin" → path + "Merlin.acs")、URL、File / Blob、バイト列 */
+  /** キャラクター名 ("Merlin" → path + "Merlin.acs")、URL (.acs / .acf / .act)、File / Blob、バイト列 */
   name: CharacterSource;
   successCb?: (agent: Agent) => void;
   failCb?: (error: unknown) => void;
@@ -13,24 +14,50 @@ export interface LoadOptions extends AgentOptions {
   path?: string;
   /** キャラクターを置く要素の CSS セレクター (既定: body) */
   selector?: string;
+  /**
+   * .acf のキャラクターで、読み込みを終える前に取り寄せておくアニメーション (.aca)。状態名 ("Showing" など) かアニメーション名。
+   * "all" なら全部。省略時は、登場・退場・しゃべるときと、止まっているときの絵 (Showing, Hiding, Speaking, RestPose)。
+   * それ以外は、再生するときに取り寄せる (取り寄せる間だけ、動き出すのが遅れる)。agent.get() で先に取り寄せてもよい
+   */
+  preload?: "all" | readonly string[];
+  /**
+   * .acf のキャラクターで、アニメーション (.aca) のファイル名の基準の URL。
+   * 省略時は、.acf を URL で読み込んだならその URL、File / バイト列ならページの URL
+   */
+  baseUrl?: string | URL;
+}
+
+/** .acf のキャラクターで、省略時に先に取り寄せておくもの */
+const DEFAULT_PRELOAD = ["Showing", "Hiding", "Speaking", "RestPose"];
+
+/** 先読みの指定 (状態名かアニメーション名) を、アニメーション名にする */
+function preloadNames(character: Character, preload: "all" | readonly string[]): string[] {
+  if (preload === "all") return [...character.animations.keys()];
+  return preload.flatMap((n) => {
+    const assigned = character.stateAnimations(n);
+    if (assigned.length > 0) return assigned;
+    const lower = n.toLowerCase();
+    return [...character.animations.keys()].filter((key) => key.toLowerCase() === lower);
+  });
 }
 
 /** 名前だけ ("Merlin") なら、path を前に付けて .acs を足す。拡張子や URL の形なら、そのまま (相対なら path を前に付ける) */
 function resolveUrl(name: string, path: string): string {
   if (/^([a-z][a-z\d+.-]*:|\/)/i.test(name)) return name;
-  return `${path}${/\.ac[st]$/i.test(name) ? name : `${name}.acs`}`;
+  return `${path}${/\.ac[stf]$/i.test(name) ? name : `${name}.acs`}`;
 }
 
-async function toArrayBuffer(source: CharacterSource, path: string): Promise<ArrayBuffer> {
-  if (source instanceof ArrayBuffer) return source;
+/** キャラクターファイルの中身と、取ってきた URL (URL から取ってきたときだけ) */
+async function readSource(source: CharacterSource, path: string): Promise<{ data: ArrayBuffer; url?: string }> {
+  if (source instanceof ArrayBuffer) return { data: source };
   if (ArrayBuffer.isView(source)) {
-    return source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength) as ArrayBuffer;
+    return { data: source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength) as ArrayBuffer };
   }
-  if (source instanceof Blob) return source.arrayBuffer();
+  if (source instanceof Blob) return { data: await source.arrayBuffer() };
   const url = typeof source === "string" ? resolveUrl(source, path) : source;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`キャラクターファイルを取得できません: ${res.status} ${res.url}`);
-  return res.arrayBuffer();
+  return { data: await res.arrayBuffer(), url: res.url };
 }
 
 function isLoadOptions(v: unknown): v is LoadOptions {
@@ -58,9 +85,11 @@ export function load(
     ? { ...name, successCb: name.successCb ?? successCb, failCb: name.failCb ?? failCb, path: name.path ?? path }
     : { name, successCb, failCb, path };
   const promise = (async () => {
-    const data = await toArrayBuffer(options.name, options.path ?? msagent.BASE_PATH);
+    const { data, url } = await readSource(options.name, options.path ?? msagent.BASE_PATH);
+    const character = parseCharacter(data, { baseUrl: options.baseUrl ?? url });
+    if (character.prepare) await character.prepare(preloadNames(character, options.preload ?? DEFAULT_PRELOAD));
     const container = options.selector ? (document.querySelector<HTMLElement>(options.selector) ?? undefined) : options.container;
-    return new Agent(parseCharacter(data), { ...options, container });
+    return new Agent(character, { ...options, container });
   })();
   if (options.successCb || options.failCb) promise.then(options.successCb, options.failCb ?? ((e) => console.error(e)));
   return promise;

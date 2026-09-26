@@ -1,6 +1,6 @@
 # msagent.js
 
-Microsoft Agent のキャラクター (`.acs`) と、Office 97 のアシスタント (`.act`) を、ブラウザだけで動かすライブラリです。
+Microsoft Agent のキャラクター (`.acs`、Web 用の `.acf` + `.aca`) と、Office 97 のアシスタント (`.act`) を、ブラウザだけで動かすライブラリです。
 変換済みのスプライトは要りません。キャラクターファイルをそのまま読み込み、canvas に描きます。
 
 - 🎞️ **本家どおりのアニメーション** — 分岐・終了分岐・戻りアニメ・効果音、移動や指さしの動きまで、Microsoft Agent と同じ順番で再生
@@ -65,10 +65,16 @@ msagent.load({ name, scale: 2 }, successCb, failCb);
 
 `name` には、URL、名前 (`"Merlin"` → `path + "Merlin.acs"`)、`File` / `Blob`、`ArrayBuffer` を渡せます。
 
+`.acf` (Web 用のキャラクター) は、キャラクター情報とアニメーションの一覧だけのファイルで、アニメーションはそれぞれ別の `.aca` に入っています。
+`.aca` は `.acf` の URL から見た相対パスで取り寄せます (`File` / バイト列で渡したときは `baseUrl` から)。
+読み込みの時点で取り寄せるのは `preload` のものだけで、ほかは再生するときに取り寄せます (取り寄せる間だけ、動き出すのが遅れます)。`get()` で先に取り寄せておくこともできます。
+
 | 設定 | 中身 | 既定 |
 | --- | --- | --- |
 | `path` | 名前の前に付ける場所 | `msagent.BASE_PATH` |
 | `selector` | キャラクターを置く要素 | `body` |
+| `preload` | `.acf` で、読み込みの時点で取り寄せるアニメーション (状態名かアニメーション名の配列。`"all"` なら全部) | `["Showing", "Hiding", "Speaking", "RestPose"]` |
+| `baseUrl` | `.acf` で、`.aca` の場所の基準の URL | `.acf` の URL (無ければページの URL) |
 | `sound` | 効果音を鳴らすか | `true` |
 | `voice` | `speak()` で声に出して読むか (`false` なら吹き出しと口の動きだけ) | `true` |
 | `tags` | 読み上げの制御タグを使うか (`false` なら、タグも文字としてそのまま。[制御タグ](#読み上げの制御タグ)) | `true` |
@@ -124,7 +130,7 @@ msagent.load({ name, scale: 2 }, successCb, failCb);
 - 移動の途中で `stop()` すると、その場で止まります。
 
 `get(type, name)` は本家の Get と同じです。`type` は `"animation"` / `"state"` / `"wavefile"`、`name` はカンマ区切りで複数書けます。
-ファイルは丸ごと読み込み済みなので、アニメーション・状態は、あるかを確かめるだけです (無ければ `failed`)。`"wavefile"` は URL を読み込んでおき、`speak(text, { url })` を速くします。`queue` が `false` なら順番待ちに入りません。
+`.acf` のキャラクターは、アニメーションの `.aca` を取り寄せます (取り寄せられない・壊れている・`.acf` とチェックサムが合わないときは `failed`、番号は `RequestError.invalidAnimation`)。`.acs` / `.act` はファイルを丸ごと読み込み済みなので、アニメーション・状態は、あるかを確かめるだけです (無ければ `failed`)。`"wavefile"` は URL を読み込んでおき、`speak(text, { url })` を速くします。`queue` が `false` なら順番待ちに入りません。
 
 ### 命令を待つ (Request)
 
@@ -479,7 +485,7 @@ msagent.load({ name: "Merlin", balloon: { fontFamily: '"Yu Gothic UI", sans-seri
 agent.character.width, agent.character.height; // 元の大きさ (px)
 agent.character.guid;     // "{4E574F44-B521-11D0-9E9A-00C04FD7081F}"
 agent.character.voice;    // { speed: 156, pitch: 50, language: "en-US", gender: "male", age: 30, style: "Business", engine: "{…}", mode: "{…}" }
-agent.character.trayIcon; // タスクトレイ用の小さなアイコン (.acs のみ)。imageToDataUrl(icon) で <img> や favicon に使える
+agent.character.trayIcon; // タスクトレイ用の小さなアイコン (.acs / .acf のみ)。imageToDataUrl(icon) で <img> や favicon に使える
 agent.character.balloon;  // { background: "#ffffe1", foreground: "#000000", border: "#000000", fontFamily: "MS Sans Serif", fontSize: 13, lines: 2, charsPerLine: 32, … }
 ```
 
@@ -550,7 +556,7 @@ npm test        # テスト (下を参照)
 | `browser` | テスト用のページ (`tests/harness`) でキャラクターを動かす (状態・命令・しゃべる・考える・吹き出し・マウス・メニュー・大きさ・待機動作など) |
 | `demo` | `example` のデモのページを操作する |
 
-キャラクターファイルは同梱していないので、置き場所を環境変数 `MSAGENT_CHARACTERS` に書きます (複数なら Windows は `;`、Mac / Linux は `:` で区切る)。使うのは `Merlin.acs`・`finfin.acs`・`CLIPPIT.ACS`・`ROCKY.act`・`dolphin.act` で、無いファイルを使うテストは飛ばします。
+キャラクターファイルは同梱していないので、置き場所を環境変数 `MSAGENT_CHARACTERS` に書きます (複数なら Windows は `;`、Mac / Linux は `:` で区切る)。使うのは `Merlin.acs`・`finfin.acs`・`CLIPPIT.ACS`・`DOLPHIN.ACS`・`ROCKY.act`・`dolphin.act`・`Genie.acf` (と `Show.aca`・`Greet.aca`)・`robby.acf`・Merlin の `GestureUp.aca` で、無いファイルを使うテストは飛ばします。
 
 ```sh
 # Windows (PowerShell)
@@ -564,4 +570,4 @@ npm run test:unit   # ブラウザを使わないものだけ (速い)
 
 ## ライセンス
 
-[MIT](LICENSE)。キャラクターファイル (.acs / .act) は含まれず、このライセンスの対象ではありません (著作権は、それぞれの権利者にあります)。
+[MIT](LICENSE)。キャラクターファイル (.acs / .acf / .aca / .act) は含まれず、このライセンスの対象ではありません (著作権は、それぞれの権利者にあります)。

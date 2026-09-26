@@ -13,6 +13,13 @@ export const CHARACTERS = {
   kairu: "DOLPHIN.ACS",
   rocky: "ROCKY.act",
   kairuAct: "dolphin.act",
+  genie: "Genie.acf",
+  robby: "robby.acf",
+  /** Genie.acf のアニメーション */
+  genieShow: "Show.aca",
+  genieGreet: "Greet.aca",
+  /** Merlin のアニメーション (Merlin.acf は無い。Genie.acf とはチェックサムが合わない) */
+  merlinGestureUp: "GestureUp.aca",
 } as const;
 
 const dirs = (process.env.MSAGENT_CHARACTERS ?? "").split(delimiter).filter((d) => d && existsSync(d));

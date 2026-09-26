@@ -37,10 +37,12 @@ export { CommandsWindow } from "./commandswindow";
 export type { AgentCommand, CommandOptions, VoiceMatch } from "./commands";
 export { compileVoiceGrammar, GrammarError, normalizeSpeech } from "./grammar";
 
-// キャラクターファイル (ACS / ACT) の中身
+// キャラクターファイル (ACS / ACF / ACT) の中身
 export { DEFAULT_BALLOON_STYLE } from "./character";
 export type { BalloonStyle, Character, VoiceSettings } from "./character";
 export { AcsCharacter } from "./acs/reader";
+export { AcfCharacter, isAcfFile } from "./acf/reader";
+export type { AcfOptions } from "./acf/reader";
 export type { AcsImage, Animation, Branch, Frame, FrameImage, Overlay } from "./acs/reader";
 export { ActCharacter, isActFile } from "./act/reader";
 export { imageToDataUrl } from "./acs/icon";

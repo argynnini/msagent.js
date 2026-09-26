@@ -175,6 +175,11 @@ export class AcsPlayer {
         await this.returnFrom(held, token);
         if (token !== this.token) return;
       }
+      // ACF のキャラクターは、コマ (ACA) が届くまで待つ (ACS / ACT は最初から全部あるので待たない)
+      if (this.character.prepare) {
+        await this.prepare([name]);
+        if (token !== this.token) return;
+      }
       this.setCurrent(name);
       let current: Animation | undefined = this.character.animations.get(name);
       // 戻りアニメの連鎖は念のため上限を設ける
@@ -197,6 +202,15 @@ export class AcsPlayer {
       }
     };
     return (this.running = run());
+  }
+
+  /** コマを取り寄せる。取り寄せられなければ、コマが空のまま (再生してもすぐ終わる) */
+  private async prepare(names: readonly string[]) {
+    try {
+      await this.character.prepare?.(names);
+    } catch (e) {
+      console.warn(e);
+    }
   }
 
   /**
@@ -280,9 +294,9 @@ export class AcsPlayer {
         // 画像なし・0 秒のフレームは、描かずにすぐ次へ (ACT の分岐・効果音の命令。描くと一瞬消えてちらつく)
         const timed = frame.images.length > 0 || frame.duration > 0;
         const next = this.nextIndex(frame, index);
-        // 未使用の画像 (0x0) だけのコマは、描くと消えてしまうので描かない。途中なら前の絵のまま待ち、
-        // アニメーションの最後なら止まっているときの絵にする (例: フィンフィンの MoveLeftReturn の最後。
-        // 前の絵のままだと、着地の途中の姿勢で止まって見える)
+        // 絵なしの画像 (0x0) だけのコマは、描くと消えてしまうので描かない (本家は透明なコマとして描き、消えて見える)。
+        // 途中なら前の絵のまま待ち、アニメーションの最後なら止まっているときの絵にする (例: フィンフィンの
+        // MoveLeftReturn の最後。作者が画像を入れ忘れたもので、前の絵のままだと、着地の途中の姿勢で止まって見える)
         if (timed && !this.onlyPlaceholders(frame)) {
           this.draw(frame);
           last = index;
@@ -375,7 +389,7 @@ export class AcsPlayer {
     c = document.createElement("canvas");
     c.width = img.width;
     c.height = img.height;
-    // 未使用のプレースホルダー (0x0) は、そのまま空の canvas にしておく (putImageData は 0 サイズだと例外になる)
+    // 絵なしの画像 (0x0) は、そのまま空の canvas にしておく (putImageData は 0 サイズだと例外になる)
     if (img.width > 0 && img.height > 0) {
       // 画像の数値も、同じ色空間として扱う (sRGB のキャンバスとの間で、変換が入らないようにする)
       const space = getColorSpace();
@@ -418,7 +432,7 @@ export class AcsPlayer {
       if (i === 0 && mouth?.replace) continue;
       const fi = frame.images[i]!;
       const s = this.sprite(fi.imageIndex);
-      if (s.width === 0 || s.height === 0) continue; // 未使用のプレースホルダー画像は描かない
+      if (s.width === 0 || s.height === 0) continue; // 絵なしの画像は描かない
       if (fi.width !== undefined && fi.height !== undefined && (fi.width !== s.width || fi.height !== s.height)) {
         this.ctx.drawImage(s, fi.x, fi.y, fi.width, fi.height);
       } else {

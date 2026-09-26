@@ -1,3 +1,4 @@
+import { AcfCharacter, isAcfFile, type AcfOptions } from "./acf/reader";
 import { AcsPlayer } from "./acs/player";
 import { AcsCharacter } from "./acs/reader";
 import { ActCharacter, isActFile } from "./act/reader";
@@ -150,8 +151,12 @@ const HEARD_TIP_MS = 3000;
 /** 隠れているときの speak / think の失敗の理由 */
 const HIDDEN = "キャラクターが隠れています";
 
-/** ACS (Microsoft Agent) か ACT (Office 97 のアシスタント) を、中身から見分けて読み込む */
-export function parseCharacter(data: ArrayBuffer): Character {
+/**
+ * ACS・ACF (Microsoft Agent) か ACT (Office 97 のアシスタント) を、中身から見分けて読み込む。
+ * ACF なら、options.baseUrl が、アニメーション (ACA) のファイル名の基準の URL になる
+ */
+export function parseCharacter(data: ArrayBuffer, options: AcfOptions = {}): Character {
+  if (isAcfFile(data)) return new AcfCharacter(data, options);
   return isActFile(data) ? new ActCharacter(data) : new AcsCharacter(data);
 }
 
@@ -564,6 +569,7 @@ export class Agent extends EventTarget {
 
   /**
    * アニメーション・状態・音声ファイルを、先に取り寄せる (本家の Get と同じ)。
+   * .acf のキャラクターは、アニメーションのコマ (.aca) を取り寄せる (取り寄せられなければ failed)。
    * .acs / .act はファイルを丸ごと読み込み済みなので、アニメーションと状態は、あるかどうかを確かめるだけ
    * (無ければ failed)。"wavefile" は URL を読み込んでおき (ブラウザのキャッシュに入る)、後の speak(text, { url }) を速くする。
    * name はカンマ区切りで複数指定できる。queue が true (既定) なら順番待ちに入り、false ならすぐ実行する
@@ -1034,13 +1040,17 @@ export class Agent extends EventTarget {
     switch (type.toLowerCase()) {
       case "animation": {
         const missing = names.find((n) => !findAnimation(this.character, n));
-        return missing ? [`アニメーションがありません: ${missing}`, RequestError.animationNotFound] : ["", 0];
+        if (missing) return [`アニメーションがありません: ${missing}`, RequestError.animationNotFound];
+        return this.prepareAnimations(names.map((n) => findAnimation(this.character, n)!));
       }
       case "state": {
         const missing = names.find((n) =>
           (STATE_GROUPS[n.toLowerCase()] ?? [n]).every((state) => this.character.stateAnimations(state).length === 0),
         );
-        return missing ? [`状態にアニメーションがありません: ${missing}`, RequestError.stateNotFound] : ["", 0];
+        if (missing) return [`状態にアニメーションがありません: ${missing}`, RequestError.stateNotFound];
+        return this.prepareAnimations(
+          names.flatMap((n) => (STATE_GROUPS[n.toLowerCase()] ?? [n]).flatMap((state) => this.character.stateAnimations(state))),
+        );
       }
       case "wavefile":
         for (const url of names) {
@@ -1055,6 +1065,16 @@ export class Agent extends EventTarget {
         return ["", 0];
       default:
         return [`get() の type が正しくありません: ${type}`, RequestError.invalidGetType];
+    }
+  }
+
+  /** ACF のキャラクターなら、アニメーションのコマ (ACA) を取り寄せる。runGet() と同じ形で結果を返す */
+  private async prepareAnimations(names: readonly string[]): Promise<[string, number]> {
+    try {
+      await this.character.prepare?.(names);
+      return ["", 0];
+    } catch (e) {
+      return [e instanceof Error ? e.message : String(e), RequestError.invalidAnimation];
     }
   }
 

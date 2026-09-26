@@ -78,7 +78,7 @@ export const DEFAULT_BALLOON_STYLE: Readonly<BalloonStyle> = {
 
 /**
  * プレイヤー・待機動作・しゃべる機能が使う、キャラクターの共通の形。
- * ACS (Microsoft Agent) と ACT (Office 97 のアシスタント) の読み込み結果は、どちらもこの形で扱う
+ * ACS・ACF (Microsoft Agent) と ACT (Office 97 のアシスタント) の読み込み結果は、どれもこの形で扱う
  */
 export interface Character {
   readonly width: number;
@@ -112,4 +112,9 @@ export interface Character {
   getImage(index: number): AcsImage;
   /** 効果音 (WAV) の生データ。存在しなければ undefined */
   getSound(index: number): Uint8Array | undefined;
+  /**
+   * アニメーションのコマを取り寄せる (ACF のキャラクターだけ。ACS / ACT は最初から全部あるので無い)。
+   * 取り寄せるまで、animations のそのアニメーションのコマは空
+   */
+  prepare?(names: readonly string[]): Promise<void>;
 }

@@ -22,6 +22,8 @@ export const RequestError = {
   hidden: -2147213302,
   /** get() の type が正しくない (0x8004200E) */
   invalidGetType: -2147213298,
+  /** アニメーションが正しくない: 壊れている・コマが無い・取り寄せられない (0x8004200F) */
+  invalidAnimation: -2147213297,
   /** 自分の命令は interrupt できない (0x80042104) */
   interruptSelf: -2147213052,
   /** 自分の命令は wait できない (0x80042105) */

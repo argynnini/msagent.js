@@ -1,5 +1,5 @@
 import { test as base, type Page } from "@playwright/test";
-import type { Agent, AgentOptions } from "../../src/index";
+import type { Agent, LoadOptions } from "../../src/index";
 import { characterPath } from "../characters";
 
 declare global {
@@ -7,7 +7,7 @@ declare global {
     /** ライブラリ (src/index.ts) */
     M: typeof import("../../src/index");
     /** テスト用: 名前でキャラクターを読む (声と待機動作は既定で切る) */
-    loadAgent(name: string, options?: AgentOptions): Promise<Agent>;
+    loadAgent(name: string, options?: Omit<LoadOptions, "name">): Promise<Agent>;
     ready: boolean;
   }
 }
