@@ -42,5 +42,8 @@ export function readCharacter(name: string): ArrayBuffer {
 /** 使うキャラクターファイルが無ければ、このテストを飛ばす */
 export function requireCharacters(...names: string[]) {
   const missing = names.filter((n) => !characterPath(n));
-  test.skip(missing.length > 0, `キャラクターファイルがありません: ${missing.join(", ")} (MSAGENT_CHARACTERS に置き場所を書く)`);
+  test.skip(
+    missing.length > 0,
+    `キャラクターファイルがありません: ${missing.join(", ")} (MSAGENT_CHARACTERS に置き場所を書く)`,
+  );
 }

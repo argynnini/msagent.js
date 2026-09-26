@@ -72,31 +72,50 @@ async function setup(page: Page, options: Record<string, unknown> = {}) {
     a.on("listencomplete", (e) => window.log.push(`complete ${e.detail.cause}`));
     a.on("command", (e) => {
       const d = e.detail;
-      window.log.push(`command ${d.name || "-"} ${d.source} ${d.confidence} "${d.voice}" ${d.count} ${d.alternatives.map((x) => x.name).join(",")}`);
+      window.log.push(
+        `command ${d.name || "-"} ${d.source} ${d.confidence} "${d.voice}" ${d.count} ${d.alternatives.map((x) => x.name).join(",")}`,
+      );
     });
   }, options);
 }
 
-const tipText = (page: Page) => page.$eval(".msagent-listening-tip", (e) => [(e as HTMLElement).style.display, e.textContent]);
+const tipText = (page: Page) =>
+  page.$eval(".msagent-listening-tip", (e) => [(e as HTMLElement).style.display, e.textContent]);
 const log = (page: Page) => page.evaluate(() => window.log);
 
-test("listen(true): 聞き始め、1 つ言い終えたら command を知らせてやめる。ヒントに聞いていること・聞こえた文を出す", async ({ harness }) => {
+test("listen(true): 聞き始め、1 つ言い終えたら command を知らせてやめる。ヒントに聞いていること・聞こえた文を出す", async ({
+  harness,
+}) => {
   await setup(harness);
   expect(await harness.evaluate(() => window.a.listen(true))).toBe(true);
   expect(await harness.evaluate(() => [window.a.listening, window.recs[0]!.lang])).toEqual([true, "en"]);
   expect(await tipText(harness)).toEqual(["block", '-- Merlin is listening --for "Test" commands']);
-  await harness.evaluate(() => window.say([["Please find my file", 0.9], ["please fine my file", 0.2]]));
+  await harness.evaluate(() =>
+    window.say([
+      ["Please find my file", 0.9],
+      ["please fine my file", 0.2],
+    ]),
+  );
   await harness.waitForFunction(() => !window.a.listening);
-  expect(await log(harness)).toEqual(["start program", 'command search voice 90 "Please find my file" 1 ', "complete finished"]);
+  expect(await log(harness)).toEqual([
+    "start program",
+    'command search voice 90 "Please find my file" 1 ',
+    "complete finished",
+  ]);
   expect(await tipText(harness)).toEqual(["block", '-- Merlin is not listening --Heard "Please find my file"']);
 });
 
-test("listen(false) でやめる。どのコマンドにも合わなければ name は空で count は 0。確かさが低ければ confidenceText", async ({ harness }) => {
+test("listen(false) でやめる。どのコマンドにも合わなければ name は空で count は 0。確かさが低ければ confidenceText", async ({
+  harness,
+}) => {
   await setup(harness);
   await harness.evaluate(() => window.a.listen(true));
   await harness.evaluate(() => window.say([["what time is it", 0.8]]));
   await harness.waitForFunction(() => !window.a.listening);
-  expect(await tipText(harness)).toEqual(["block", '-- Merlin is not listening --Didn\'t understand "what time is it"']);
+  expect(await tipText(harness)).toEqual([
+    "block",
+    '-- Merlin is not listening --Didn\'t understand "what time is it"',
+  ]);
   await harness.evaluate(() => window.a.listen(true));
   await harness.evaluate(() => window.say([["be quiet", 0.4]]));
   await harness.waitForFunction(() => !window.a.listening);
@@ -116,7 +135,9 @@ test("listen(false) でやめる。どのコマンドにも合わなければ na
   ]);
 });
 
-test("聞き取りキー: 押している間聞き (いくつ言ってもよい)、離したらやめる。Listening の状態のアニメーション", async ({ harness }) => {
+test("聞き取りキー: 押している間聞き (いくつ言ってもよい)、離したらやめる。Listening の状態のアニメーション", async ({
+  harness,
+}) => {
   await setup(harness, { listeningKey: "F8" });
   await harness.evaluate(() => {
     window.a.on("animationstart", (e) => window.log.push(`anim ${e.detail.name}`));
@@ -169,7 +190,9 @@ test("listeningKeyTimeout: キーを離してもその秒数は聞き、話し�
   ]);
 });
 
-test("「hide Merlin」「隠れて」: msagent.js が用意したコマンドで隠れる (name は空、hide の cause は user)", async ({ harness }) => {
+test("「hide Merlin」「隠れて」: msagent.js が用意したコマンドで隠れる (name は空、hide の cause は user)", async ({
+  harness,
+}) => {
   await setup(harness);
   await harness.evaluate(() => window.a.on("hide", (e) => window.log.push(`hide ${e.detail.cause}`)));
   await harness.evaluate(() => window.a.listen(true));
@@ -188,7 +211,9 @@ test("「hide Merlin」「隠れて」: msagent.js が用意したコマンド�
   expect(await harness.evaluate(() => window.a.visible)).toBe(true);
 });
 
-test("音声認識が無いブラウザでは listen は false、srStatus は 4。マイクを許可されなければ error で終わり、srStatus は 5", async ({ harness }) => {
+test("音声認識が無いブラウザでは listen は false、srStatus は 4。マイクを許可されなければ error で終わり、srStatus は 5", async ({
+  harness,
+}) => {
   const r = await harness.evaluate(async () => {
     // Chrome には本物 (webkitSpeechRecognition) があるので、消して試す
     const w = window as unknown as Record<string, unknown>;
@@ -211,7 +236,9 @@ test("音声認識が無いブラウザでは listen は false、srStatus は 4�
   expect(await log(harness)).toEqual(["start program", "complete error"]);
 });
 
-test("ヘルプモードで声のコマンドを言うと、コマンドの代わりに helpcomplete。audioOutput.status は聞き取り中 5、聞こえている間 3", async ({ harness }) => {
+test("ヘルプモードで声のコマンドを言うと、コマンドの代わりに helpcomplete。audioOutput.status は聞き取り中 5、聞こえている間 3", async ({
+  harness,
+}) => {
   await setup(harness);
   const r = await harness.evaluate(async () => {
     const a = window.a;
@@ -255,18 +282,32 @@ test("聞き取り中にユーザーの声が聞こえている間は、キャ�
   expect(r).toEqual({ utterances: ["After you talk"], balloon: "While you talk" });
 });
 
-test("音声コマンドの窓: 右クリックのメニュー・声・visible で開閉し、声のコマンドと全体のコマンドを並べる", async ({ harness }) => {
+test("音声コマンドの窓: 右クリックのメニュー・声・visible で開閉し、声のコマンドと全体のコマンドを並べる", async ({
+  harness,
+}) => {
   await setup(harness);
   const windowText = () =>
     harness.evaluate(() => {
       const w = document.querySelector<HTMLElement>(".msagent-commands-window");
-      return w && w.style.display !== "none" ? [...w.querySelectorAll(".msagent-commands-window-section, li")].map((e) => e.firstChild!.textContent) : null;
+      return w && w.style.display !== "none"
+        ? [...w.querySelectorAll(".msagent-commands-window-section, li")].map((e) => e.firstChild!.textContent)
+        : null;
     });
   // 右クリックのメニューから開く
   await harness.evaluate(() => window.a.showPopupMenu(100, 100));
   await harness.click(".msagent-menu >> text=Open Voice Commands");
-  expect(await windowText()).toEqual(["Test", "Search", "Quiet", "Global Commands", "Close Voice Commands Window", "Hide Merlin"]);
-  expect(await harness.evaluate(() => [window.a.commandsWindow.visible, window.a.commandsWindow.width > 0])).toEqual([true, true]);
+  expect(await windowText()).toEqual([
+    "Test",
+    "Search",
+    "Quiet",
+    "Global Commands",
+    "Close Voice Commands Window",
+    "Hide Merlin",
+  ]);
+  expect(await harness.evaluate(() => [window.a.commandsWindow.visible, window.a.commandsWindow.width > 0])).toEqual([
+    true,
+    true,
+  ]);
   // × で閉じる
   await harness.click(".msagent-commands-window-close");
   expect(await windowText()).toBeNull();
@@ -289,4 +330,26 @@ test("音声コマンドの窓: 右クリックのメニュー・声・visible �
   await harness.click(".msagent-menu >> text=Open Voice Commands");
   expect(await harness.evaluate(() => window.a.commandsWindow.visible)).toBe(false);
   expect(await log(harness)).toContain("help openCommandsWindow");
+});
+
+test("srModeId: 代入した言語で聞き、undefined で読み上げの言語に戻す。音声認識が無ければ空", async ({ harness }) => {
+  await setup(harness, { srModeId: "ja-JP" });
+  const r = await harness.evaluate(async () => {
+    const a = window.a;
+    const ids = [a.srModeId];
+    a.listen(true);
+    a.listen(false);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    a.srModeId = undefined;
+    ids.push(a.srModeId);
+    a.listen(true);
+    a.listen(false);
+    const w = window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown };
+    delete w.SpeechRecognition;
+    delete w.webkitSpeechRecognition;
+    ids.push(a.srModeId);
+    return { ids, langs: window.recs.map((rec) => rec.lang) };
+  });
+  expect(r.ids).toEqual(["ja-JP", "en", ""]);
+  expect(r.langs).toEqual(["ja-JP", "en"]);
 });

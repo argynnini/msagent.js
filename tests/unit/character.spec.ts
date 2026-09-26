@@ -37,10 +37,26 @@ test.describe("ACS / ACT の読み込み", () => {
     expect(c.getName("xx")).toBe("Merlin");
     expect(c.languages.length).toBe(30);
     expect(c.getDescription("de")).toMatch(/^Ich bin Euer weiser/);
-    expect(c.voice).toMatchObject({ speed: 156, pitch: 50, language: "en-US", gender: "male", age: 30, style: "Business" });
+    expect(c.voice).toMatchObject({
+      speed: 156,
+      pitch: 50,
+      language: "en-US",
+      gender: "male",
+      age: 30,
+      style: "Business",
+    });
     expect(c.balloon).toMatchObject({
-      background: "#ffffe1", foreground: "#000000", border: "#000000", fontFamily: "MS Sans Serif", fontSize: 13,
-      lines: 2, charsPerLine: 32, enabled: true, sizeToText: true, autoHide: true, autoPace: true,
+      background: "#ffffe1",
+      foreground: "#000000",
+      border: "#000000",
+      fontFamily: "MS Sans Serif",
+      fontSize: 13,
+      lines: 2,
+      charsPerLine: 32,
+      enabled: true,
+      sizeToText: true,
+      autoHide: true,
+      autoPace: true,
     });
     expect(c.guid).toBe("{4E574F44-B521-11D0-9E9A-00C04FD7081F}");
     expect(c.version).toBe("2.1");

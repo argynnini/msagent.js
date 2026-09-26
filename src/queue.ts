@@ -1,5 +1,5 @@
-import type { Agent } from "./agent";
-import { AgentRequest, RequestError, type RequestType } from "./request";
+import type { Agent } from "./agent.js";
+import { AgentRequest, RequestError, type RequestType } from "./request.js";
 
 /** 順番待ちの命令の中身。終わったら complete を呼ぶ (できなかったときは "failed" と理由、その番号 (RequestError)) */
 export type Task = (
@@ -53,7 +53,7 @@ export class RequestQueue {
   add(type: RequestType, task: Task): AgentRequest {
     const request = new AgentRequest(type, this.owner);
     if (this.closed) {
-      this.settle(request, "failed", "キャラクターは destroy() で破棄されています", RequestError.characterNotFound);
+      this.settle(request, "failed", "The character has been destroyed with destroy()", RequestError.characterNotFound);
       return request;
     }
     this.items.push({ request, task });
@@ -65,7 +65,7 @@ export class RequestQueue {
   runNow(type: RequestType, task: Task): AgentRequest {
     const request = new AgentRequest(type, this.owner);
     if (this.closed) {
-      this.settle(request, "failed", "キャラクターは destroy() で破棄されています", RequestError.characterNotFound);
+      this.settle(request, "failed", "The character has been destroyed with destroy()", RequestError.characterNotFound);
       return request;
     }
     request.start();

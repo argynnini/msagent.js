@@ -1,5 +1,5 @@
-import { languageTag } from "./language";
-import { clamp, hertzToPitch, wordsPerMinuteToRate } from "./voice";
+import { languageTag } from "./language.js";
+import { clamp, hertzToPitch, wordsPerMinuteToRate } from "./voice.js";
 
 /**
  * Microsoft Agent の読み上げの制御タグ (\Pau=500\ など) を読み、読み上げる部分の並びにする。
@@ -27,34 +27,35 @@ import { clamp, hertzToPitch, wordsPerMinuteToRate } from "./voice";
  * - 知らないタグは文字のまま。SAPI 5 のタグがある文だけ、&lt; などの文字参照を文字に戻す
  */
 
-/** 読み上げる部分 (spoken を読み、吹き出しには shown を出す) */
+/** A run of text to speak with the same settings. */
 export interface SpeechText {
   kind: "text";
+  /** Text to read aloud. */
   spoken: string;
+  /** Text to show in the balloon (differs from `spoken` with `\Map\` / `<sub>`). */
   shown: string;
-  /** ブラウザの読み上げの速さ・高さ (標準 = 1) と音量 (0〜1) */
+  /** Speaking rate (browser value, normal = 1). */
   rate: number;
+  /** Pitch (browser value, normal = 1). */
   pitch: number;
+  /** Volume, 0–1. */
   volume: number;
-  /** 読み上げの言語 (SAPI 5 の <lang> <voice>)。無ければ、読み上げ全体の言語 */
+  /** Language from SAPI 5 `<lang>` / `<voice>`. If missing, the language of the whole speech is used. */
   lang?: string;
-  /** 声の性別 (SAPI 5 の <voice>)。無ければ、キャラクターの声の性別 */
+  /** Voice gender from SAPI 5 `<voice>`. If missing, the character's voice gender is used. */
   gender?: "neutral" | "female" | "male";
 }
 
-/**
- * 目印。id は番号 (SAPI 5 の <bookmark mark="…"/> で、数字でなければ NaN)、mark は書いてあったとおりの文字
- */
+/** A bookmark in speech text (`\Mrk=number\` or SAPI 5 `<bookmark mark="..."/>`). */
 export interface Bookmark {
+  /** The bookmark number (`NaN` for a non-numeric SAPI 5 mark). */
   id: number;
+  /** The mark as written. */
   mark: string;
 }
 
-export type SpeechPart =
-  | SpeechText
-  | { kind: "pause"; ms: number }
-  | ({ kind: "bookmark" } & Bookmark);
-
+/** A part of parsed speech text: text to speak, a pause in milliseconds, or a bookmark. */
+export type SpeechPart = SpeechText | { kind: "pause"; ms: number } | ({ kind: "bookmark" } & Bookmark);
 
 /** \Emp\ で強調した言葉の、速さと高さの倍率 */
 const EMPHASIS_RATE = 0.8;
@@ -69,7 +70,23 @@ const KNOWN_TAGS = new Set(["chr", "ctx", "emp", "lst", "map", "mrk", "pau", "pi
 
 /** SAPI 5 のタグの名前 (大文字小文字は問わない) */
 const SAPI_TAGS = new Set([
-  "bookmark", "context", "emph", "lang", "p", "partofsp", "pitch", "pron", "rate", "s", "sapi", "map", "silence", "spell", "sub", "voice", "volume",
+  "bookmark",
+  "context",
+  "emph",
+  "lang",
+  "p",
+  "partofsp",
+  "pitch",
+  "pron",
+  "rate",
+  "s",
+  "sapi",
+  "map",
+  "silence",
+  "spell",
+  "sub",
+  "voice",
+  "volume",
 ]);
 const SAPI_TAG = /<(\/?)([a-z]+)((?:\s+[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>/iy;
 const SAPI_ATTRIBUTE = /([a-z]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
@@ -109,7 +126,11 @@ function readEntity(text: string, at: number): [string, number] | undefined {
   const m = ENTITY.exec(text);
   if (!m) return undefined;
   const name = m[1]!.toLowerCase();
-  const code = name.startsWith("#x") ? parseInt(name.slice(2), 16) : name.startsWith("#") ? Number(name.slice(1)) : undefined;
+  const code = name.startsWith("#x")
+    ? parseInt(name.slice(2), 16)
+    : name.startsWith("#")
+      ? Number(name.slice(1))
+      : undefined;
   if (code !== undefined && !(code >= 0 && code <= 0x10ffff)) return undefined;
   return [code === undefined ? ENTITIES[name]! : String.fromCodePoint(code), m[0].length];
 }
@@ -159,9 +180,44 @@ interface Settings {
 const spellOut = (text: string) => [...text].filter((c) => /\S/.test(c)).join(" ");
 
 /**
- * 文をタグで区切り、読み上げる部分・間・目印の並びにする。
- * base は、タグで変えていないときの速さ・高さ (キャラクターの声の設定から)。
- * onlyBookmarks なら \Mrk\ だけを使い、ほかのタグは取り除く (think() と同じ)
+ * Parses speech output tags in text into parts to speak, pauses and bookmarks.
+ *
+ * Microsoft Agent tags start and end with `\` and are case-insensitive (`\\` is a literal backslash):
+ *
+ * - `\Spd=words per minute\`, `\Pit=Hz\`, `\Vol=0–65535\`: speed, pitch, volume (until `\Rst\` or the end)
+ * - `\Pau=ms\`: pause; `\Mrk=number\`: bookmark (fires the `bookmark` event); `\Rst\`: reset to defaults
+ * - `\Map="spoken"="shown"\`: speak one text and show another in the balloon
+ * - `\Emp\`: emphasize the next word (approximated by speaking a little slower and higher)
+ * - `\Chr=Whisper\`: whisper (approximated by a lower volume); `\Chr=Normal\` to go back.
+ *   `Monotone` is not supported by browsers and is ignored
+ * - `\Ctx=...\`: context; left to the browser, so the tag is removed
+ * - `\Lst\` (repeat the last speech) is handled by `agent.speak()`
+ *
+ * SAPI 5 XML tags are supported too (msagent.js extension). `<rate>` `<pitch>` `<volume>` `<emph>` `<spell>`
+ * `<lang>` `<voice>` apply to their content; the self-closing form (`<rate speed="5"/>`) applies until the
+ * enclosing tag closes or the text ends.
+ *
+ * - `<rate absspeed="-10..10">` / `<rate speed="...">`: speed, absolute or relative (10 = 3×, -10 = 1/3)
+ * - `<pitch absmiddle="-10..10">` / `<pitch middle="...">`: pitch (10 = 2×, -10 = 1/2)
+ * - `<volume level="0..100">`: volume
+ * - `<emph>`: emphasis (like `\Emp\`); `<spell>`: read letter by letter
+ * - `<silence msec="..."/>`: pause; `<bookmark mark="..."/>`: bookmark (need not be a number)
+ * - `<lang langid="411">`: language (hexadecimal Windows language ID);
+ *   `<voice required="Gender=Female;Language=411">`: voice gender and language
+ * - `<sub alias="spoken">shown</sub>` / `<map alias="spoken">shown</map>`: like `\Map\`
+ * - `<!-- comment -->`: removed
+ * - `<pron>` `<context>` `<partofsp>` `<sapi>` `<p>` `<s>`: left to the browser; the tags are removed but
+ *   their text is spoken
+ *
+ * Unknown tags are kept as text. Character references such as `&lt;` are decoded only in text with SAPI 5 tags.
+ *
+ * ```js
+ * parseSpeechTags("Hello\\Pau=500\\world");
+ * // → [{ kind: "text", spoken: "Hello", ... }, { kind: "pause", ms: 500 }, { kind: "text", spoken: "world", ... }]
+ * ```
+ *
+ * @param base - Rate and pitch when no tag changes them (from the character's voice settings).
+ * @param onlyBookmarks - Use only `\Mrk\` and remove the other tags (as `think()` does).
  */
 export function parseSpeechTags(
   text: string,
@@ -394,7 +450,7 @@ export function plainSpeech(text: string, base: { rate: number; pitch: number } 
   return text ? [{ kind: "text", spoken: text, shown: text, rate: base.rate, pitch: base.pitch, volume: 1 }] : [];
 }
 
-/** 吹き出しに出す文 (タグを除いたもの) */
+/** The text shown in the balloon for parsed speech (the text without tags). */
 export function shownText(parts: readonly SpeechPart[]): string {
   return parts.map((p) => (p.kind === "text" ? p.shown : "")).join("");
 }
@@ -403,7 +459,10 @@ export function shownText(parts: readonly SpeechPart[]): string {
  * 目印 (\Mrk\) を、吹き出しに文字を出していくのに合わせて知らせるための関数を作る。
  * 返した関数に、出した文字数を渡すと、そこまでに通り過ぎた目印を fire に渡す (Infinity なら残り全部)
  */
-export function bookmarkNotifier(parts: readonly SpeechPart[], fire: (bookmark: Bookmark) => void): (shownCount: number) => void {
+export function bookmarkNotifier(
+  parts: readonly SpeechPart[],
+  fire: (bookmark: Bookmark) => void,
+): (shownCount: number) => void {
   const bookmarks: { at: number; bookmark: Bookmark }[] = [];
   let offset = 0;
   for (const p of parts) {
@@ -419,4 +478,5 @@ export function bookmarkNotifier(parts: readonly SpeechPart[], fire: (bookmark: 
 export const isRepeatTag = (text: string) => /^\s*\\lst\\\s*$/i.test(text);
 
 /** \Mrk\ と <bookmark/> を取り除く (\Lst\ で繰り返すときは、目印は繰り返さない。本家と同じ) */
-export const removeBookmarks = (text: string) => text.replace(/\\mrk=[^\\]*\\/gi, "").replace(/<bookmark\b[^>]*>/gi, "");
+export const removeBookmarks = (text: string) =>
+  text.replace(/\\mrk=[^\\]*\\/gi, "").replace(/<bookmark\b[^>]*>/gi, "");

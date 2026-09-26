@@ -14,7 +14,10 @@ export const MORA_MS = 130;
 /** 句読点での間 (全文を見積もるとき) */
 export const PAUSE_MS = 250;
 
-/** 口の動きの 1 コマ: 口の形と、その長さ (ms) */
+/**
+ * One step of mouth movement: a mouth shape (`0` closed, `1`–`4` wide open, `5` medium, `6` narrow) and its
+ * duration in milliseconds.
+ */
 export type MouthStep = [shape: number, ms: number];
 
 const KANA_VOWELS: [string, string][] = [
@@ -24,7 +27,9 @@ const KANA_VOWELS: [string, string][] = [
   ["e", "えけせてねへめれげぜでべぺぇ"],
   ["o", "おこそとのほもよろをごぞどぼぽぉょ"],
 ];
-const KANA_VOWEL = new Map<string, string>(KANA_VOWELS.flatMap(([v, chars]) => [...chars].map((c): [string, string] => [c, v])));
+const KANA_VOWEL = new Map<string, string>(
+  KANA_VOWELS.flatMap(([v, chars]) => [...chars].map((c): [string, string] => [c, v])),
+);
 /** 前の拍と合わさって 1 拍になる小さい文字 (きゃ・しゅ など) */
 const SMALL_KANA = "ゃゅょぁぃぅぇぉゎ";
 const PAUSE_CHAR = /[\s\u3001\u3002\uff0c\uff0e,.!?\uff01\uff1f\u2026\u30fb\u300c\u300d\u300e\u300f\uff08\uff09()]/; // 空白・句読点・かっこ (、。！？…・「」『』（） など)
@@ -39,8 +44,11 @@ const toHiragana = (c: string) => {
 export const randomVowelMouth = () => VOWEL_MOUTH[VOWELS[Math.floor(Math.random() * VOWELS.length)]!]!;
 
 /**
- * 文を、口の形の並びにする (1 拍 = moraMs)。句読点や空白は、閉じた口の間 (pauseMs。0 なら入れない) にする。
- * かなは母音から、英字は母音字から口の形を決める。読みが分からない文字 (漢字など) は、形を適当に選ぶ
+ * Estimates mouth movement for text, one step per mora. Kana use their vowel, Latin letters use vowel letters
+ * (with `m` / `b` / `p` closing the mouth), and other characters (kanji, digits, other scripts) get random shapes.
+ *
+ * @param moraMs - Duration of one mora in milliseconds.
+ * @param pauseMs - Closed-mouth pause for whitespace and punctuation, or `0` for none.
  */
 export function mouthSteps(text: string, moraMs: number, pauseMs = 0): MouthStep[] {
   const steps: MouthStep[] = [];
@@ -106,5 +114,8 @@ const IPA_MOUTH = new Map<number, number>(
   IPA_MOUTH_GROUPS.flatMap((chars, shape) => [...chars].map((c): [number, number] => [c.codePointAt(0)!, shape])),
 );
 
-/** IPA の 1 文字 (コードポイント) の口の形。表に無ければ undefined */
+/**
+ * Mouth shape for one IPA character (a code point), using the same table as Microsoft Agent 2.0.
+ * Returns `undefined` for characters not in the table.
+ */
 export const mouthForIpa = (code: number): number | undefined => IPA_MOUTH.get(code);

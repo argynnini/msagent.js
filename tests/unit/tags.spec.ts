@@ -1,5 +1,13 @@
 import { expect, test } from "@playwright/test";
-import { bookmarkNotifier, isRepeatTag, parseSpeechTags, plainSpeech, removeBookmarks, shownText, type SpeechPart } from "../../src/tags";
+import {
+  bookmarkNotifier,
+  isRepeatTag,
+  parseSpeechTags,
+  plainSpeech,
+  removeBookmarks,
+  shownText,
+  type SpeechPart,
+} from "../../src/tags";
 
 // 文の中の \ は、JavaScript の文字列では "\\" と書く
 
@@ -39,7 +47,10 @@ test("\\Emp\\ は次の言葉だけ、少しゆっくり・少し高く読む。
     "text(really r=0.8 p=1.2 v=1.00)",
     "text( great! r=1 p=1 v=1.00)",
   ]);
-  expect(describe(parseSpeechTags("\\Emp\\ずっと、待ってた"))).toEqual(["text(ずっと r=0.8 p=1.2 v=1.00)", "text(、待ってた r=1 p=1 v=1.00)"]);
+  expect(describe(parseSpeechTags("\\Emp\\ずっと、待ってた"))).toEqual([
+    "text(ずっと r=0.8 p=1.2 v=1.00)",
+    "text(、待ってた r=1 p=1 v=1.00)",
+  ]);
   expect(describe(parseSpeechTags('a \\Chr="Whisper"\\secret \\Chr=Normal\\b \\Chr=whisper\\c \\Rst\\d'))).toEqual([
     "text(a  r=1 p=1 v=1.00)",
     "text(secret  r=1 p=1 v=0.35)",
@@ -60,7 +71,13 @@ test("隣り合うタグと、\\\\ (\\ という文字)", () => {
 });
 
 test("大文字小文字を問わない", () => {
-  expect(brief(parseSpeechTags("a\\PAU=100\\b\\mrk=3\\c"))).toEqual(["text(a)", "pause(100)", "text(b)", "bookmark(3)", "text(c)"]);
+  expect(brief(parseSpeechTags("a\\PAU=100\\b\\mrk=3\\c"))).toEqual([
+    "text(a)",
+    "pause(100)",
+    "text(b)",
+    "bookmark(3)",
+    "text(c)",
+  ]);
 });
 
 test("think 用 (目印だけ): ほかのタグは取り除く", () => {
@@ -92,10 +109,15 @@ test("目印は、吹き出しに出した文字数に合わせて知らせる",
 
 /** 言語・性別も含めた形 */
 const withVoice = (parts: SpeechPart[]) =>
-  parts.map((p) => (p.kind === "text" ? `${p.spoken}${p.spoken !== p.shown ? `→${p.shown}` : ""} ${p.lang ?? "-"} ${p.gender ?? "-"}` : p.kind));
+  parts.map((p) =>
+    p.kind === "text"
+      ? `${p.spoken}${p.spoken !== p.shown ? `→${p.shown}` : ""} ${p.lang ?? "-"} ${p.gender ?? "-"}`
+      : p.kind,
+  );
 
 test("SAPI 5: <rate> <pitch> <volume> は中身だけに効き、閉じたら元に戻る (入れ子も)", () => {
-  const text = 'a <rate absspeed="10">fast <pitch absmiddle="-10">low</pitch> fast</rate> normal <volume level="50">quiet</volume>';
+  const text =
+    'a <rate absspeed="10">fast <pitch absmiddle="-10">low</pitch> fast</rate> normal <volume level="50">quiet</volume>';
   expect(describe(parseSpeechTags(text))).toEqual([
     "text(a  r=1 p=1 v=1.00)",
     "text(fast  r=3 p=1 v=1.00)",
@@ -107,12 +129,16 @@ test("SAPI 5: <rate> <pitch> <volume> は中身だけに効き、閉じたら元
 });
 
 test("SAPI 5: speed / middle はいまの値から、absspeed / absmiddle は元の値から。閉じた形は囲んでいるタグが閉じるまで", () => {
-  expect(brief(parseSpeechTags('<rate speed="10">x<rate speed="-10">y</rate></rate>z'))).toEqual(["text(x)", "text(y)", "text(z)"]);
-  expect(describe(parseSpeechTags('<rate speed="10">x<rate speed="-10">y</rate></rate>z')).map((s) => s.match(/r=[\d.]+/)![0])).toEqual([
-    "r=3",
-    "r=1",
-    "r=1",
+  expect(brief(parseSpeechTags('<rate speed="10">x<rate speed="-10">y</rate></rate>z'))).toEqual([
+    "text(x)",
+    "text(y)",
+    "text(z)",
   ]);
+  expect(
+    describe(parseSpeechTags('<rate speed="10">x<rate speed="-10">y</rate></rate>z')).map(
+      (s) => s.match(/r=[\d.]+/)![0],
+    ),
+  ).toEqual(["r=3", "r=1", "r=1"]);
   expect(describe(parseSpeechTags('<volume level="50">a<rate absspeed="10"/>b</volume>c'))).toEqual([
     "text(a r=1 p=1 v=0.50)",
     "text(b r=3 p=1 v=0.50)",
@@ -130,21 +156,35 @@ test("SAPI 5: <silence> は間、<bookmark> は目印 (数字でなければ id 
   expect(brief(parts)).toEqual(["text(Hi)", "pause(300)", "text(there)", "bookmark(7)", "text(x)", "bookmark(end)"]);
   const fired: { id: number; mark: string }[] = [];
   bookmarkNotifier(parts, (b) => fired.push(b))(Infinity);
-  expect(fired).toEqual([{ id: 7, mark: "7" }, { id: NaN, mark: "end" }]);
+  expect(fired).toEqual([
+    { id: 7, mark: "7" },
+    { id: NaN, mark: "end" },
+  ]);
 });
 
 test("SAPI 5: <emph> は中身を強調し、<spell> は 1 文字ずつ区切って読む (吹き出しはそのまま)", () => {
-  expect(describe(parseSpeechTags("<emph>very big</emph> deal"))).toEqual(["text(very big r=0.8 p=1.2 v=1.00)", "text( deal r=1 p=1 v=1.00)"]);
-  expect(brief(parseSpeechTags("Call <spell>ABC 12</spell> now"))).toEqual(["text(Call )", "text(A B C 1 2→ABC 12)", "text( now)"]);
+  expect(describe(parseSpeechTags("<emph>very big</emph> deal"))).toEqual([
+    "text(very big r=0.8 p=1.2 v=1.00)",
+    "text( deal r=1 p=1 v=1.00)",
+  ]);
+  expect(brief(parseSpeechTags("Call <spell>ABC 12</spell> now"))).toEqual([
+    "text(Call )",
+    "text(A B C 1 2→ABC 12)",
+    "text( now)",
+  ]);
 });
 
 test("SAPI 5: <lang> と <voice> で、中身の言語と声の性別を変える", () => {
-  const parts = parseSpeechTags('a<lang langid="411">こんにちは</lang><voice required="Gender=Female;Language=409">hi</voice><voice optional="Gender=Male">b</voice>');
+  const parts = parseSpeechTags(
+    'a<lang langid="411">こんにちは</lang><voice required="Gender=Female;Language=409">hi</voice><voice optional="Gender=Male">b</voice>',
+  );
   expect(withVoice(parts)).toEqual(["a - -", "こんにちは ja-JP -", "hi en-US female", "b - male"]);
 });
 
 test("SAPI 5: ブラウザで効かないタグは取り除き、知らないタグは文字のまま。文字参照は SAPI 5 のタグがある文だけ戻す", () => {
-  const parts = parseSpeechTags('<sapi><p><s><context id="date_mdy">1/2</context> <pron sym="h eh l ow">hello</pron> &lt;3 &amp; <b>x</b></s></p></sapi>');
+  const parts = parseSpeechTags(
+    '<sapi><p><s><context id="date_mdy">1/2</context> <pron sym="h eh l ow">hello</pron> &lt;3 &amp; <b>x</b></s></p></sapi>',
+  );
   expect(shownText(parts)).toBe("1/2 hello <3 & <b>x</b>");
   // 取り除くだけのタグでは、文を区切らない
   expect(parts.filter((p) => p.kind === "text")).toHaveLength(1);
@@ -152,27 +192,44 @@ test("SAPI 5: ブラウザで効かないタグは取り除き、知らないタ
   expect(shownText(parseSpeechTags("a &lt; b <3 <b>c</b>"))).toBe("a &lt; b <3 <b>c</b>");
 });
 
-test("SAPI 5: think 用 (目印だけ) では、<bookmark> 以外を取り除く。\Lst\ のために <bookmark> も取り除ける", () => {
-  const parts = parseSpeechTags('<rate absspeed="5">Hmm<bookmark mark="3"/><silence msec="500"/></rate> ok', undefined, true);
+test("SAPI 5: think 用 (目印だけ) では、<bookmark> 以外を取り除く。\\Lst\\ のために <bookmark> も取り除ける", () => {
+  const parts = parseSpeechTags(
+    '<rate absspeed="5">Hmm<bookmark mark="3"/><silence msec="500"/></rate> ok',
+    undefined,
+    true,
+  );
   expect(describe(parts)).toEqual(["text(Hmm r=1 p=1 v=1.00)", "bookmark(3)", "text( ok r=1 p=1 v=1.00)"]);
   expect(removeBookmarks('One <bookmark mark="1"/>two <BOOKMARK mark="x" />three')).toBe("One two three");
 });
 
-test("SSML の <sub alias> は \Map\ と同じく、読みと表示を変える (alias が無ければ中身を読む)", () => {
-  expect(brief(parseSpeechTags('Read <sub alias="World Wide Web">WWW</sub> now'))).toEqual(["text(Read )", "text(World Wide Web→WWW)", "text( now)"]);
+test("SSML の <sub alias> は \\Map\\ と同じく、読みと表示を変える (alias が無ければ中身を読む)", () => {
+  expect(brief(parseSpeechTags('Read <sub alias="World Wide Web">WWW</sub> now'))).toEqual([
+    "text(Read )",
+    "text(World Wide Web→WWW)",
+    "text( now)",
+  ]);
   expect(brief(parseSpeechTags("<sub>as is</sub>"))).toEqual(["text(as is)"]);
   // 中にタグがあっても、alias は 1 回だけ読み、残りは表示だけ
-  expect(brief(parseSpeechTags('<sub alias="ダブリュー">W<silence msec="100"/>W</sub>'))).toEqual(["text(ダブリュー→W)", "pause(100)", "text(→W)"]);
+  expect(brief(parseSpeechTags('<sub alias="ダブリュー">W<silence msec="100"/>W</sub>'))).toEqual([
+    "text(ダブリュー→W)",
+    "pause(100)",
+    "text(→W)",
+  ]);
 });
 
 test("plainSpeech: タグを使わず、文をそのまま読んで出す", () => {
-  const text = 'a \Pau=100\ <silence msec="100"/> &lt;';
-  expect(plainSpeech(text, { rate: 2, pitch: 1 })).toEqual([{ kind: "text", spoken: text, shown: text, rate: 2, pitch: 1, volume: 1 }]);
+  const text = 'a \\Pau=100\\ <silence msec="100"/> &lt;';
+  expect(plainSpeech(text, { rate: 2, pitch: 1 })).toEqual([
+    { kind: "text", spoken: text, shown: text, rate: 2, pitch: 1, volume: 1 },
+  ]);
   expect(plainSpeech("")).toEqual([]);
 });
 
 test("<map alias> は <sub alias> と同じ。<!-- コメント --> は取り除き、閉じていなければ文字のまま", () => {
-  expect(brief(parseSpeechTags('<map alias="えいち・てぃー・えむ・える">HTML</map>です'))).toEqual(["text(えいち・てぃー・えむ・える→HTML)", "text(です)"]);
+  expect(brief(parseSpeechTags('<map alias="えいち・てぃー・えむ・える">HTML</map>です'))).toEqual([
+    "text(えいち・てぃー・えむ・える→HTML)",
+    "text(です)",
+  ]);
   const parts = parseSpeechTags("Hello <!-- 読まない\n2 行目 -->world <!-- 閉じていない");
   expect(parts).toHaveLength(1);
   expect(shownText(parts)).toBe("Hello world <!-- 閉じていない");

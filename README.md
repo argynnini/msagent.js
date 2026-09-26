@@ -1,51 +1,53 @@
 # msagent.js
 
-Microsoft Agent のキャラクター (`.acs`、Web 用の `.acf` + `.aca`) と、Office 97 のアシスタント (`.act`) を、ブラウザだけで動かすライブラリです。
-変換済みのスプライトは要りません。キャラクターファイルをそのまま読み込み、canvas に描きます。
+English | [日本語](README.ja.md)
 
-- 🎞️ **本家どおりのアニメーション** — 分岐・終了分岐・戻りアニメ・効果音、移動や指さしの動きまで、Microsoft Agent と同じ順番で再生
-- 🗣️ **しゃべって、口を動かす** — Web Speech API の読み上げや音声ファイル (.lwv も) に合わせて口を動かす
-- 🎙️ **声で呼びかける** — 右クリックのメニューと同じコマンドを、声でも選べる
-- 🖱️ **触って遊べる** — ドラッグで動かし、ダブルクリックでアニメーション。透明な部分のクリックは下のページに届く
-- ⏱️ **命令は順番に** — 命令は順番待ちで 1 つずつ実行し、`await` で終わりを待てる
-- 📦 **依存なし・変換なし** — ESM と `<script>` の両方、型定義付き
+A library that brings Microsoft Agent characters (`.acs`, and the web-delivered `.acf` + `.aca`) and Office 97 Assistants (`.act`) to life, right in the browser.
+No pre-converted sprite sheets needed — it reads the original character files directly and draws them on a canvas.
 
-[OfficeAgent-Web](https://github.com/argynnini/OfficeAgent-Web) から、キャラクターの再生部分を切り出したものです。
+- 🎞️ **Faithful animation** — branching, exit branches, return animations, sound effects, and the motions for moving and gesturing all play in the same order as in Microsoft Agent
+- 🗣️ **Talks and lip-syncs** — moves the mouth in time with Web Speech API text-to-speech or audio files (including .lwv)
+- 🎙️ **Voice commands** — users can pick the same commands as in the right-click menu by speaking them
+- 🖱️ **Interactive** — drag to move, double-click to animate. Clicks on transparent areas pass through to the page underneath
+- ⏱️ **Queued requests** — requests run one at a time, in order, and you can `await` each one
+- 📦 **No dependencies, no conversion** — ships as ESM and as a `<script>` build, with TypeScript types
 
-**目次**
-[はじめる](#はじめる) ·
-[動かす](#動かす) ·
-[しゃべる](#しゃべる) ·
-[反応する](#反応する) ·
-[見た目](#見た目) ·
-[プロパティ一覧](#プロパティ一覧) ·
-[注意](#注意) ·
-[開発](#開発) ·
-[ライセンス](#ライセンス)
+Extracted from the character playback engine of [OfficeAgent-Web](https://github.com/argynnini/OfficeAgent-Web).
 
-## はじめる
+**Contents**
+[Getting started](#getting-started) ·
+[Actions](#actions) ·
+[Speaking](#speaking) ·
+[Interaction](#interaction) ·
+[Appearance](#appearance) ·
+[Properties](#properties) ·
+[Notes](#notes) ·
+[Development](#development) ·
+[License](#license)
 
-### インストール
+## Getting started
+
+### Install
 
 ```sh
 npm install msagent.js
 ```
 
-### 最初の例
+### First example
 
 ```js
 import msagent from "msagent.js";
 
 const agent = await msagent.load("/agents/Merlin.acs");
 agent.show();
-await agent.speak("こんにちは！"); // 読み終わるまで待つ
+await agent.speak("Hello!"); // waits until it finishes speaking
 agent.play("Congratulate");
 agent.moveTo(100, 100);
 
-agent.on("click", () => agent.animate()); // 押されたら、何か 1 つ再生する
+agent.on("click", () => agent.animate()); // play something when clicked
 ```
 
-`<script>` で読み込むときは、`window.msagent` から使えます。
+When loaded with a `<script>` tag, it is available as `window.msagent`.
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/msagent.js"></script>
@@ -58,524 +60,526 @@ agent.on("click", () => agent.animate()); // 押されたら、何か 1 つ再�
 
 ```js
 const agent = await msagent.load(name);
-const agent = await msagent.load({ name, scale: 2, voice: false }); // 設定を付ける
-msagent.load(name, successCb, failCb, path);                        // コールバックでも受け取れる
+const agent = await msagent.load({ name, scale: 2, voice: false }); // with options
+msagent.load(name, successCb, failCb, path); // callbacks work too
 msagent.load({ name, scale: 2 }, successCb, failCb);
 ```
 
-`name` には、URL、名前 (`"Merlin"` → `path + "Merlin.acs"`)、`File` / `Blob`、`ArrayBuffer` を渡せます。
+`name` can be a URL, a character name (`"Merlin"` → `path + "Merlin.acs"`), a `File` / `Blob`, or an `ArrayBuffer`.
 
-`.acf` (Web 用のキャラクター) は、キャラクター情報とアニメーションの一覧だけのファイルで、アニメーションはそれぞれ別の `.aca` に入っています。
-`.aca` は `.acf` の URL から見た相対パスで取り寄せます (`File` / バイト列で渡したときは `baseUrl` から)。
-読み込みの時点で取り寄せるのは `preload` のものだけで、ほかは再生するときに取り寄せます (取り寄せる間だけ、動き出すのが遅れます)。`get()` で先に取り寄せておくこともできます。
+An `.acf` (web-delivered character) contains only the character data and the list of animations; each animation lives in its own `.aca` file.
+`.aca` files are fetched relative to the `.acf` URL (or relative to `baseUrl` when you pass a `File` or raw bytes).
+Only the `preload` animations are fetched at load time; the rest are fetched when they are first played (which delays the start of that animation slightly). You can also fetch them ahead of time with `get()`.
 
-| 設定 | 中身 | 既定 |
-| --- | --- | --- |
-| `path` | 名前の前に付ける場所 | `msagent.BASE_PATH` |
-| `selector` | キャラクターを置く要素 | `body` |
-| `preload` | `.acf` で、読み込みの時点で取り寄せるアニメーション (状態名かアニメーション名の配列。`"all"` なら全部) | `["Showing", "Hiding", "Speaking", "RestPose"]` |
-| `baseUrl` | `.acf` で、`.aca` の場所の基準の URL | `.acf` の URL (無ければページの URL) |
-| `sound` | 効果音を鳴らすか | `true` |
-| `voice` | `speak()` で声に出して読むか (`false` なら吹き出しと口の動きだけ) | `true` |
-| `tags` | 読み上げの制御タグを使うか (`false` なら、タグも文字としてそのまま。[制御タグ](#読み上げの制御タグ)) | `true` |
-| `idle` | 待機動作を再生するか | `true` |
-| `language` | 名前・紹介文・読み上げの言語 ([言語](#言語)) | ブラウザの言語 |
-| `scale` | 表示の倍率 | `1` |
-| `balloon` | 吹き出しの見た目 ([吹き出し](#吹き出し)。ファイルの設定の上に重ねる) | なし |
-| `autoPopupMenu` | 右クリックでメニューを出すか | `true` |
-| `listeningKey` | 押している間、声のコマンドを聞くキー ([音声認識](#音声認識)) | なし |
-| `listeningKeyTimeout` | 聞き取りキーを離してから聞き続ける秒数 (話している途中なら、言い終えるまで聞く) | `0` (すぐやめる) |
-| `listeningTip` | 聞いている間、聞き取りのヒントを出すか | `true` |
-| `raiseRequestErrors` | 命令の失敗を例外にするか ([命令を待つ](#命令を待つ-request)) | `false` |
-| `taskbarIcon` | タスクバーのアイコンを出すか (画面の右下。クリックで隠れたキャラクターを出し直す) | `false` |
-| `ttsModeId` | 読み上げに使う声 (ブラウザの声の `voiceURI` か名前) | 言語と、キャラクターの声の性別から選ぶ |
-| `successCb` / `failCb` | 読み込めた / 読み込めなかったときに呼ぶ | なし |
+| Option                 | Description                                                                                                             | Default                                                              |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `path`                 | Prefix prepended to a character name                                                                                    | `msagent.BASE_PATH`                                                  |
+| `selector`             | Element to place the character in                                                                                       | `body`                                                               |
+| `preload`              | For `.acf`: animations to fetch at load time (an array of state or animation names, or `"all"`)                         | `["Showing", "Hiding", "Speaking", "RestPose"]`                      |
+| `baseUrl`              | For `.acf`: base URL for locating `.aca` files                                                                          | The `.acf` URL (or the page URL)                                     |
+| `sound`                | Whether to play sound effects                                                                                           | `true`                                                               |
+| `voice`                | Whether `speak()` reads text aloud (`false` shows the balloon and moves the mouth only)                                 | `true`                                                               |
+| `tags`                 | Whether to process speech output tags (`false` shows tags as plain text; see [Speech output tags](#speech-output-tags)) | `true`                                                               |
+| `idle`                 | Whether to play idle animations                                                                                         | `true`                                                               |
+| `language`             | Language for the name, description, and speech ([Language](#language))                                                  | Browser language                                                     |
+| `scale`                | Display scale                                                                                                           | `1`                                                                  |
+| `balloon`              | Word balloon style ([Word balloon](#word-balloon); layered on top of the file's settings)                               | None                                                                 |
+| `autoPopupMenu`        | Whether right-clicking shows the popup menu                                                                             | `true`                                                               |
+| `listeningKey`         | Key to hold down to listen for voice commands ([Speech recognition](#speech-recognition))                               | None                                                                 |
+| `listeningKeyTimeout`  | Seconds to keep listening after the listening key is released (if the user is mid-utterance, waits until they finish)   | `0` (stop immediately)                                               |
+| `listeningTip`         | Whether to show the listening tip while listening                                                                       | `true`                                                               |
+| `raiseRequestErrors`   | Whether failed requests throw ([Requests](#requests-agentrequest))                                                      | `false`                                                              |
+| `taskbarIcon`          | Whether to show a taskbar icon (bottom right of the screen; click it to bring back a hidden character)                  | `false`                                                              |
+| `ttsModeId`            | Voice used for speech (a browser voice's `voiceURI` or name)                                                            | Chosen by language and the character's voice gender                  |
+| `srModeId`             | Speech recognition language (a BCP 47 tag such as `"en-US"`)                                                            | The speech language (`language`, or the browser language if not set) |
+| `successCb` / `failCb` | Called when loading succeeds / fails                                                                                    | None                                                                 |
 
-## 動かす
+## Actions
 
-### 命令
+### Queued methods
 
-次の命令は順番待ちに入り、前のものが終わってから 1 つずつ実行されます (Microsoft Agent と同じ)。
+The following methods are queued and run one at a time, each starting after the previous one finishes (just like Microsoft Agent).
 
-| 命令 | 動き |
-| --- | --- |
-| `show(fast?)` | 登場する。`fast` なら、アニメーションなしですぐ出す |
-| `hide(fast?, callback?, { immediate? })` | 退場する。`immediate: true` なら、順番待ちを捨ててすぐ隠れる |
-| `play(name, timeout = 5000, callback?)` | アニメーションを再生する。`timeout` を過ぎたら、自然に終わらせる |
-| `speak(text, options?)` | 吹き出しでしゃべる ([しゃべる](#しゃべる)) |
-| `think(text, options?)` | 考えごとの吹き出しに出す ([しゃべる](#しゃべる)) |
-| `moveTo(x, y, duration = 1000)` | 移動する。`duration` が 0 か、隠れている間は、すぐ移る |
-| `gestureAt(x, y)` | その方向を指す。指した姿勢は次の動きまで保つ |
-| `delay(ms = 250)` | 次の命令まで待つ |
-| `wait(request)` / `interrupt(request)` | 別のキャラクターの命令を待つ / 止める ([2 体の掛け合い](#命令を待つ-request)) |
-| `get(type, name, queue = true)` | 先に取り寄せる (下を参照) |
+| Method                                   | What it does                                                                                     |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `show(fast?)`                            | Appears. With `fast`, appears immediately without animation                                      |
+| `hide(fast?, callback?, { immediate? })` | Disappears. With `immediate: true`, discards the queue and hides right away                      |
+| `play(name, timeout = 5000, callback?)`  | Plays an animation. After `timeout`, lets it finish naturally                                    |
+| `speak(text, options?)`                  | Speaks in a word balloon ([Speaking](#speaking))                                                 |
+| `think(text, options?)`                  | Shows text in a thought balloon ([Speaking](#speaking))                                          |
+| `moveTo(x, y, duration = 1000)`          | Moves. Jumps immediately if `duration` is 0 or while hidden                                      |
+| `gestureAt(x, y)`                        | Gestures toward a point. Holds the pose until the next action                                    |
+| `delay(ms = 250)`                        | Waits before the next request                                                                    |
+| `wait(request)` / `interrupt(request)`   | Waits for / stops another character's request ([Two characters talking](#requests-agentrequest)) |
+| `get(type, name, queue = true)`          | Fetches ahead of time (see below)                                                                |
 
-次のものは、順番待ちに入らず、すぐ効きます。
+The following take effect immediately without being queued.
 
-| メソッド | 動き |
-| --- | --- |
-| `animate()` | 待機動作以外から、1 つ選んで再生する |
-| `animations()` / `hasAnimation(name)` | アニメーションの一覧 / あるかどうか |
-| `stop(request?, options?)` | 順番待ちを全部捨て、いまの動きを終わらせる。`request` を渡すと、その命令だけ止める |
-| `stopCurrent(options?)` | いまの動きだけを終わらせる |
-| `stopAll(types?, options?)` | 種類ごとに止める (`"play"` / `"speak"` / `"move"`)。省略すると、登場・退場の途中も含めて全部 |
-| `closeBalloon()` | 吹き出しを閉じる |
-| `pause()` / `resume()` | 一時停止・再開 |
-| `reposition()` | 画面の中に収める |
-| `listen(on)` | 声のコマンドを聞く ([音声認識](#音声認識)) |
-| `activate()` | いちばん手前に出す (表示・クリック・ドラッグでも手前に出る) |
-| `destroy()` | 片付ける (要素を消し、それ以降の命令は `failed`) |
+| Method                                | What it does                                                                                                |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `animate()`                           | Picks and plays one animation other than idle animations                                                    |
+| `animations()` / `hasAnimation(name)` | Lists animations / checks whether one exists                                                                |
+| `stop(request?, options?)`            | Discards the whole queue and ends the current action. Pass a `request` to stop only that one                |
+| `stopCurrent(options?)`               | Ends only the current action                                                                                |
+| `stopAll(types?, options?)`           | Stops by type (`"play"` / `"speak"` / `"move"`). If omitted, stops everything, including showing and hiding |
+| `closeBalloon()`                      | Closes the word balloon                                                                                     |
+| `pause()` / `resume()`                | Pauses / resumes                                                                                            |
+| `reposition()`                        | Moves the character back inside the viewport                                                                |
+| `listen(on)`                          | Listens for voice commands ([Speech recognition](#speech-recognition))                                      |
+| `activate()`                          | Brings the character to the front (showing, clicking, and dragging do this too)                             |
+| `destroy()`                           | Cleans up (removes the element; any later request ends as `failed`)                                         |
 
-- キャラクターに無いアニメーションを `play()` したときは、`false` を返します。
-- `stop()` は、登場・退場のアニメーションの途中なら、それは最後まで再生します (本家と同じ)。
-- 止めたアニメーションは、終わりの動き (終了分岐) をたどって自然に終わります。`{ immediate: true }` を渡すと、その場で切って、止まっているときの絵に戻します (例: `agent.stop(request, { immediate: true })`)。
-- アニメーションを止めると、そのアニメーションの効果音も止まります (退場のアニメーションの音は、隠れた後も最後まで鳴らします)。
-- 移動の途中で `stop()` すると、その場で止まります。
+- `play()` returns `false` for an animation the character doesn't have.
+- `stop()` lets a Showing or Hiding animation in progress play to the end (same as the original).
+- A stopped animation follows its exit branches and ends naturally. Pass `{ immediate: true }` to cut it off on the spot and return to the rest pose (e.g. `agent.stop(request, { immediate: true })`).
+- Stopping an animation also stops its sound effects (a Hiding animation's sound keeps playing to the end even after the character is hidden).
+- Calling `stop()` during a move stops the character where it is.
 
-`get(type, name)` は本家の Get と同じです。`type` は `"animation"` / `"state"` / `"wavefile"`、`name` はカンマ区切りで複数書けます。
-`.acf` のキャラクターは、アニメーションの `.aca` を取り寄せます (取り寄せられない・壊れている・`.acf` とチェックサムが合わないときは `failed`、番号は `RequestError.invalidAnimation`)。`.acs` / `.act` はファイルを丸ごと読み込み済みなので、アニメーション・状態は、あるかを確かめるだけです (無ければ `failed`)。`"wavefile"` は URL を読み込んでおき、`speak(text, { url })` を速くします。`queue` が `false` なら順番待ちに入りません。
+`get(type, name)` works like the original Get. `type` is `"animation"` / `"state"` / `"wavefile"`, and `name` may list several names separated by commas.
+For `.acf` characters, it fetches the animations' `.aca` files (if a file can't be fetched, is corrupt, or its checksum doesn't match the `.acf`, the request ends as `failed` with number `RequestError.invalidAnimation`). `.acs` / `.act` files are already fully loaded, so for animations and states it only checks that they exist (`failed` if not). `"wavefile"` preloads a URL so that `speak(text, { url })` starts faster. With `queue` set to `false`, the request isn't queued.
 
-### 命令を待つ (Request)
+### Requests (AgentRequest)
 
-命令は、命令のオブジェクト (`AgentRequest`。本家の Request と同じ) を返します。`await` すると、終わったときの状態が返ります。
+Requests return a request object (`AgentRequest`, like the original Request object). Awaiting it resolves to its final status.
 
 ```js
 const request = agent.play("Wave");
-request.status;             // "pending" (順番待ち) / "inProgress" (実行中)
-await request;              // "complete" / "failed" / "interrupted"
-agent.stop(request);        // この命令だけ止める
-request.number;             // failed / interrupted のときの理由の番号 (それ以外は 0)
-request.description;        // failed のときの理由 (文)
+request.status; // "pending" (queued) / "inProgress" (running)
+await request; // "complete" / "failed" / "interrupted"
+agent.stop(request); // stop just this request
+request.number; // reason code when failed / interrupted (0 otherwise)
+request.description; // reason text when failed
 
-// 2 体の掛け合い
-const q = genie.speak("なぜニワトリは道を渡ったの？");
-robby.wait(q);              // genie がしゃべり終えるまで待つ
-robby.speak("わからないなあ");
+// Two characters talking
+const q = genie.speak("Why did the chicken cross the road?");
+robby.wait(q); // wait until Genie finishes speaking
+robby.speak("I don't know.");
 ```
 
-`request.number` は、`import { RequestError } from "msagent.js"` の `RequestError.hidden` (隠れている)・`animationNotFound`・`stateNotFound`・`interrupted` (止められた)・`invalidSound` などと比べられます。
-隠れている間の `speak` / `think` は `failed` になります (本家と同じ)。
+`request.number` can be compared against `RequestError` from `import { RequestError } from "msagent.js"`: `RequestError.hidden` (the character is hidden), `animationNotFound`, `stateNotFound`, `interrupted` (stopped), `invalidSound`, and so on.
+`speak` / `think` while hidden end as `failed` (same as the original).
 
-`raiseRequestErrors: true` にすると、失敗した命令を `await` したときに `AgentRequestError` (`number`・`message`・`request`) の例外になり、無いアニメーションの `play()` などは、その場で例外を投げます。止められた (`interrupted`) ときは例外にしません。
-本家の RaiseRequestErrors の既定は `true` ですが、msagent.js の既定は `false` です。
+With `raiseRequestErrors: true`, awaiting a failed request throws an `AgentRequestError` (`number`, `message`, `request`), and calls such as `play()` with a missing animation throw right away. Interrupted requests don't throw.
+The original RaiseRequestErrors defaults to `true`, but msagent.js defaults to `false`.
 
 ```js
 const agent = await msagent.load({ name: "Merlin", raiseRequestErrors: true });
 try {
-  await agent.speak("こんにちは"); // 隠れていれば AgentRequestError
+  await agent.speak("Hello"); // AgentRequestError if hidden
 } catch (e) {
   console.log(e.number === RequestError.hidden);
 }
 ```
 
-### 状態 (States)
+### States
 
-登場・退場・移動・指す・しゃべる・待機動作では、キャラクターの作者が「状態」に割り当てたアニメーションを使います。
+Showing, hiding, moving, gesturing, speaking, and idling use the animations the character's author assigned to each "state".
 
-| 命令 | 状態 | 割り当てが無いときに探す名前 |
-| --- | --- | --- |
-| `show()` / `hide()` | Showing / Hiding | `Show` / `Hide` |
-| `moveTo()` | MovingLeft など 4 方向 | `Move〜` |
-| `gestureAt()` | GesturingLeft など 4 方向 | `Gesture〜`、`Look〜` |
-| `speak()` | Speaking | |
-| 待機動作 | IdlingLevel1〜3 | `Idle〜`、`DeepIdle〜` |
+| Method              | State                             | Fallback names if unassigned |
+| ------------------- | --------------------------------- | ---------------------------- |
+| `show()` / `hide()` | Showing / Hiding                  | `Show` / `Hide`              |
+| `moveTo()`          | MovingLeft etc. (4 directions)    | `Move…`                      |
+| `gestureAt()`       | GesturingLeft etc. (4 directions) | `Gesture…`, `Look…`          |
+| `speak()`           | Speaking                          |                              |
+| Idle                | IdlingLevel1–3                    | `Idle…`, `DeepIdle…`         |
 
-- 1 つの状態に複数あれば、毎回ランダムに選びます。
-- 向き (Left / Right) はキャラクターから見た向きです。画面の左へ動くときは MovingRight になります。
-- `moveTo()` は、移動前の動き → 最後のコマのまま移動 → 戻りの動き、の順です。
-- 待機動作は、何もしない時間が少し続いてから始まり、放置が長いほど深い動き (居眠りなど) になります。
-- 隠れている間も順番待ちは進みます。`play` は描かずにすぐ終わり、`moveTo` はすぐ移り、`speak` / `think` は何も出しません (本家も、隠れたキャラクターは音を出せません)。
+- When a state has several animations, one is picked at random each time.
+- Directions (Left / Right) are from the character's point of view. Moving toward the left of the screen uses MovingRight.
+- `moveTo()` plays the move-start animation → moves while holding the last frame → plays the return animation.
+- Idle animations start after a short period of inactivity, and become deeper (such as dozing off) the longer the character is left alone.
+- The queue keeps running while hidden: `play` finishes immediately without drawing, `moveTo` jumps immediately, and `speak` / `think` show nothing (in the original, too, hidden characters can't produce sound).
 
-## しゃべる
+## Speaking
 
-### speak と think
+### speak and think
 
 ```js
-agent.speak("こんにちは！");
-agent.speak("おはよう|こんにちは|こんばんは");  // | で区切ると、毎回 1 つをランダムに選ぶ
-agent.speak("待ってね", { hold: true });        // closeBalloon() まで吹き出しを閉じない (speak(text, true) でも同じ)
-agent.speak("しーっ", { voice: false });        // この 1 回だけ声を出さない (吹き出しと口の動きだけ)
-agent.speak("", { url: "hello.wav" });          // 音声ファイルでしゃべる
-agent.speak("C:\\temp", { tags: false });    // この 1 回だけ、タグを使わない (\ や <…> もそのまま読んで出す)
-agent.think("どうしようかな");                   // 考えごとの吹き出し
+agent.speak("Hello!");
+agent.speak("Good morning|Hello|Good evening"); // separate with | to pick one at random each time
+agent.speak("Hold on", { hold: true }); // keep the balloon open until closeBalloon() (same as speak(text, true))
+agent.speak("Shh", { voice: false }); // no voice this time only (balloon and mouth movement only)
+agent.speak("", { url: "hello.wav" }); // speak with an audio file
+agent.speak("C:\\temp", { tags: false }); // no tags this time only (\ and <…> are read and shown as-is)
+agent.think("Let me think…"); // thought balloon
 ```
 
-- `speak(text, { url })` は、音声ファイル (.wav / .mp3 など) でしゃべり、音の大きさに合わせて口を動かします (本家の Speak の Url と同じ)。.lwv なら音素で口を動かします ([下を参照](#言語情報つきの音声ファイル-lwv))。
-- `think()` は、考えごとの吹き出し (雲形) に出します。声は出さず、口も動かしません (本家と同じ)。
-- `think()` の間は考える動き (`Thinking`、無ければ `Think`) を再生し、終わったら元の姿勢に戻します (msagent.js で足したもの)。
-- `think(text, { voice: true })` なら、考えごとの吹き出しのまま声に出して読みます (msagent.js で足したもの)。
+- `speak(text, { url })` speaks using an audio file (.wav / .mp3, etc.) and moves the mouth according to the volume (like the original Speak's Url). For .lwv files, the mouth follows the phonemes ([see below](#linguistically-enhanced-sound-files-lwv)).
+- `think()` shows the text in a thought (cloud) balloon. It doesn't speak aloud or move the mouth (same as the original).
+- During `think()`, the thinking animation (`Thinking`, or `Think` if missing) plays, then the character returns to its previous pose (an msagent.js addition).
+- `think(text, { voice: true })` reads the text aloud while keeping the thought balloon (an msagent.js addition).
 
-### 読み上げの制御タグ
+### Speech output tags
 
-`speak()` の文には、本家と同じ制御タグを書けます。タグは `\` で始まり `\` で終わり、大文字小文字は問いません。`\` という文字そのものは `\\` と書きます。
+Text passed to `speak()` may contain the same speech output tags as the original. Tags start and end with `\` and are case-insensitive. Write `\\` for a literal `\`.
 
 ```js
-agent.speak(String.raw`こんにちは。\Pau=500\\Spd=120\ゆっくり話します。\Rst\\Mrk=1\元に戻りました。`);
-agent.on("bookmark", (e) => console.log("目印", e.detail.id)); // → 目印 1
+agent.speak(String.raw`Hello. \Pau=500\\Spd=120\I'll speak slowly. \Rst\\Mrk=1\Back to normal.`);
+agent.on("bookmark", (e) => console.log("bookmark", e.detail.id)); // → bookmark 1
 ```
 
-| タグ | 意味 |
-| --- | --- |
-| `\Pau=ミリ秒\` | 間を空ける |
-| `\Spd=語/分\` | 速さを変える |
-| `\Pit=Hz\` | 高さを変える |
-| `\Vol=0〜65535\` | 音量を変える |
-| `\Rst\` | 速さ・高さ・音量を元に戻す |
-| `\Map="読み"="表示"\` | 読み上げる文と、吹き出しに出す文を変える |
-| `\Mrk=番号\` | 目印。ここまで読むと `bookmark` イベントが来る |
-| `\Lst\` | 直前の発言を繰り返す (これだけを書く。目印は繰り返さない) |
-| `\Emp\` | 次の言葉を強調する (ブラウザでは本物の強調ができないので、少しゆっくり・少し高く読む) |
-| `\Chr=Whisper\` | ささやき声 (ブラウザではできないので、小さい声で読む)。`\Chr=Normal\` か `\Rst\` で戻す。`Monotone` は何もしない |
-| `\Ctx=…\` | 文脈 (記号や略語の読み方)。ブラウザ任せなので、取り除くだけ |
+| Tag                          | Meaning                                                                                                                     |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `\Pau=ms\`                   | Pauses                                                                                                                      |
+| `\Spd=words/min\`            | Changes the speed                                                                                                           |
+| `\Pit=Hz\`                   | Changes the pitch                                                                                                           |
+| `\Vol=0–65535\`              | Changes the volume                                                                                                          |
+| `\Rst\`                      | Resets speed, pitch, and volume                                                                                             |
+| `\Map="spoken"="displayed"\` | Uses different text for speech and for the balloon                                                                          |
+| `\Mrk=number\`               | Bookmark. A `bookmark` event fires when speech reaches it                                                                   |
+| `\Lst\`                      | Repeats the previous utterance (use it on its own; bookmarks aren't repeated)                                               |
+| `\Emp\`                      | Emphasizes the next word (browsers can't truly emphasize, so it's read slightly slower and higher)                          |
+| `\Chr=Whisper\`              | Whispers (not possible in browsers, so it's read quietly). `\Chr=Normal\` or `\Rst\` switches back. `Monotone` does nothing |
+| `\Ctx=…\`                    | Context (how symbols and abbreviations are read). Left to the browser, so the tag is just removed                           |
 
-- `think()` では、本家と同じく `\Mrk\` だけを使い、ほかのタグは取り除きます (`think(text, { voice: true })` では、すべてのタグを使います)。
-- 吹き出しには、タグを除いた文が出ます。
+- As in the original, `think()` only uses `\Mrk\` and removes other tags (`think(text, { voice: true })` uses all tags).
+- The balloon shows the text with the tags removed.
 
-### SAPI 5 の XML のタグ
+### SAPI 5 XML tags
 
-SAPI 5 の XML のタグも書けます (msagent.js で足したもの)。`\Spd\` などのタグと混ぜてもかまいません。
+SAPI 5 XML tags are supported too (an msagent.js addition). They can be mixed with tags like `\Spd\`.
 
 ```js
-agent.speak('<rate absspeed="-5">ゆっくり</rate>話します。<silence msec="500"/><emph>ここが大事</emph>です。');
+agent.speak('I\'ll speak <rate absspeed="-5">slowly</rate>.<silence msec="500"/> <emph>This</emph> is important.');
 agent.speak('Call <spell>ABC</spell>. <lang langid="411">こんにちは</lang> <bookmark mark="done"/>');
-agent.on("bookmark", (e) => console.log(e.detail.mark)); // → "done" (e.detail.id は NaN)
+agent.on("bookmark", (e) => console.log(e.detail.mark)); // → "done" (e.detail.id is NaN)
 ```
 
-| タグ | 意味 |
-| --- | --- |
-| `<rate absspeed="-10〜10">` / `<rate speed="…">` | 速さ (元の速さから / いまの速さから。10 で 3 倍、-10 で 1/3) |
-| `<pitch absmiddle="-10〜10">` / `<pitch middle="…">` | 高さ (10 で 2 倍、-10 で 1/2) |
-| `<volume level="0〜100">` | 音量 |
-| `<emph>` | 強調する (`\Emp\` と同じく、少しゆっくり・少し高く読む) |
-| `<spell>` | 1 文字ずつ区切って読む (吹き出しには、そのまま出す) |
-| `<silence msec="ミリ秒"/>` | 間を空ける |
-| `<bookmark mark="名前"/>` | 目印。ここまで読むと `bookmark` イベントが来る (名前は数字でなくてもよい) |
-| `<sub alias="読み">表示</sub>` / `<map alias="読み">表示</map>` | 読み上げる文と、吹き出しに出す文を変える (`\Map\` と同じ。`<sub>` は SSML のタグ) |
-| `<lang langid="411">` | 言語 (Windows の言語 ID。16 進) |
-| `<voice required="Gender=Female;Language=411">` | 声の性別と言語 (`required` になければ `optional` も見る。`Name`・`Age` などは使わない) |
-| `<pron>` / `<context>` / `<partofsp>` / `<sapi>` / `<p>` / `<s>` | ブラウザ任せなので、タグだけ取り除く (中の文は読む) |
-| `<!-- コメント -->` | 取り除く (読まず、吹き出しにも出さない。閉じていなければ文字のまま) |
+| Tag                                                                           | Meaning                                                                                             |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `<rate absspeed="-10–10">` / `<rate speed="…">`                               | Speed (relative to the base speed / to the current speed; 10 is 3×, -10 is 1/3)                     |
+| `<pitch absmiddle="-10–10">` / `<pitch middle="…">`                           | Pitch (10 is 2×, -10 is 1/2)                                                                        |
+| `<volume level="0–100">`                                                      | Volume                                                                                              |
+| `<emph>`                                                                      | Emphasis (like `\Emp\`, read slightly slower and higher)                                            |
+| `<spell>`                                                                     | Reads one character at a time (the balloon shows the text as-is)                                    |
+| `<silence msec="ms"/>`                                                        | Pauses                                                                                              |
+| `<bookmark mark="name"/>`                                                     | Bookmark. A `bookmark` event fires when speech reaches it (the name doesn't have to be a number)    |
+| `<sub alias="spoken">displayed</sub>` / `<map alias="spoken">displayed</map>` | Uses different text for speech and for the balloon (like `\Map\`; `<sub>` is from SSML)             |
+| `<lang langid="411">`                                                         | Language (a Windows language ID, in hex)                                                            |
+| `<voice required="Gender=Female;Language=411">`                               | Voice gender and language (checks `optional` if not in `required`; `Name`, `Age`, etc. are ignored) |
+| `<pron>` / `<context>` / `<partofsp>` / `<sapi>` / `<p>` / `<s>`              | Left to the browser, so only the tags are removed (the enclosed text is read)                       |
+| `<!-- comment -->`                                                            | Removed (not read or shown; left as text if unclosed)                                               |
 
-- `<rate>` `<pitch>` `<volume>` `<emph>` `<spell>` `<lang>` `<voice>` は、中身だけに効き、閉じたら元に戻ります (入れ子にもできます)。`<rate speed="5"/>` のように閉じた形で書くと、囲んでいるタグが閉じるか、文の終わりまで効きます。
-- 知らないタグ (`<b>` など) は、文字のまま残します。
-- SAPI 5 のタグがある文だけ、`&lt;` `&amp;` などの文字参照を文字に戻します。
-- `think()` では、`<bookmark>` だけを使い、ほかのタグは取り除きます。
+- `<rate>` `<pitch>` `<volume>` `<emph>` `<spell>` `<lang>` `<voice>` apply only to their contents and revert when closed (they can be nested). A self-closing form such as `<rate speed="5"/>` applies until the enclosing tag closes, or to the end of the text.
+- Unknown tags (such as `<b>`) are left as text.
+- Character references such as `&lt;` and `&amp;` are decoded only in text that contains SAPI 5 tags.
+- `think()` only uses `<bookmark>` and removes other tags.
 
-タグを使わず、文をそのまま読んで出したいときは、`agent.tags = false` (読み込むときは `msagent.load({ name, tags: false })`) にします。1 回だけなら `speak(text, { tags: false })` / `think(text, { tags: false })` です。`\Lst\` もただの文字になります。`"A|B|C"` から 1 つを選ぶ動きは、タグではないので、そのままです。
+To read and show the text exactly as written, without tags, set `agent.tags = false` (or `msagent.load({ name, tags: false })` at load time). For a single call, use `speak(text, { tags: false })` / `think(text, { tags: false })`. `\Lst\` then becomes plain text too. Picking one of `"A|B|C"` isn't a tag, so it still works.
 
-### 言語情報つきの音声ファイル (.lwv)
+### Linguistically enhanced sound files (.lwv)
 
-本家の Linguistic Information Sound Editing Tool で作った `.lwv` (WAV に、単語と音素の時刻を足したもの) も、`speak(text, { url })` でしゃべれます。
+`.lwv` files made with the original Linguistic Information Sound Editing Tool (WAV files with word and phoneme timings added) can also be spoken with `speak(text, { url })`.
 
 ```js
-agent.speak("", { url: "hello.lwv" });        // 文が空なら、ファイルに入っている単語を吹き出しに出す
-agent.speak("Hello!", { url: "hello.lwv" });  // 吹き出しには text を出す
+agent.speak("", { url: "hello.lwv" }); // with empty text, the balloon shows the words stored in the file
+agent.speak("Hello!", { url: "hello.lwv" }); // the balloon shows text
 ```
 
-- 口は、音の大きさではなく音素から決めます (1 秒に 30 回。音素から口の形への対応は、本家の Microsoft Agent 2.0 と同じ表)。
-- 吹き出しの文は、単語の時刻に合わせて出します (`text` の単語の数がファイルと違うときは、音の長さに合わせて少しずつ)。
-- 単語の文字は、ファイルの言語 ID の文字コード (日本語なら Shift_JIS) で読みます。
-- 中身だけを読むときは `readLwv(arrayBuffer)` (単語・音素・言語 ID) を使えます。
+- The mouth shape is chosen from the phonemes rather than the volume (30 times per second, using the same phoneme-to-mouth table as Microsoft Agent 2.0).
+- The balloon text follows the word timings (if `text` has a different number of words than the file, it's revealed gradually over the length of the audio).
+- Words are decoded using the character set of the file's language ID (e.g. Shift_JIS for Japanese).
+- To read only the contents, use `readLwv(arrayBuffer)` (words, phonemes, and language ID).
 
-### 言語
+### Language
 
-`.acs` には、名前と紹介文が言語ごとに入っています (Office のキャラクターは 30 言語ほど)。
+`.acs` files contain the name and description for each language (about 30 languages for the Office characters).
 
 ```js
-agent.name;                              // ブラウザの言語に一番合うもの
-agent.language = "zh-TW";                // 以後 agent.name / agent.description は繁体字中国語
-agent.character.getName("de");           // 言語を指定して取る (BCP 47)
-agent.character.getDescription(0x0411);  // Windows の言語 ID でもよい
-agent.character.languages;               // 入っている言語 (例: ["en", "ja-JP", "zh-TW", …])
+agent.name; // best match for the browser language
+agent.language = "zh-TW"; // agent.name / agent.description are now in Traditional Chinese
+agent.character.getName("de"); // get it for a specific language (BCP 47)
+agent.character.getDescription(0x0411); // a Windows language ID works too
+agent.character.languages; // languages included (e.g. ["en", "ja-JP", "zh-TW", …])
 ```
 
-- 指定した言語が無ければ、同じ言語の別の地域 → 英語 → 最初に入っているもの、の順に選びます。`.act` には言語ごとの名前が無いので、いつも同じ名前です。
-- `agent.language` を指定すると、読み上げと吹き出しの言語にもなります (本家の LanguageID と同じ)。指定しなければ、読み上げの言語は文から推測します (かな・漢字があれば日本語、無ければ英語)。
-- 読み上げの声は、本家と同じく言語 → 性別の順に合うものを選びます。ブラウザの声には性別の情報が無いので、声の名前 (Haruka、Ichiro、David など) から推測します。年齢は、ブラウザからは分からないので使いません。
-- 声の速さ・高さは、キャラクターファイルの設定を使います ([キャラクターの設定](#キャラクターの設定))。
+- If the requested language isn't available, it falls back to another region of the same language → English → the first one in the file. `.act` files have no per-language names, so the name is always the same.
+- Setting `agent.language` also sets the language for speech and the balloon (like the original LanguageID). If not set, the speech language is guessed from the text (Japanese if it contains kana or kanji, English otherwise).
+- As in the original, the speech voice is chosen by matching language first, then gender. Browser voices don't expose gender, so it's guessed from the voice name (Haruka, Ichiro, David, etc.). Age isn't available from the browser, so it isn't used.
+- The voice speed and pitch come from the character file ([Character data](#character-data)).
 
-### 音をまとめて切る
+### Muting all characters
 
-`msagent.audioOutput` で、全キャラクターの音をまとめて切れます (本家の AudioOutput。本家はユーザーの設定なので読むだけですが、ここでは変えられます)。ESM では `import { audioOutput } from "msagent.js"` でも使えます。
+`msagent.audioOutput` lets you mute all characters at once (the original AudioOutput. In the original it reflects the user's settings and is read-only; here you can change it). In ESM, it's also available as `import { audioOutput } from "msagent.js"`.
 
 ```js
-msagent.audioOutput.enabled = false;      // 全キャラクターの声を出さない (吹き出しと口の動きだけ)
-msagent.audioOutput.soundEffects = false; // 全キャラクターの効果音を鳴らさない
-msagent.audioOutput.status;               // 0: 空いている / 1: 音を出せない / 3: 聞き取り中で声が聞こえている / 4: 声に出してしゃべっている / 5: 聞き取り中で声を待っている
+msagent.audioOutput.enabled = false; // no voice for any character (balloon and mouth movement only)
+msagent.audioOutput.soundEffects = false; // no sound effects for any character
+msagent.audioOutput.status; // 0: available / 1: can't output audio / 3: listening and hearing speech / 4: speaking aloud / 5: listening and waiting for speech
 ```
 
-## 反応する
+## Interaction
 
-キャラクターはドラッグで動かせ、ダブルクリックで `animate()` します。透明な部分 (キャラクターの周り) は押せず、クリックは下のページにそのまま届きます。
+Characters can be dragged around, and double-clicking calls `animate()`. Transparent areas (around the character) aren't clickable; clicks pass through to the page underneath.
 
-### イベント
+### Events
 
-`agent.on(type, listener)` で受け取れます (`agent` は `EventTarget` なので、`addEventListener` でも同じです)。中身は `event.detail` に入ります。
+Listen with `agent.on(type, listener)` (`agent` is an `EventTarget`, so `addEventListener` works too). Details are in `event.detail`.
 
 ```js
-agent.on("click", (e) => agent.speak(`(${e.detail.x}, ${e.detail.y}) を押されました`));
-agent.on("dblclick", (e) => e.preventDefault()); // ダブルクリックで animate() しない
+agent.on("click", (e) => agent.speak(`You clicked me at (${e.detail.x}, ${e.detail.y})`));
+agent.on("dblclick", (e) => e.preventDefault()); // don't animate() on double-click
 agent.on("animationend", (e) => console.log(e.detail.name));
 ```
 
-| イベント | いつ | `detail` |
-| --- | --- | --- |
-| `click` / `dblclick` | 絵の部分かタスクバーのアイコンを押した (ドラッグの後は来ない) | `x`, `y`, `button` (`"left"` / `"middle"` / `"right"`), `shift`, `ctrl`, `alt`, `source` (`"character"` / `"taskbarIcon"`), `originalEvent` |
-| `dragstart` / `dragend` | ドラッグで動かし始めた / 終えた | `x`, `y` (キャラクターの左上) |
-| `move` | 移った | `x`, `y`, `by` (`"drag"` / `"moveTo"` / `"reposition"`) |
-| `show` / `hide` | 出た / 消えた | `cause` (`"program"` / `"user"`) |
-| `requeststart` / `requestcomplete` | 命令を始めた / 終えた | `request` |
-| `animationstart` / `animationend` | アニメーションが始まった / 終わった | `name`, `idle` (待機動作か) |
-| `speakstart` / `speakend` | しゃべり始めた / 終えた (途中でやめたときも。`think()` でも来る) | `text`, `thought` (`think()` か) |
-| `bookmark` | 読み上げの目印 (`\Mrk=番号\` か `<bookmark/>`) まで来た (`think()` でも来る) | `id` (番号。数字でない `<bookmark>` の名前なら `NaN`), `mark` (書いたとおりの文字) |
-| `balloonshow` / `balloonhide` | 吹き出しが出た / 閉じた | なし |
-| `idlestart` / `idlecomplete` | 待機状態に入った / 抜けた (次の命令が始まった) | なし |
-| `activateinput` / `deactivateinput` | いちばん手前のキャラクター (クリック・声のコマンドを受け取る) になった / でなくなった。隠れる・破棄されると、見えている残りのうち一番手前のものに移る | なし |
-| `command` | 右クリックのメニューか声で、コマンドが選ばれた | `name`, `source` (`"menu"` / `"voice"`), `confidence` (0〜100), `voice` (聞き取った文), `count` (合ったコマンドの数), `alternatives` (2 番目・3 番目) |
-| `listenstart` / `listencomplete` | 聞き取りを始めた / 終えた | `mode` (`"program"` / `"key"`) / `cause` (`"program"` / `"timeout"` / `"key"` / `"finished"` / `"error"`) |
-| `helpcomplete` | ヘルプモードで、何かが選ばれた ([ヘルプモード](#ヘルプモード)) | `name`, `cause`, `helpContextId` |
-| `resize` | 大きさが変わった | `width`, `height`, `scale` |
+| Event                               | When                                                                                                                                                               | `detail`                                                                                                                                                                        |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `click` / `dblclick`                | The character's image or the taskbar icon was clicked (not after a drag)                                                                                           | `x`, `y`, `button` (`"left"` / `"middle"` / `"right"`), `shift`, `ctrl`, `alt`, `source` (`"character"` / `"taskbarIcon"`), `originalEvent`                                     |
+| `dragstart` / `dragend`             | Started / finished dragging                                                                                                                                        | `x`, `y` (the character's top-left)                                                                                                                                             |
+| `move`                              | Moved                                                                                                                                                              | `x`, `y`, `by` (`"drag"` / `"moveTo"` / `"reposition"`)                                                                                                                         |
+| `show` / `hide`                     | Appeared / disappeared                                                                                                                                             | `cause` (`"program"` / `"user"`)                                                                                                                                                |
+| `requeststart` / `requestcomplete`  | A request started / finished                                                                                                                                       | `request`                                                                                                                                                                       |
+| `animationstart` / `animationend`   | An animation started / ended                                                                                                                                       | `name`, `idle` (whether it's an idle animation)                                                                                                                                 |
+| `speakstart` / `speakend`           | Started / finished speaking (also when cut short; also fired for `think()`)                                                                                        | `text`, `thought` (whether it's `think()`)                                                                                                                                      |
+| `bookmark`                          | Speech reached a bookmark (`\Mrk=number\` or `<bookmark/>`; also fired for `think()`)                                                                              | `id` (the number; `NaN` for a non-numeric `<bookmark>` name), `mark` (the text as written)                                                                                      |
+| `balloonshow` / `balloonhide`       | The word balloon was shown / closed                                                                                                                                | None                                                                                                                                                                            |
+| `idlestart` / `idlecomplete`        | Entered / left the idle state (the next request started)                                                                                                           | None                                                                                                                                                                            |
+| `activateinput` / `deactivateinput` | Became / stopped being the frontmost character (which receives clicks and voice commands). When it hides or is destroyed, input moves to the frontmost visible one | None                                                                                                                                                                            |
+| `command`                           | A command was chosen from the popup menu or by voice                                                                                                               | `name`, `source` (`"menu"` / `"voice"`), `confidence` (0–100), `voice` (recognized text), `count` (number of matching commands), `alternatives` (second and third best matches) |
+| `listenstart` / `listencomplete`    | Started / stopped listening                                                                                                                                        | `mode` (`"program"` / `"key"`) / `cause` (`"program"` / `"timeout"` / `"key"` / `"finished"` / `"error"`)                                                                       |
+| `helpcomplete`                      | Something was chosen in help mode ([Help mode](#help-mode))                                                                                                        | `name`, `cause`, `helpContextId`                                                                                                                                                |
+| `resize`                            | The size changed                                                                                                                                                   | `width`, `height`, `scale`                                                                                                                                                      |
 
-- `dblclick` を `preventDefault()` すると、`animate()` しません。
-- `move` の `by` が `"reposition"` のときは、ブラウザの窓が小さくなり、画面の中に戻したときです。
-- 別の戻りアニメ (`MoveRightReturn` など) も、その名前で 1 つのアニメーションとして `animationstart` / `animationend` が来ます。
+- Calling `preventDefault()` on `dblclick` prevents `animate()`.
+- A `move` event with `by` set to `"reposition"` means the browser window got smaller and the character was moved back inside it.
+- Separate return animations (such as `MoveRightReturn`) fire their own `animationstart` / `animationend` under their own names.
 
-### 右クリックのメニュー
+### Popup menu
 
-キャラクターを右クリックすると、本家と同じくメニューが出ます。`agent.commands` に足した項目と、「隠す」が並びます。
+Right-clicking the character shows a popup menu, as in the original. It lists the commands added to `agent.commands`, plus "Hide".
 
 ```js
-agent.commands.add("search", "検索(&S)");                    // & の次の文字がアクセスキー
-agent.commands.add("help", "ヘルプ(&H)", { enabled: false }); // 灰色で選べない
-agent.commands.defaultCommand = "search";                   // 太字にする
+agent.commands.add("search", "&Search"); // the character after & is the access key
+agent.commands.add("help", "&Help", { enabled: false }); // grayed out
+agent.commands.defaultCommand = "search"; // shown in bold
 agent.on("command", (e) => {
-  if (e.detail.name === "search") agent.speak("何を探しますか？");
+  if (e.detail.name === "search") agent.speak("What are you looking for?");
 });
 
-agent.autoPopupMenu = false;   // 右クリックでは出さない
-agent.showPopupMenu(x, y);     // 自分で出す
+agent.autoPopupMenu = false; // don't show it on right-click
+agent.showPopupMenu(x, y); // show it yourself
 ```
 
-- メニューは矢印キー・Enter・アクセスキー・Esc でも操作できます。
-- 「隠す」で隠れたときは、`hide` イベントの `cause` が `"user"` になります。
-- 文字は `agent.commands.fontName` / `fontSize` (ポイント) で変えられます (本家の Commands.FontName / FontSize と同じ)。
-- 見た目はクラス `.msagent-menu` / `.msagent-menu-item` / `.msagent-menu-separator` で変えられます。
+- The menu can also be operated with the arrow keys, Enter, access keys, and Esc.
+- When hidden via "Hide", the `hide` event's `cause` is `"user"`.
+- The font can be changed with `agent.commands.fontName` / `fontSize` (in points), like the original Commands.FontName / FontSize.
+- Style it with the classes `.msagent-menu` / `.msagent-menu-item` / `.msagent-menu-separator`.
 
-### 音声認識
+### Speech recognition
 
-本家と同じく、声でコマンドを選べます。ブラウザの音声認識 (Web Speech API) を使うので、**Chrome・Edge・Safari で動き、Firefox では使えません**。
-**Chrome と Edge は、声をインターネット上のサーバー (Google・Microsoft) に送って認識します。** 初めて聞くときに、ブラウザがマイクの許可を求めます。
+As in the original, users can choose commands by voice. This uses the browser's speech recognition (Web Speech API), so it **works in Chrome, Edge, and Safari, but not in Firefox**.
+**Chrome and Edge send audio to online servers (Google / Microsoft) for recognition.** The browser asks for microphone permission the first time.
 
 ```js
-agent.commands.voiceCaption = "メール";                                // 聞き取りのヒントに出す名前
-agent.commands.add("check", "メールを見る(&C)", { voice: "[...] (メール | めーる) を (見る | みる | 見せて) [...]" });
-agent.commands.add("send", "送る(&S)", { voice: "[please] send [the] mail", voiceCaption: "送る" });
+agent.commands.voiceCaption = "Mail"; // name shown in the listening tip
+agent.commands.add("check", "&Check mail", { voice: "[...] check [my] (mail | email) [...]" });
+agent.commands.add("send", "&Send", { voice: "[please] send [the] mail", voiceCaption: "Send" });
 agent.on("command", (e) => {
-  if (e.detail.name === "check") agent.speak("メールを開きます");
-  if (e.detail.source === "voice" && e.detail.count === 0) agent.speak("よく分かりませんでした");
+  if (e.detail.name === "check") agent.speak("Opening your mail.");
+  if (e.detail.source === "voice" && e.detail.count === 0) agent.speak("Sorry, I didn't catch that.");
 });
 
-button.onclick = () => agent.listen(true);                     // 10 秒聞く (1 つ言い終えたらやめる)
-msagent.load({ name: "Merlin", listeningKey: "ScrollLock" });  // キーを押している間聞く (本家の Listening key)
+button.onclick = () => agent.listen(true); // listen for 10 seconds (stops after one utterance)
+msagent.load({ name: "Merlin", listeningKey: "ScrollLock" }); // listen while the key is held down (the original Listening key)
 ```
 
-`listen(true)` は 10 秒聞き、1 つ言い終えたらやめます。`listen(false)` でやめます。音声認識が使えなければ `false` を返します。
-聞き取りキーは、離すとすぐ聞くのをやめます。`listeningKeyTimeout` に秒数を指定すると、離してからその秒数は聞き続け、そのときに話している途中なら言い終えるまで聞きます (本家の既定は 2 秒)。
+`listen(true)` listens for 10 seconds and stops after one utterance. `listen(false)` stops listening. Returns `false` if speech recognition isn't available.
+By default, releasing the listening key stops listening immediately. Set `listeningKeyTimeout` to a number of seconds to keep listening that long after the key is released; if the user is mid-utterance at that point, it waits until they finish (the original defaults to 2 seconds).
 
-`voice` の書き方は本家と同じです。ブラウザの音声認識は自由な文を返すので、msagent.js が聞き取った文と照らし合わせます。
-大文字小文字・全角半角・カタカナとひらがな・句読点・空白の違いは気にしません。
+The `voice` syntax is the same as the original. Browser speech recognition returns free-form text, so msagent.js matches the recognized text against the grammar.
+Differences in case, full-width vs. half-width characters, katakana vs. hiragana, punctuation, and whitespace are ignored.
 
-| 書き方 | 意味 | 例 |
-| --- | --- | --- |
-| `[ ]` | 省いてよい言葉 | `hello [there]` |
-| `( \| )` | どれか 1 つ | `(hello \| hi)` |
-| `*` / `+` | 直前の言葉・まとまりの 0 回以上 / 1 回以上の繰り返し | `please* try this`、`(New York)+` |
-| `...` | 何を言ってもよいところ | `[...] check mail [...]` |
-| `表示\読み` | 表示と読み。どちらで聞き取っても合う (日本語は `かな\漢字`) | `1st\first`、`けんさく\検索` |
+| Syntax           | Meaning                                                                       | Example                           |
+| ---------------- | ----------------------------------------------------------------------------- | --------------------------------- |
+| `[ ]`            | Optional words                                                                | `hello [there]`                   |
+| `( \| )`         | One of the alternatives                                                       | `(hello \| hi)`                   |
+| `*` / `+`        | Zero or more / one or more repetitions of the preceding word or group         | `please* try this`, `(New York)+` |
+| `...`            | Anything may be said here                                                     | `[...] check mail [...]`          |
+| `display\spoken` | Display form and spoken form; either one matches (for Japanese, `kana\kanji`) | `1st\first`, `けんさく\検索`      |
 
-- **聞く言語**は `agent.language` (無ければブラウザの言語) です。
-- **確かさ：** `command` の `confidence` は、ブラウザが返す確かさ (0〜1) を 0〜100 にしたものです。コマンドの `confidence` 以下なら、聞き取りのヒントに `confidenceText` を出します (本家と同じ)。
-- **聞き取りキー：** いちばん手前のキャラクターだけが聞きます。キーを押すと Listening、声が聞こえ始めると Hearing の状態のアニメーションを再生します (命令やしゃべりの途中なら、邪魔しません)。
-- **聞き取りのヒント：** 聞いている間、キャラクターの下に「-- マーリンが聞いています --」「「メールを見る」と聞こえました」などを出します。見た目はクラス `.msagent-listening-tip` で変えられます。
-- **聞こえている間：** ユーザーの声が聞こえている間にしゃべらせると、声は出さず、吹き出しだけを出します (ユーザーの声とキャラクターの声が混ざらないように。本家と同じ)。
-- **用意してあるコマンド：** 「hide Merlin」「隠れて」と言うと隠れます (`command` の `name` は `""`、`hide` の `cause` は `"user"`)。`agent.commands.globalVoiceCommandsEnabled = false` で使わなくできます。
-- **使えないとき：** `agent.srStatus` で理由が分かります (本家の SRStatus と同じ値)。0: 使える、1: マイクが使えない、4: このブラウザには音声認識が無い・認識サービスにつながらない、5: マイク・音声認識を許可されていない、6: そのほか。許可されているかは、一度聞いてみるまで分かりません。
-- 文法だけを試すときは、`compileVoiceGrammar(voice)` (照らし合わせる関数を返す) を使えます。
+- **Recognition language** is `agent.language` (or the browser language if not set).
+- **Confidence:** `confidence` in the `command` event is the browser's confidence (0–1) scaled to 0–100. If it's at or below a command's `confidence`, the listening tip shows its `confidenceText` (same as the original).
+- **Listening key:** only the frontmost character listens. Pressing the key plays the Listening state animation, and the Hearing state animation once speech is detected (without interrupting requests or speech in progress).
+- **Listening tip:** while listening, a tip such as "-- Merlin is listening --" or "Heard "check mail"" appears below the character. Style it with the class `.msagent-listening-tip`.
+- **While hearing:** if the character is told to speak while the user's voice is being heard, it shows only the balloon without speaking aloud (so the user's and the character's voices don't mix; same as the original).
+- **Built-in commands:** saying "hide Merlin" hides the character (the `command` event's `name` is `""`, and the `hide` event's `cause` is `"user"`). Disable these with `agent.commands.globalVoiceCommandsEnabled = false`.
+- **When unavailable:** `agent.srStatus` tells you why (same values as the original SRStatus). 0: available, 1: no microphone, 4: this browser has no speech recognition or the recognition service can't be reached, 5: microphone or speech recognition not permitted, 6: other. Whether permission is granted isn't known until the first attempt to listen.
+- To test a grammar on its own, use `compileVoiceGrammar(voice)` (returns a matching function).
 
-#### 音声コマンドの窓
+#### Voice Commands Window
 
-いま声で言えるコマンドの一覧を出す窓です (本家の Voice Commands Window)。このキャラクターの声のコマンド (`voiceCaption`、無ければ `caption` と、言う言葉) と、用意してあるコマンドが並びます。
+A window listing the commands that can currently be spoken (the original Voice Commands Window). It shows this character's voice commands (`voiceCaption`, or `caption` if missing, along with the words to say) and the built-in commands.
 
-- **開き方：** 右クリックのメニューの「音声コマンドを開く」(音声認識が使えるブラウザだけに出る)、声で「what can I say」「show commands」「コマンドを見せて」「何て言えばいい」、または `agent.commandsWindow.visible = true`
-- **閉じ方：** 右上の ×、声で「close commands window」「コマンドを閉じて」、または `agent.commandsWindow.visible = false`
-- 画面の右下に出ます (本家はタスクバーのアイコンの隣)。位置や見た目は、クラス `.msagent-commands-window` で変えられます。
-- 開いている間にコマンドを変えたときは、`agent.commandsWindow.refresh()` で出し直します (聞き始めたときは自動で出し直す)。
-- `left` / `top` / `width` / `height` で、画面上の位置と大きさが分かります (本家の CommandsWindow と同じ。閉じていれば 0)。
+- **To open:** choose "Open Voice Commands" in the popup menu (shown only in browsers with speech recognition), say "what can I say" or "show commands" (Japanese phrases work too), or set `agent.commandsWindow.visible = true`
+- **To close:** click the × at the top right, say "close commands window" (or its Japanese equivalent), or set `agent.commandsWindow.visible = false`
+- It appears at the bottom right of the screen (in the original, next to the taskbar icon). Change its position or style with the class `.msagent-commands-window`.
+- If you change the commands while it's open, call `agent.commandsWindow.refresh()` to update it (it's refreshed automatically when listening starts).
+- `left` / `top` / `width` / `height` give its position and size on screen (like the original CommandsWindow; 0 when closed).
 
-### ヘルプモード
+### Help mode
 
-`agent.helpModeOn = true` の間は、キャラクターをクリック・ドラッグしたり、右クリックのメニューの項目や声のコマンドを選んだりすると、`click` / `dragstart` / `command` の代わりに `helpcomplete` イベントが来て、ヘルプモードが終わります (本家の HelpModeOn と同じ)。ポインターはヘルプの形になります。
+While `agent.helpModeOn = true`, clicking or dragging the character, or choosing a popup menu item or voice command, fires a `helpcomplete` event instead of `click` / `dragstart` / `command`, and ends help mode (like the original HelpModeOn). The pointer changes to the help cursor.
 
 ```js
-agent.helpContextId = 1;                                            // キャラクター自体のヘルプ
-agent.commands.add("search", "検索(&S)", { helpContextId: 2 });
+agent.helpContextId = 1; // help for the character itself
+agent.commands.add("search", "&Search", { helpContextId: 2 });
 agent.on("helpcomplete", (e) => showHelp(e.detail.helpContextId));
 helpButton.onclick = () => (agent.helpModeOn = true);
 ```
 
-- 本家は Windows のヘルプファイル (HelpFile) を開きますが、ブラウザでは開けないので、`helpContextId` をイベントで渡します。これを使って、アプリ側でヘルプを出してください。
-- `helpcomplete` の `cause` は、`"character"` / `"command"` / `"hide"` / `"openCommandsWindow"` / `"closeCommandsWindow"` のどれかです。
-- 右クリックのメニューは、ヘルプモードの間も出せます (`autoPopupMenu` が `false` なら、右クリックもヘルプ)。
-- `helpModeOn = false` でやめたときは、`helpcomplete` は来ません。
+- The original opens a Windows help file (HelpFile), which browsers can't do, so `helpContextId` is passed in the event instead. Use it to show help in your app.
+- `helpcomplete`'s `cause` is one of `"character"` / `"command"` / `"hide"` / `"openCommandsWindow"` / `"closeCommandsWindow"`.
+- The popup menu can still be opened in help mode (if `autoPopupMenu` is `false`, right-clicking also counts as help).
+- Turning help mode off with `helpModeOn = false` doesn't fire `helpcomplete`.
 
-## 見た目
+## Appearance
 
-### 大きさ
+### Size
 
 ```js
-agent.scale = 2;     // 2 倍 (拡大はドット絵のまま)
-agent.width = 64;    // 幅を 64px に (縦横の比は保つ。本家の Width と同じ)
-agent.height;        // いまの表示の高さ (px)
+agent.scale = 2; // 2× (scaled up as crisp pixel art)
+agent.width = 64; // 64px wide (keeps the aspect ratio; like the original Width)
+agent.height; // current displayed height (px)
 ```
 
-大きさを変えても、足もと (下端の真ん中) の位置は変わりません。
+Resizing keeps the character's feet (bottom center) in place.
 
-### 吹き出し
+### Word balloon
 
-吹き出しの色・文字・幅は、キャラクターファイルの設定 (Character Editor で決めたもの) から付きます。
-`agent.balloonStyle` で、その上に好きな項目だけを重ねられます。
+The balloon's colors, font, and width come from the character file's settings (set in the Character Editor).
+`agent.balloonStyle` lets you override just the properties you want on top of them.
 
 ```js
 agent.balloonStyle = { background: "#222222", foreground: "#ffffff", fontSize: 16 };
-agent.balloonStyle = { ...agent.balloonStyle, border: "#1e5aa8" }; // 今の見た目に足す
-agent.balloonStyle = undefined;                                  // キャラクターファイルの設定に戻す
-msagent.load({ name: "Merlin", balloon: { fontFamily: '"Yu Gothic UI", sans-serif' } }); // 読み込むときに指定
+agent.balloonStyle = { ...agent.balloonStyle, border: "#1e5aa8" }; // add to the current style
+agent.balloonStyle = undefined; // back to the character file's settings
+msagent.load({ name: "Merlin", balloon: { fontFamily: "Tahoma, sans-serif" } }); // set at load time
 ```
 
-| 項目 | 内容 |
-| --- | --- |
-| `background` / `foreground` / `border` | 背景・文字・縁の色 (CSS の色) |
-| `fontFamily` / `fontSize` / `fontWeight` / `italic` | 文字 (`fontSize` は px、`fontWeight` は 400 / 700 など) |
-| `underline` / `strikethrough` | 下線・取り消し線 |
-| `charsPerLine` | 1 行の文字数 (吹き出しの幅になる) |
-| `lines` | 行数 (`sizeToText` が `false` のときの高さ) |
-| `width` / `height` | 吹き出しの幅・高さ (px。縁と余白を含む)。`charsPerLine` / `lines` より優先 (msagent.js で足したもの) |
-| `enabled` | 吹き出しを使うか。`false` なら `speak` は声だけ、`think` は何も出さない |
-| `sizeToText` | 高さを文の量に合わせるか。`false` なら `lines` 行の高さに固定し、はみ出した分は上へ流す |
-| `autoHide` | しゃべり終えたら自動で閉じるか。`false` なら次の `speak` / `think`、`hide`、キャラクターのクリック・ドラッグまで出したまま |
-| `autoPace` | 読み上げに合わせて言葉を少しずつ出すか (声を出さないときも、口の動きに合わせて出す)。`false` なら最初から全文 |
+| Property                                            | Description                                                                                                                             |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `background` / `foreground` / `border`              | Background, text, and border colors (CSS colors)                                                                                        |
+| `fontFamily` / `fontSize` / `fontWeight` / `italic` | Font (`fontSize` in px, `fontWeight` such as 400 / 700)                                                                                 |
+| `underline` / `strikethrough`                       | Underline / strikethrough                                                                                                               |
+| `charsPerLine`                                      | Characters per line (sets the balloon width)                                                                                            |
+| `lines`                                             | Number of lines (the height when `sizeToText` is `false`)                                                                               |
+| `width` / `height`                                  | Balloon width / height (px, including border and padding). Takes precedence over `charsPerLine` / `lines` (an msagent.js addition)      |
+| `enabled`                                           | Whether to use the balloon. If `false`, `speak` uses voice only and `think` shows nothing                                               |
+| `sizeToText`                                        | Whether the height fits the text. If `false`, the height is fixed to `lines` lines and overflow scrolls up                              |
+| `autoHide`                                          | Whether to close automatically after speaking. If `false`, stays open until the next `speak` / `think`, `hide`, or a click or drag      |
+| `autoPace`                                          | Whether to reveal words gradually as they're spoken (follows the mouth movement even without voice). If `false`, shows all text at once |
 
-- `enabled` / `sizeToText` / `autoHide` / `autoPace` の既定値も、キャラクターファイルの設定 (Character Editor の Word Balloon のページ) から付きます。
-- `balloonStyle` を読み出すと、いま使われている見た目 (ファイルの設定 + 重ねた項目) が返ります。設定の無いキャラクター (.act など) は `DEFAULT_BALLOON_STYLE` (薄い黄色に黒い縁) が元になります。
-- `height` を決めたときも、はみ出した分は上へ流します。
+- The defaults for `enabled` / `sizeToText` / `autoHide` / `autoPace` also come from the character file (the Word Balloon page of the Character Editor).
+- Reading `balloonStyle` returns the style currently in use (the file's settings plus your overrides). Characters without settings (such as .act) start from `DEFAULT_BALLOON_STYLE` (pale yellow with a black border).
+- When `height` is set, overflow also scrolls up.
 
 ### CSS
 
-角の丸みや影など、`balloonStyle` に無いものは CSS で指定します (`.msagent-balloon { border-radius: 12px; }` など)。ページの CSS で `background` などを直接指定すると、`balloonStyle` より優先されます。
+Use CSS for things `balloonStyle` doesn't cover, such as rounded corners and shadows (e.g. `.msagent-balloon { border-radius: 12px; }`). Setting `background` and the like directly in your page's CSS takes precedence over `balloonStyle`.
 
-| クラス | もの |
-| --- | --- |
-| `.msagent` | キャラクター |
-| `.msagent-balloon` / `.msagent-tip` / `.msagent-content` | 吹き出し / しっぽ / 文 |
-| `.msagent-top-left` / `.msagent-top-right` / `.msagent-bottom-left` / `.msagent-bottom-right` | 吹き出しの向き |
-| `.msagent-menu` / `.msagent-menu-item` / `.msagent-menu-separator` | 右クリックのメニュー |
-| `.msagent-listening-tip` | 聞き取りのヒント |
-| `.msagent-commands-window` | 音声コマンドの窓 |
+| Class                                                                                         | Element               |
+| --------------------------------------------------------------------------------------------- | --------------------- |
+| `.msagent`                                                                                    | Character             |
+| `.msagent-balloon` / `.msagent-tip` / `.msagent-content`                                      | Balloon / tail / text |
+| `.msagent-top-left` / `.msagent-top-right` / `.msagent-bottom-left` / `.msagent-bottom-right` | Balloon placement     |
+| `.msagent-menu` / `.msagent-menu-item` / `.msagent-menu-separator`                            | Popup menu            |
+| `.msagent-listening-tip`                                                                      | Listening tip         |
+| `.msagent-commands-window`                                                                    | Voice Commands Window |
 
-### キャラクターの設定
+### Character data
 
-`agent.character` から、キャラクターファイルに入っている設定を読めます。
+`agent.character` exposes the settings stored in the character file.
 
 ```js
-agent.character.width, agent.character.height; // 元の大きさ (px)
-agent.character.guid;     // "{4E574F44-B521-11D0-9E9A-00C04FD7081F}"
-agent.character.voice;    // { speed: 156, pitch: 50, language: "en-US", gender: "male", age: 30, style: "Business", engine: "{…}", mode: "{…}" }
-agent.character.trayIcon; // タスクトレイ用の小さなアイコン (.acs / .acf のみ)。imageToDataUrl(icon) で <img> や favicon に使える
-agent.character.balloon;  // { background: "#ffffe1", foreground: "#000000", border: "#000000", fontFamily: "MS Sans Serif", fontSize: 13, lines: 2, charsPerLine: 32, … }
+(agent.character.width, agent.character.height); // original size (px)
+agent.character.guid; // "{4E574F44-B521-11D0-9E9A-00C04FD7081F}"
+agent.character.voice; // { speed: 156, pitch: 50, language: "en-US", gender: "male", age: 30, style: "Business", engine: "{…}", mode: "{…}" }
+agent.character.trayIcon; // small tray icon (.acs / .acf only). Use imageToDataUrl(icon) for an <img> or favicon
+agent.character.balloon; // { background: "#ffffe1", foreground: "#000000", border: "#000000", fontFamily: "MS Sans Serif", fontSize: 13, lines: 2, charsPerLine: 32, … }
 ```
 
-声の `speed` (1 分あたりの単語数) と `pitch` (Hz) は、`speak()` の読み上げの速さ・高さにも使います。入っていない項目は `undefined` です (Office のアシスタントには声の設定が無いものが多い)。
+The voice `speed` (words per minute) and `pitch` (Hz) are also used for `speak()`. Missing fields are `undefined` (many Office Assistants have no voice settings).
 
-## プロパティ一覧
+## Properties
 
-**本家と同じもの**
+**Same as the original**
 
-| プロパティ | 中身 |
-| --- | --- |
-| `visible` | 出ているか (読むだけ) |
-| `left` / `top` | 画面上の位置 (px)。代入すると、すぐそこへ移る |
-| `idleOn` | 待機動作を自動で再生するか |
-| `moveCause` / `visibilityCause` | 最後に動いた / 出た・消えた原因 |
-| `balloonVisible` | 吹き出しが出ているか。`false` を代入すると閉じる (しゃべっている途中なら読み終えてから)。`true` なら最後の文をもう一度出す |
-| `extraData` / `version` / `guid` | 作者が入れたおまけの文字 / ファイルの版 / GUID |
-| `originalWidth` / `originalHeight` | 元の大きさ (px) |
-| `speed` / `pitch` | 読み上げの速さ (語/分) / 高さ (Hz)。キャラクターファイルの設定 (読むだけ) |
-| `ttsModeId` | 読み上げに使う声。`speechSynthesis.getVoices()` の `voiceURI` か名前を代入すると、その声で読む (制御タグで言語・性別を変えた部分は除く)。`undefined` で自動に戻る。読み出すと、いま使う声の `voiceURI` (声に出さない・合う声が無いときは `""`) |
-| `soundEffectsOn` | 効果音を鳴らすか (`sound` と同じ) |
-| `name` / `description` | 名前 / 紹介文 (`language` の言語。[言語](#言語))。代入すると変わり、`undefined` でファイルのものに戻る |
-| `active` | いちばん手前にいるか |
-| `commands` | 右クリックのメニューと声のコマンド ([右クリックのメニュー](#右クリックのメニュー)) |
-| `commandsWindow` | 音声コマンドの窓 ([音声コマンドの窓](#音声コマンドの窓)) |
-| `autoPopupMenu` | 右クリックでメニューを出すか |
-| `listening` / `srStatus` | 聞いているか / 音声入力が使えるか ([音声認識](#音声認識)) |
-| `listeningKey` / `listeningKeyTimeout` / `listeningTip` | 聞き取りキー / キーを離してから聞き続ける秒数 / 聞き取りのヒントを出すか |
-| `helpModeOn` / `helpContextId` | [ヘルプモード](#ヘルプモード) |
-| `raiseRequestErrors` | 命令の失敗を例外にするか |
-| `taskbarIcon` | タスクバーのアイコン (画面の右下) を出すか。ポインターを重ねると名前、クリックで出す (見えていれば手前に)、右クリックでメニュー (隠れている間は「表示」と音声コマンドの窓だけ) |
+| Property                                                | Description                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `visible`                                               | Whether the character is shown (read-only)                                                                                                                                                                                                                                                                                                                                           |
+| `left` / `top`                                          | Position on screen (px). Assigning moves the character there immediately                                                                                                                                                                                                                                                                                                             |
+| `idleOn`                                                | Whether to play idle animations automatically                                                                                                                                                                                                                                                                                                                                        |
+| `moveCause` / `visibilityCause`                         | Cause of the last move / the last show or hide                                                                                                                                                                                                                                                                                                                                       |
+| `balloonVisible`                                        | Whether the balloon is shown. Assigning `false` closes it (after it finishes reading, if speaking). `true` shows the last text again                                                                                                                                                                                                                                                 |
+| `extraData` / `version` / `guid`                        | Extra text added by the author / file version / GUID                                                                                                                                                                                                                                                                                                                                 |
+| `originalWidth` / `originalHeight`                      | Original size (px)                                                                                                                                                                                                                                                                                                                                                                   |
+| `speed` / `pitch`                                       | Speech speed (words/min) / pitch (Hz), from the character file (read-only)                                                                                                                                                                                                                                                                                                           |
+| `ttsModeId`                                             | Voice used for speech. Assign a `voiceURI` or name from `speechSynthesis.getVoices()` to use that voice (except in parts where tags change the language or gender). `undefined` restores automatic selection. Reading returns the current voice's `voiceURI` (`""` if not speaking aloud or no voice matches)                                                                        |
+| `srModeId`                                              | Speech recognition language (the original SRModeID; browsers can't choose a recognition engine, so this picks the language). Assign e.g. `"en-US"` to listen in a different language from speech. `undefined` restores the speech language. Takes effect the next time listening starts. Reading returns the current listening language (`""` if speech recognition isn't available) |
+| `soundEffectsOn`                                        | Whether to play sound effects (same as `sound`)                                                                                                                                                                                                                                                                                                                                      |
+| `name` / `description`                                  | Name / description (in the `language` language; see [Language](#language)). Assigning changes them; `undefined` restores the file's values                                                                                                                                                                                                                                           |
+| `active`                                                | Whether the character is frontmost                                                                                                                                                                                                                                                                                                                                                   |
+| `commands`                                              | Popup menu and voice commands ([Popup menu](#popup-menu))                                                                                                                                                                                                                                                                                                                            |
+| `commandsWindow`                                        | Voice Commands Window ([Voice Commands Window](#voice-commands-window))                                                                                                                                                                                                                                                                                                              |
+| `autoPopupMenu`                                         | Whether right-clicking shows the popup menu                                                                                                                                                                                                                                                                                                                                          |
+| `listening` / `srStatus`                                | Whether listening / whether voice input is available ([Speech recognition](#speech-recognition))                                                                                                                                                                                                                                                                                     |
+| `listeningKey` / `listeningKeyTimeout` / `listeningTip` | Listening key / seconds to keep listening after the key is released / whether to show the listening tip                                                                                                                                                                                                                                                                              |
+| `helpModeOn` / `helpContextId`                          | [Help mode](#help-mode)                                                                                                                                                                                                                                                                                                                                                              |
+| `raiseRequestErrors`                                    | Whether failed requests throw                                                                                                                                                                                                                                                                                                                                                        |
+| `taskbarIcon`                                           | Whether to show a taskbar icon (bottom right of the screen). Hovering shows the name, clicking shows the character (or brings it to the front if visible), and right-clicking opens a menu (only "Show" and the Voice Commands Window while hidden)                                                                                                                                  |
 
-**msagent.js で足したもの**
+**Added by msagent.js**
 
-| プロパティ | 中身 |
-| --- | --- |
-| `language` | 名前・紹介文・読み上げの言語 ([言語](#言語)) |
-| `scale` / `width` / `height` | 大きさ ([大きさ](#大きさ)) |
-| `balloonStyle` | 吹き出しの見た目 ([吹き出し](#吹き出し)) |
-| `speaking` | しゃべっている途中か |
-| `sound` / `voice` | 効果音を鳴らすか / `speak()` で声に出すか |
-| `tags` | 読み上げの制御タグを使うか ([制御タグ](#読み上げの制御タグ)) |
-| `on()` / `off()` | イベントを受け取る / やめる |
-| `hitTest(clientX, clientY)` | その点がキャラクターの絵の上か |
-| `element` / `canvas` | キャラクターの要素 (`div.msagent`) / 描いている canvas |
-| `character` / `player` | キャラクターファイルの中身 / アニメーションの再生係 |
+| Property                     | Description                                                                       |
+| ---------------------------- | --------------------------------------------------------------------------------- |
+| `language`                   | Language for the name, description, and speech ([Language](#language))            |
+| `scale` / `width` / `height` | Size ([Size](#size))                                                              |
+| `balloonStyle`               | Word balloon style ([Word balloon](#word-balloon))                                |
+| `speaking`                   | Whether currently speaking                                                        |
+| `sound` / `voice`            | Whether to play sound effects / whether `speak()` reads aloud                     |
+| `tags`                       | Whether to process speech output tags ([Speech output tags](#speech-output-tags)) |
+| `on()` / `off()`             | Adds / removes an event listener                                                  |
+| `hitTest(clientX, clientY)`  | Whether a point is over the character's image                                     |
+| `element` / `canvas`         | The character element (`div.msagent`) / the canvas it's drawn on                  |
+| `character` / `player`       | The parsed character file / the animation player                                  |
 
-## 注意
+## Notes
 
-- キャラクターファイルは同梱していません。Office 2000 / XP / 2003 に付属していたものや、[Agentpedia](https://agentpedia.tmafe.com/) などから入手してください。キャラクターの著作権は、それぞれの権利者にあります。
-- ブラウザの制限で、効果音はページが一度クリックされるまで鳴りません。
-- 読み上げの声は、ブラウザと OS に入っている声を使います。
-- 音声認識は、Chrome・Edge では声をサーバーに送ります ([音声認識](#音声認識))。
+- Character files are not included. Get them from those bundled with Office 2000 / XP / 2003, or from sites such as [Agentpedia](https://agentpedia.tmafe.com/). Copyright in each character belongs to its respective owner.
+- Due to browser autoplay restrictions, sound effects won't play until the page has been clicked once.
+- Speech uses the voices installed in the browser and OS.
+- Speech recognition in Chrome and Edge sends audio to online servers ([Speech recognition](#speech-recognition)).
 
-## 開発
+## Development
 
 ```sh
 npm install
-npm run dev     # example/ のデモ (キャラクターファイルを選んで試す)
-npm run build   # dist/ に ESM・<script> 用・型定義を出力
-npm test        # テスト (下を参照)
+npm run dev     # demo in example/ (pick a character file and try it out)
+npm run build   # outputs ESM, <script> build, and type definitions to dist/
+npm test        # tests (see below)
 ```
 
-### テスト
+### Tests
 
-[Playwright](https://playwright.dev/) で、次の 3 つに分けて確かめます。
+Tests use [Playwright](https://playwright.dev/) and are split into three projects.
 
-| 種類 | 中身 |
-| --- | --- |
-| `unit` | ブラウザを使わないもの (制御タグの解析・言語の選び方・声の選び方・口の形・命令の順番待ち・キャラクターファイルと .lwv の読み込み) |
-| `browser` | テスト用のページ (`tests/harness`) でキャラクターを動かす (状態・命令・しゃべる・考える・吹き出し・マウス・メニュー・大きさ・待機動作など) |
-| `demo` | `example` のデモのページを操作する |
+| Project   | What it covers                                                                                                                                  |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `unit`    | Things that don't need a browser (tag parsing, language and voice selection, mouth shapes, the request queue, loading character files and .lwv) |
+| `browser` | Runs characters on a test page (`tests/harness`): states, requests, speaking, thinking, balloons, mouse, menus, size, idle animations, and more |
+| `demo`    | Drives the demo page in `example`                                                                                                               |
 
-キャラクターファイルは同梱していないので、置き場所を環境変数 `MSAGENT_CHARACTERS` に書きます (複数なら Windows は `;`、Mac / Linux は `:` で区切る)。使うのは `Merlin.acs`・`finfin.acs`・`CLIPPIT.ACS`・`DOLPHIN.ACS`・`ROCKY.act`・`dolphin.act`・`Genie.acf` (と `Show.aca`・`Greet.aca`)・`robby.acf`・Merlin の `GestureUp.aca` で、無いファイルを使うテストは飛ばします。
+Character files aren't included, so set the `MSAGENT_CHARACTERS` environment variable to where they are (separate multiple directories with `;` on Windows or `:` on macOS / Linux). The tests use `Merlin.acs`, `finfin.acs`, `CLIPPIT.ACS`, `DOLPHIN.ACS`, `ROCKY.act`, `dolphin.act`, `Genie.acf` (with `Show.aca` and `Greet.aca`), `robby.acf`, and Merlin's `GestureUp.aca`; tests that need a missing file are skipped.
 
 ```sh
 # Windows (PowerShell)
 $env:MSAGENT_CHARACTERS = "C:\agents;C:\Users\me\Downloads"; npm test
-# Mac / Linux
+# macOS / Linux
 MSAGENT_CHARACTERS=~/agents npm test
-npm run test:unit   # ブラウザを使わないものだけ (速い)
+npm run test:unit   # only the tests that don't need a browser (fast)
 ```
 
-ブラウザは、インストール済みの Chrome を使います (`PW_CHANNEL=msedge` などで変えられる。Playwright のブラウザを使うときは `npx playwright install chromium` の後に `PW_CHANNEL=chromium`)。
+Tests use your installed Chrome (change it with e.g. `PW_CHANNEL=msedge`; to use Playwright's own browser, run `npx playwright install chromium` and then set `PW_CHANNEL=chromium`).
 
-## ライセンス
+## License
 
-[MIT](LICENSE)。キャラクターファイル (.acs / .acf / .aca / .act) は含まれず、このライセンスの対象ではありません (著作権は、それぞれの権利者にあります)。
+[MIT](LICENSE). Character files (.acs / .acf / .aca / .act) are not included and are not covered by this license (copyright belongs to their respective owners).

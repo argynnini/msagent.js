@@ -38,7 +38,12 @@ test("命令は 1 つずつ順番に実行し、await すると終わったと�
   expect(await ra).toBe("complete");
   expect(await rb).toBe("failed");
   expect(rb.description).toBe("だめ");
-  expect(log).toEqual([`start #${ra.id} play`, `end #${ra.id} play complete`, `start #${rb.id} speak`, `end #${rb.id} speak failed`]);
+  expect(log).toEqual([
+    `start #${ra.id} play`,
+    `end #${ra.id} play complete`,
+    `start #${rb.id} speak`,
+    `end #${rb.id} speak failed`,
+  ]);
 });
 
 test("clear: 実行中も順番待ちも interrupted にし、後から来た complete は無視する", async () => {

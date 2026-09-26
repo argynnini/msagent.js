@@ -1,52 +1,67 @@
-import type { Agent } from "./agent";
+import type { Agent } from "./agent.js";
 
 /**
- * 命令の状態 (本家の Request.Status と同じ)。
- * pending: 順番待ち / inProgress: 実行中 / complete: 終わった / failed: できなかった / interrupted: 止められた
+ * State of a request. Same as Microsoft Agent's `Request.Status`.
+ *
+ * - `"pending"`: waiting in the queue
+ * - `"inProgress"`: running
+ * - `"complete"`: finished successfully
+ * - `"failed"`: could not be done (see `description` / `number`)
+ * - `"interrupted"`: stopped by `stop()` / `stopAll()` / `interrupt()`
  */
 export type RequestStatus = "pending" | "inProgress" | "complete" | "failed" | "interrupted";
 
-/** 命令の種類 */
-export type RequestType = "show" | "hide" | "play" | "gestureAt" | "moveTo" | "speak" | "think" | "delay" | "wait" | "interrupt" | "get";
+/** Kind of request: the name of the {@link Agent} method that created it. */
+export type RequestType =
+  "show" | "hide" | "play" | "gestureAt" | "moveTo" | "speak" | "think" | "delay" | "wait" | "interrupt" | "get";
 
 /**
- * 失敗・中断の理由の番号 (本家の Request.Number と同じ値。Microsoft Agent Error Codes)。
- * 成功したときと、まだ終わっていないときは 0
+ * Error numbers for failed or interrupted requests, with the same values as Microsoft Agent's `Request.Number`
+ * (Microsoft Agent Error Codes). A request that succeeded or has not finished has number `0`.
+ *
+ * ```js
+ * import { RequestError } from "msagent.js";
+ *
+ * const request = agent.get("animation", "Wave");
+ * await request;
+ * if (request.number === RequestError.invalidAnimation) console.warn(request.description);
+ * ```
  */
 export const RequestError = {
-  /** 指定したアニメーションが無い (0x80042003) */
+  /** The animation does not exist (0x80042003). */
   animationNotFound: -2147213309,
-  /** その状態にアニメーションが無い (0x80042004) */
+  /** No animation is assigned to the state (0x80042004). */
   stateNotFound: -2147213308,
-  /** キャラクターが隠れているのでできない (0x8004200A) */
+  /** Not possible while the character is hidden (0x8004200A). */
   hidden: -2147213302,
-  /** get() の type が正しくない (0x8004200E) */
+  /** Invalid `type` for `get()` (0x8004200E). */
   invalidGetType: -2147213298,
-  /** アニメーションが正しくない: 壊れている・コマが無い・取り寄せられない (0x8004200F) */
+  /** The animation is invalid: corrupt, without frames, or could not be downloaded (0x8004200F). */
   invalidAnimation: -2147213297,
-  /** 自分の命令は interrupt できない (0x80042104) */
+  /** A character cannot `interrupt()` its own request (0x80042104). */
   interruptSelf: -2147213052,
-  /** 自分の命令は wait できない (0x80042105) */
+  /** A character cannot `wait()` for its own request (0x80042105). */
   waitSelf: -2147213051,
-  /** アプリ (stop / interrupt / stopAll など) に止められた (0x8004210C) */
+  /** Stopped by the application (`stop()`, `stopAll()`, `interrupt()`, ...) (0x8004210C). */
   interrupted: -2147213044,
-  /** 音声ファイルが正しくない・読み込めない (0x80042207) */
+  /** The sound file is invalid or could not be loaded (0x80042207). */
   invalidSound: -2147212793,
-  /** キャラクターが無い (destroy() で破棄された。0x80042002) */
+  /** The character no longer exists because it was destroyed with `destroy()` (0x80042002). */
   characterNotFound: -2147213310,
 } as const;
 
 let nextId = 1;
 
 /**
- * 命令が失敗したときの例外 (agent.raiseRequestErrors が true のとき。本家の「エラーを発生させる」と同じ)。
- * number は本家のエラー番号 (RequestError のどれか)
+ * Thrown (or used to reject an awaited request) when a request fails and `agent.raiseRequestErrors` is `true`.
+ * Same idea as Microsoft Agent raising errors for failed requests.
  */
 export class AgentRequestError extends Error {
   constructor(
+    /** Error number, one of the {@link RequestError} values. */
     readonly number: number,
     description: string,
-    /** 失敗した命令 (命令を作る前に分かった失敗なら undefined) */
+    /** The failed request, or `undefined` if the call failed before a request was created. */
     readonly request?: AgentRequest,
   ) {
     super(description);
@@ -55,34 +70,42 @@ export class AgentRequestError extends Error {
 }
 
 /**
- * 順番待ちに入った命令 1 つ (本家の Request オブジェクトと同じ)。
- * show / hide / play / speak / think / moveTo / gestureAt / delay / wait / interrupt / get が返す。
- * await すると、終わったときの状態 (complete / failed / interrupted) が返る
- * (agent.raiseRequestErrors が true なら、failed のときは AgentRequestError の例外になる)
+ * A queued request. Same as Microsoft Agent's `Request` object.
+ *
+ * Returned by `show` / `hide` / `play` / `speak` / `think` / `moveTo` / `gestureAt` / `delay` / `wait` /
+ * `interrupt` / `get`. Awaiting it gives the final status (`"complete"` / `"failed"` / `"interrupted"`);
+ * with `agent.raiseRequestErrors`, a failed request rejects with {@link AgentRequestError} instead.
  *
  * ```js
  * const request = agent.play("Wave");
  * console.log(request.status);        // "pending" / "inProgress"
  * console.log(await request);         // "complete"
- * agent.stop(request);                // この命令だけ止める
+ * agent.stop(request);                // stop only this request
  * ```
  */
 export class AgentRequest implements PromiseLike<RequestStatus> {
+  /** Unique ID of the request. Same as Microsoft Agent's `Request.ID`. */
   readonly id = nextId++;
+  /** Current state of the request. */
   status: RequestStatus = "pending";
-  /** failed のときの理由 */
+  /** Why the request failed, or `""`. Same as Microsoft Agent's `Request.Description`. */
   description = "";
-  /** failed / interrupted のときの理由の番号 (本家の Request.Number と同じ。RequestError のどれか)。それ以外は 0 */
+  /**
+   * Error number when the request failed or was interrupted (one of the {@link RequestError} values), otherwise `0`.
+   * Same as Microsoft Agent's `Request.Number`.
+   */
   number = 0;
-  /** @internal 止めるように言われた (終わったとき interrupted にする) */
+  /** @internal Asked to stop; the request settles as interrupted. */
   interruptRequested = false;
   private readonly settled: Promise<RequestStatus>;
   private resolveSettled!: (status: RequestStatus) => void;
   private rejectSettled!: (error: AgentRequestError) => void;
 
+  /** @internal Requests are created by the {@link Agent} methods. */
   constructor(
+    /** Kind of request. */
     readonly type: RequestType,
-    /** この命令を受けたキャラクター */
+    /** The character the request belongs to. */
     readonly agent: Agent,
   ) {
     this.settled = new Promise((resolve, reject) => {
@@ -91,11 +114,13 @@ export class AgentRequest implements PromiseLike<RequestStatus> {
     });
   }
 
-  /** 終わったか (complete / failed / interrupted) */
+  /** Whether the request has finished (`"complete"`, `"failed"` or `"interrupted"`). */
   get done(): boolean {
     return this.status === "complete" || this.status === "failed" || this.status === "interrupted";
   }
 
+  /** Makes the request awaitable. Resolves with the final status. */
+  /** Makes the request awaitable. Resolves with the final status. */
   then<T = RequestStatus, E = never>(
     onFulfilled?: ((status: RequestStatus) => T | PromiseLike<T>) | null,
     onRejected?: ((reason: unknown) => E | PromiseLike<E>) | null,
@@ -103,18 +128,19 @@ export class AgentRequest implements PromiseLike<RequestStatus> {
     return this.settled.then(onFulfilled, onRejected);
   }
 
-  /** @internal 実行を始めた */
+  /** @internal Marks the request as started. */
   start() {
     if (this.status === "pending") this.status = "inProgress";
   }
 
-  /** @internal 終わった。すでに終わっていれば false */
+  /** @internal Settles the request. Returns false if it had already finished. */
   settle(status: "complete" | "failed" | "interrupted", description = "", number = 0): boolean {
     if (this.done) return false;
     this.status = status;
     this.description = description;
     this.number = status === "interrupted" && !number ? RequestError.interrupted : number;
-    if (status === "failed" && this.agent.raiseRequestErrors) this.rejectSettled(new AgentRequestError(this.number, description, this));
+    if (status === "failed" && this.agent.raiseRequestErrors)
+      this.rejectSettled(new AgentRequestError(this.number, description, this));
     else this.resolveSettled(status);
     return true;
   }

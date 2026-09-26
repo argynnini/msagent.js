@@ -21,11 +21,11 @@ test("* は 0 回以上、+ は 1 回以上。直前の言葉だけに付く", (
 });
 
 test("... は何を言ってもよいところ。言葉の途中では切らない", () => {
-  check("[...] check mail [...]", ["check mail", "please check mail", "check mail please", "could you check mail now"], [
-    "precheck mail",
-    "check mailbox",
-    "check the mail",
-  ]);
+  check(
+    "[...] check mail [...]",
+    ["check mail", "please check mail", "check mail please", "could you check mail now"],
+    ["precheck mail", "check mailbox", "check the mail"],
+  );
 });
 
 test("表示\\読み: どちらで聞き取っても合う。# で始まる読み (IPA) は使わない", () => {
@@ -70,7 +70,9 @@ test("matchVoice: 候補の順に、合ったコマンドを最大 3 つ。選�
     ["search", 30, "search"],
   ]);
   // msagent.js が用意したコマンドは name が ""。globalVoiceCommandsEnabled = false なら使わない
-  expect(commands.matchVoice([{ transcript: "hide", confidence: 1 }], [{ id: "hide", voice: "hide" }])).toMatchObject([{ name: "", global: "hide" }]);
+  expect(commands.matchVoice([{ transcript: "hide", confidence: 1 }], [{ id: "hide", voice: "hide" }])).toMatchObject([
+    { name: "", global: "hide" },
+  ]);
   commands.globalVoiceCommandsEnabled = false;
   expect(commands.matchVoice([{ transcript: "hide", confidence: 1 }], [{ id: "hide", voice: "hide" }])).toEqual([]);
 });

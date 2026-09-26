@@ -17,7 +17,14 @@ export const wordsPerMinuteToRate = (wpm: number) => wpm / BASE_WORDS_PER_MINUTE
 /** Hz → ブラウザの読み上げの高さ (標準 = 1)。範囲には収めない */
 export const hertzToPitch = (hz: number) => hz / BASE_PITCH_HZ;
 
-/** ACS の声の設定から、ブラウザの読み上げの速さ (rate) と高さ (pitch) を決める。設定が無い項目は標準 (1) */
+/**
+ * Converts a character's voice settings (words per minute and Hz) to browser speech `rate` and `pitch`
+ * (normal = 1), approximately. Missing settings become `1`.
+ *
+ * ```js
+ * voiceParams({ speed: 180, pitch: 130 }); // → { rate: 1.058..., pitch: 1.3 }
+ * ```
+ */
 export function voiceParams(voice: { speed?: number; pitch?: number } | undefined): { rate: number; pitch: number } {
   return {
     rate: voice?.speed ? clamp(wordsPerMinuteToRate(voice.speed), 0.5, 2) : 1,
@@ -25,17 +32,19 @@ export function voiceParams(voice: { speed?: number; pitch?: number } | undefine
   };
 }
 
-/** 読み上げの設定 (速さ・高さはブラウザの値。標準 = 1) */
+/** Speech settings for {@link Speaker}. */
 export interface SpeakParams {
+  /** Speaking rate (browser value, normal = 1). */
   rate: number;
+  /** Pitch (browser value, normal = 1). */
   pitch: number;
-  /** 読み上げの言語 (BCP 47)。省略時は文から推測する (かな・漢字があれば日本語、無ければ英語) */
+  /** Language as a BCP 47 tag. Default: Japanese if the text contains kana or kanji, otherwise English. */
   lang?: string;
-  /** 声の性別の希望 (合う声があれば、それを選ぶ) */
+  /** Preferred voice gender, used if a matching voice is found. */
   gender?: "neutral" | "female" | "male";
   /**
-   * 使う声 (voiceURI か名前。本家の TTSModeID)。見つかれば、言語・性別から選ぶ代わりにこの声で読む
-   * (制御タグで言語・性別を変えた部分は除く)。見つからなければ、言語・性別から選ぶ
+   * Voice to use: a `voiceURI` or name (like Microsoft Agent's `TTSModeID`). Used instead of choosing by language and
+   * gender, except in parts whose language or gender is changed with tags. If not found, a voice is chosen as usual.
    */
   voice?: string;
 }
@@ -50,8 +59,10 @@ export function findVoice(voices: readonly SpeechSynthesisVoice[], id: string): 
  * 声の名前から性別を推測する。ブラウザの声には性別の情報が無いので、よく使われる声の名前で見分ける
  * (Windows・macOS・Chrome の声など。分からなければ undefined)
  */
-const FEMALE_VOICE = /\b(female|woman|haruka|ayumi|sayaka|nanami|mayu|kyoko|o-ren|zira|hazel|susan|aria|jenny|michelle|samantha|victoria|karen|moira|tessa|fiona|allison|ava|serena|kathy|heera|huihui|yaoyao|hanhan|tracy|yating|heami|sunhi|katja|hedda|hortense|julie|elsa|helena|laura|paulina|sabina|irina|maria|zuzana|helle)\b|\u5973\u6027/i; // 女性
-const MALE_VOICE = /\b(male|man|ichiro|keita|otoya|hattori|david|mark|george|guy|james|richard|daniel|alex|fred|ralph|bruce|tom|aaron|arthur|oliver|kangkang|zhiwei|danny|hyunsu|stefan|paul|claude|pablo|raul|pavel|filip)\b|\u7537\u6027/i; // 男性
+const FEMALE_VOICE =
+  /\b(female|woman|haruka|ayumi|sayaka|nanami|mayu|kyoko|o-ren|zira|hazel|susan|aria|jenny|michelle|samantha|victoria|karen|moira|tessa|fiona|allison|ava|serena|kathy|heera|huihui|yaoyao|hanhan|tracy|yating|heami|sunhi|katja|hedda|hortense|julie|elsa|helena|laura|paulina|sabina|irina|maria|zuzana|helle)\b|\u5973\u6027/i; // 女性
+const MALE_VOICE =
+  /\b(male|man|ichiro|keita|otoya|hattori|david|mark|george|guy|james|richard|daniel|alex|fred|ralph|bruce|tom|aaron|arthur|oliver|kangkang|zhiwei|danny|hyunsu|stefan|paul|claude|pablo|raul|pavel|filip)\b|\u7537\u6027/i; // 男性
 
 function voiceGender(voice: SpeechSynthesisVoice): "female" | "male" | undefined {
   if (FEMALE_VOICE.test(voice.name)) return "female";
@@ -60,8 +71,14 @@ function voiceGender(voice: SpeechSynthesisVoice): "female" | "male" | undefined
 }
 
 /**
- * 声を選ぶ (本家と同じく、言語 → 性別の順に合わせる)。同じ言語の声が無ければ undefined (ブラウザ任せ)。
- * 地域まで同じ声 (ja-JP) → 言語だけ同じ声 (ja) の順に探し、その中で性別が合う声 → 既定の声 → 最初の声
+ * Chooses a browser voice by language, then gender, like Microsoft Agent.
+ *
+ * Voices with the same region (`ja-JP`) are preferred over those with only the same language (`ja`); among them, a
+ * voice of the wanted gender (guessed from well-known voice names), then the default voice, then the first one.
+ *
+ * @param voices - Usually `speechSynthesis.getVoices()`.
+ * @param lang - BCP 47 language tag.
+ * @returns `undefined` if no voice has the language (the browser then chooses).
  */
 export function pickVoice(
   voices: readonly SpeechSynthesisVoice[],

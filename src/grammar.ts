@@ -23,10 +23,11 @@ type GrammarNode =
   | { kind: "word"; forms: string[] }
   | { kind: "any" };
 
-/** 文法の書き方の誤り (括弧の対応など。本家もこれだけはエラーにする) */
+/** Thrown by {@link compileVoiceGrammar} for a malformed grammar, such as unbalanced brackets. */
 export class GrammarError extends Error {
   constructor(
     message: string,
+    /** The grammar that failed to compile. */
     readonly grammar: string,
   ) {
     super(`${message}: ${grammar}`);
@@ -38,7 +39,12 @@ export class GrammarError extends Error {
 const toHiragana = (s: string) => s.replace(/[\u30a1-\u30f6]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
 
 /**
- * 照らし合わせるための形にする: 全角半角をそろえ (NFKC)、小文字・ひらがなにし、記号を除いて、空白を 1 つにする
+ * Normalizes text for matching voice commands: applies NFKC (unifying full-width and half-width forms), lowercases,
+ * turns katakana into hiragana, removes punctuation and collapses whitespace.
+ *
+ * ```js
+ * normalizeSpeech("Hello, World!"); // → "hello world"
+ * ```
  */
 export function normalizeSpeech(text: string): string {
   return toHiragana(text.normalize("NFKC").toLowerCase())
@@ -87,10 +93,10 @@ function parse(grammar: string): GrammarNode {
     if (t === "(" || t === "[") {
       const node = alt();
       const close = t === "(" ? ")" : "]";
-      if (tokens[i++] !== close) throw new GrammarError(`${close} がありません`, grammar);
+      if (tokens[i++] !== close) throw new GrammarError(`Missing ${close}`, grammar);
       return t === "[" ? { kind: "opt", node } : node;
     }
-    if (t === "*" || t === "+") throw new GrammarError(`${t} の前に言葉がありません`, grammar);
+    if (t === "*" || t === "+") throw new GrammarError(`Nothing to repeat before ${t}`, grammar);
     if (t === "...") return { kind: "any" };
     // 表示\読み (# で始まる読みは IPA なので使わない)
     const forms = t
@@ -101,7 +107,7 @@ function parse(grammar: string): GrammarNode {
     return { kind: "word", forms };
   };
   const node = alt();
-  if (i < tokens.length) throw new GrammarError(`${tokens[i]} の対応する括弧がありません`, grammar);
+  if (i < tokens.length) throw new GrammarError(`Unmatched ${tokens[i]}`, grammar);
   return node;
 }
 
@@ -137,12 +143,27 @@ function toRegex(node: GrammarNode): string {
 }
 
 /**
- * 声のコマンドの文法を、照らし合わせる関数にする。書き方が誤っていれば GrammarError。
+ * Compiles a voice command grammar (the syntax of Microsoft Agent's `Command.Voice`) into a function that tests
+ * whether recognized text matches it. The browser's speech recognition returns free text rather than listening for
+ * fixed phrases, so matching is done here.
+ *
+ * | Syntax | Meaning |
+ * | --- | --- |
+ * | `[ ]` | optional words (`hello [there]`) |
+ * | `( \| )` | one of the alternatives (`(hello \| hi)`) |
+ * | `*` / `+` | zero or more / one or more repetitions of the previous word or group (`(New York)+`) |
+ * | `...` | any words (`[...] check mail [...]`) |
+ * | `display\spoken` | display and spoken forms; either one matches (`1st\first`). Pronunciations starting with `#` (IPA) are ignored |
+ *
+ * Case, full-width / half-width forms, katakana / hiragana, punctuation and whitespace are ignored when matching
+ * (see {@link normalizeSpeech}).
  *
  * ```js
  * const match = compileVoiceGrammar("[please] (search | find) [...]");
  * match("Please find my file"); // → true
  * ```
+ *
+ * @throws {@link GrammarError} if the grammar is malformed.
  */
 export function compileVoiceGrammar(grammar: string): (heard: string) => boolean {
   const re = new RegExp(`^\\s*${toRegex(parse(grammar))}\\s*$`, "su");

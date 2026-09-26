@@ -18,24 +18,33 @@
  * 2 つの音でできた音素は "0x0074+0x0283" のように + でつなぐ
  */
 
-/** 単語 1 つ (時間は秒) */
+/** A word in a .lwv file. */
 export interface LwvWord {
+  /** Start time in seconds. */
   start: number;
+  /** End time in seconds. */
   end: number;
+  /** The word. */
   text: string;
 }
 
-/** 音素 1 つ (時間は秒)。ipa は IPA のコードポイント (2 つの音でできた音素なら 2 つ) */
+/** A phoneme in a .lwv file. */
 export interface LwvPhoneme {
+  /** Start time in seconds. */
   start: number;
+  /** End time in seconds. */
   end: number;
+  /** IPA code points (two for a phoneme made of two sounds). */
   ipa: number[];
 }
 
+/** Linguistic information read from a .lwv file. */
 export interface LwvInfo {
-  /** 言語 ID (Windows の LCID。例: 0x0409)。無ければ undefined */
+  /** Windows language ID (LCID, e.g. `0x0409`), or `undefined` if missing. */
   language: number | undefined;
+  /** The words, in order. */
   words: LwvWord[];
+  /** The phonemes, in order. */
   phonemes: LwvPhoneme[];
 }
 
@@ -54,22 +63,46 @@ function encodingFor(lcid: number | undefined): string {
   const primary = (lcid ?? 0) & 0x3ff;
   const sub = (lcid ?? 0) >> 10;
   switch (primary) {
-    case 0x11: return "shift_jis";
-    case 0x12: return "euc-kr";
-    case 0x04: return sub === 2 || sub === 4 ? "gbk" : "big5";
-    case 0x1e: return "windows-874";
-    case 0x05: case 0x0e: case 0x15: case 0x18: case 0x1a: case 0x1b: case 0x24: return "windows-1250";
-    case 0x02: case 0x19: case 0x22: case 0x23: return "windows-1251";
-    case 0x08: return "windows-1253";
-    case 0x1f: return "windows-1254";
-    case 0x0d: return "windows-1255";
-    case 0x01: return "windows-1256";
-    case 0x25: case 0x26: case 0x27: return "windows-1257";
-    default: return "windows-1252";
+    case 0x11:
+      return "shift_jis";
+    case 0x12:
+      return "euc-kr";
+    case 0x04:
+      return sub === 2 || sub === 4 ? "gbk" : "big5";
+    case 0x1e:
+      return "windows-874";
+    case 0x05:
+    case 0x0e:
+    case 0x15:
+    case 0x18:
+    case 0x1a:
+    case 0x1b:
+    case 0x24:
+      return "windows-1250";
+    case 0x02:
+    case 0x19:
+    case 0x22:
+    case 0x23:
+      return "windows-1251";
+    case 0x08:
+      return "windows-1253";
+    case 0x1f:
+      return "windows-1254";
+    case 0x0d:
+      return "windows-1255";
+    case 0x01:
+      return "windows-1256";
+    case 0x25:
+    case 0x26:
+    case 0x27:
+      return "windows-1257";
+    default:
+      return "windows-1252";
   }
 }
 
-const fourcc = (v: DataView, at: number) => String.fromCharCode(v.getUint8(at), v.getUint8(at + 1), v.getUint8(at + 2), v.getUint8(at + 3));
+const fourcc = (v: DataView, at: number) =>
+  String.fromCharCode(v.getUint8(at), v.getUint8(at + 1), v.getUint8(at + 2), v.getUint8(at + 3));
 
 /** [from, to) にあるチャンクを順に返す (id, 中身の始まり, 大きさ) */
 function* chunks(v: DataView, from: number, to: number): Generator<[string, number, number]> {
@@ -94,8 +127,10 @@ function parseIpa(label: string): number[] {
 }
 
 /**
- * .lwv の単語と音素を読む。言語情報が無ければ (普通の WAV など) undefined。
- * data は読むだけで、変えない (このあと decodeAudioData に渡せる)
+ * Reads the words and phonemes of a .lwv file (a WAV file with linguistic information, made with the Microsoft
+ * Linguistic Information Sound Editing Tool). `data` is not modified, so it can be passed to `decodeAudioData()`.
+ *
+ * @returns `undefined` if the file has no linguistic information (e.g. a plain WAV file).
  */
 export function readLwv(data: ArrayBuffer): LwvInfo | undefined {
   const v = new DataView(data);
@@ -131,7 +166,11 @@ export function readLwv(data: ArrayBuffer): LwvInfo | undefined {
       if (p + length > at + size) break;
       const bytes = new Uint8Array(data, p, length);
       const nul = bytes.indexOf(0);
-      into.push({ start: start / bytesPerSec, end: end / bytesPerSec, bytes: nul < 0 ? bytes : bytes.subarray(0, nul) });
+      into.push({
+        start: start / bytesPerSec,
+        end: end / bytesPerSec,
+        bytes: nul < 0 ? bytes : bytes.subarray(0, nul),
+      });
       p += length;
     }
   }
@@ -140,8 +179,8 @@ export function readLwv(data: ArrayBuffer): LwvInfo | undefined {
   return {
     language,
     words: marks.WMRK!.map(({ start, end, bytes }) => ({ start, end, text: words.decode(bytes) })),
-    phonemes: marks.PMRK!
-      .map(({ start, end, bytes }) => ({ start, end, ipa: parseIpa(ascii.decode(bytes)) }))
+    phonemes: marks
+      .PMRK!.map(({ start, end, bytes }) => ({ start, end, ipa: parseIpa(ascii.decode(bytes)) }))
       .filter((p) => p.ipa.length > 0),
   };
 }
@@ -150,8 +189,8 @@ export function readLwv(data: ArrayBuffer): LwvInfo | undefined {
 export const LWV_MOUTH_RATE = 30;
 
 /**
- * 時刻 t (秒) に出している IPA の 1 文字。音素の無いところは無音 ("_")。
- * 2 つの音でできた音素は、その長さを等分して順に出す (本家と同じ)
+ * The IPA character (code point) being pronounced at time `t` in seconds; `"_"` (silence) between phonemes.
+ * A phoneme made of two sounds is split evenly between them, like Microsoft Agent.
  */
 export function ipaAt(phonemes: readonly LwvPhoneme[], t: number): number {
   const p = phonemes.find((x) => t >= x.start && t < x.end);

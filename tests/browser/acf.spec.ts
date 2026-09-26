@@ -41,6 +41,11 @@ test("ACF: get() は ACA を取り寄せる。無い・チェックサムが合�
 
 test("ACF: 先読みするものの ACA が無ければ、読み込みは失敗する", async ({ harness }) => {
   requireCharacters(CHARACTERS.genie);
-  const error = await harness.evaluate(() => window.loadAgent("Genie.acf", { preload: ["RestPose"] }).then(() => "", (e) => String(e)));
+  const error = await harness.evaluate(() =>
+    window.loadAgent("Genie.acf", { preload: ["RestPose"] }).then(
+      () => "",
+      (e) => String(e),
+    ),
+  );
   expect(error).toMatch(/RestPose/);
 });

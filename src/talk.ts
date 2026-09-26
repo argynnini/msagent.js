@@ -1,17 +1,25 @@
-import type { AcsPlayer } from "./acs/player";
-import { speakingAnimation } from "./animations";
-import type { Balloon } from "./balloon";
-import type { BalloonStyle, Character } from "./character";
-import type { Emit } from "./events";
-import { audioOutput } from "./audio";
-import { readLwv, type LwvInfo } from "./lwv";
-import { MORA_MS, mouthSteps, PAUSE_MS, stepsDuration } from "./mouth";
-import { paceText } from "./pace";
-import type { Task } from "./queue";
-import { RequestError } from "./request";
-import type { Speaker } from "./speak";
-import { bookmarkNotifier, isRepeatTag, parseSpeechTags, plainSpeech, removeBookmarks, shownText, type Bookmark } from "./tags";
-import type { SpeakParams } from "./voice";
+import type { AcsPlayer } from "./acs/player.js";
+import { speakingAnimation } from "./animations.js";
+import type { Balloon } from "./balloon.js";
+import type { BalloonStyle, Character } from "./character.js";
+import type { Emit } from "./events.js";
+import { audioOutput } from "./audio.js";
+import { readLwv, type LwvInfo } from "./lwv.js";
+import { MORA_MS, mouthSteps, PAUSE_MS, stepsDuration } from "./mouth.js";
+import { paceText } from "./pace.js";
+import type { Task } from "./queue.js";
+import { RequestError } from "./request.js";
+import type { Speaker } from "./speak.js";
+import {
+  bookmarkNotifier,
+  isRepeatTag,
+  parseSpeechTags,
+  plainSpeech,
+  removeBookmarks,
+  shownText,
+  type Bookmark,
+} from "./tags.js";
+import type { SpeakParams } from "./voice.js";
 
 /** 読み上げが終わってから、吹き出しを閉じるまで */
 const CLOSE_BALLOON_DELAY_MS = 2000;
@@ -102,7 +110,11 @@ export class Talk {
         lwv = readLwv(data);
         audio = await player.audioContext().decodeAudioData(data);
       } catch (e) {
-        return complete("failed", `音声ファイルを読み込めません: ${e instanceof Error ? e.message : String(e)}`, RequestError.invalidSound);
+        return complete(
+          "failed",
+          `Failed to load sound file: ${e instanceof Error ? e.message : String(e)}`,
+          RequestError.invalidSound,
+        );
       }
       if (isStale()) return complete();
     }
@@ -133,6 +145,7 @@ export class Talk {
     const style = this.host.balloonStyle();
     balloon.element.lang = this.host.speechLanguage() ?? "";
     if (style.enabled) {
+      balloon.announce(shown, balloon.element.lang);
       balloon.setThink(thought);
       // 少しずつ出すなら、全文の入る大きさを先に確保する。出さない (autoPace: false) なら、最初から全文
       balloon.reserve(style.autoPace ? shown : undefined);
@@ -172,6 +185,7 @@ export class Talk {
     this.begin(complete, false);
     this.aloud = false;
     emit("speakstart", { text: shown, thought: true });
+    balloon.announce(shown, this.host.speechLanguage() ?? "");
     balloon.setThink(true);
     balloon.reserve(style.autoPace ? shown : undefined);
     balloon.setText(style.autoPace ? "" : shown);

@@ -40,7 +40,8 @@ export async function opaquePoint(page: Page, agentExpr = "window.a"): Promise<[
     const sx = r.width / c.width;
     const sy = r.height / c.height;
     for (let y = (c.height / 2) | 0; y < c.height; y++) {
-      for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3]) return [r.left + (x + 3) * sx, r.top + (y + 2) * sy] as [number, number];
+      for (let x = 0; x < c.width; x++)
+        if (d[(y * c.width + x) * 4 + 3]) return [r.left + (x + 3) * sx, r.top + (y + 2) * sy] as [number, number];
     }
     throw new Error("絵が見つかりません");
   }, agentExpr);
@@ -65,6 +66,7 @@ export function makeWav(silentSec: number, loudSec: number): number[] {
   v.setUint16(34, 16, true);
   str(36, "data");
   v.setUint32(40, n * 2, true);
-  for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, i < rate * silentSec ? 0 : Math.round(Math.sin(i / 8) * 20000), true);
+  for (let i = 0; i < n; i++)
+    v.setInt16(44 + i * 2, i < rate * silentSec ? 0 : Math.round(Math.sin(i / 8) * 20000), true);
   return [...new Uint8Array(buf)];
 }

@@ -1,4 +1,4 @@
-import type { AcsImage } from "./reader";
+import type { AcsImage } from "./reader.js";
 
 /** BITMAPINFOHEADER のあとに色テーブル・画素が続く DIB (ファイルヘッダーなし) を読む */
 interface Dib {
@@ -16,8 +16,8 @@ function readDib(data: Uint8Array): Dib {
   const bitCount = v.getUint16(14, true);
   const compression = v.getUint32(16, true);
   const colorsUsed = v.getUint32(32, true);
-  if (compression !== 0) throw new Error(`圧縮された DIB (${compression}) には対応していません`);
-  if (![1, 4, 8, 24, 32].includes(bitCount)) throw new Error(`${bitCount} bit の DIB には対応していません`);
+  if (compression !== 0) throw new Error(`Compressed DIB (${compression}) is not supported`);
+  if (![1, 4, 8, 24, 32].includes(bitCount)) throw new Error(`${bitCount}-bit DIB is not supported`);
 
   const height = Math.abs(rawHeight);
   // 高さが正ならボトムアップ (最終行から格納)
@@ -30,7 +30,7 @@ function readDib(data: Uint8Array): Dib {
   }
   const bitsOffset = headerSize + tableCount * 4;
   const stride = Math.ceil((width * bitCount) / 32) * 4;
-  if (bitsOffset + stride * height > data.length) throw new Error("DIB のデータが足りません");
+  if (bitsOffset + stride * height > data.length) throw new Error("DIB data is truncated");
 
   return {
     width,
@@ -48,7 +48,9 @@ function readDib(data: Uint8Array): Dib {
   };
 }
 
-/** アイコンなどの画像を PNG の data URL にする (<img> や favicon に使う。ブラウザ専用) */
+/**
+ * Encodes an image (such as `character.trayIcon`) as a PNG data URL, for an `<img>` or a favicon. Browser only.
+ */
 export function imageToDataUrl(image: AcsImage): string {
   const c = document.createElement("canvas");
   c.width = image.width;

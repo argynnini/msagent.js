@@ -9,15 +9,26 @@ const buffer = (bytes: number[]) => new Uint8Array(bytes).buffer;
 test("readLwv: 単語と音素の時刻 (バイトの位置 → 秒)・IPA・言語 ID を読む", () => {
   const lwv = readLwv(
     buffer(
-      makeLwv(makeWav(1, 0), 0x0409, [[0, 0.5, "hello"], [0.5, 1, "world"]], [
-        [0, 0.25, "0x0068"],
-        [0.25, 0.5, "0x0259"],
-        [0.5, 1, "0x0074+0x0283"],
-      ]),
+      makeLwv(
+        makeWav(1, 0),
+        0x0409,
+        [
+          [0, 0.5, "hello"],
+          [0.5, 1, "world"],
+        ],
+        [
+          [0, 0.25, "0x0068"],
+          [0.25, 0.5, "0x0259"],
+          [0.5, 1, "0x0074+0x0283"],
+        ],
+      ),
     ),
   )!;
   expect(lwv.language).toBe(0x0409);
-  expect(lwv.words).toEqual([{ start: 0, end: 0.5, text: "hello" }, { start: 0.5, end: 1, text: "world" }]);
+  expect(lwv.words).toEqual([
+    { start: 0, end: 0.5, text: "hello" },
+    { start: 0.5, end: 1, text: "world" },
+  ]);
   expect(lwv.phonemes.map((p) => p.ipa)).toEqual([[0x68], [0x259], [0x74, 0x283]]);
   expect(lwv.phonemes[2]).toMatchObject({ start: 0.5, end: 1 });
 });

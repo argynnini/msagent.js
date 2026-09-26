@@ -1,62 +1,83 @@
-import type { AcsImage, Animation } from "./acs/reader";
-import type { Language } from "./language";
+import type { AcsImage, Animation } from "./acs/reader.js";
+import type { Language } from "./language.js";
 
-/** キャラクターファイルに入っている、読み上げの声の設定 (Microsoft Agent の音声合成 = SAPI 4 の値)。無い項目は undefined */
+/**
+ * Voice settings stored in a character file (Microsoft Agent's SAPI 4 text-to-speech values).
+ * Settings that are missing, or left to the speech engine, are `undefined`.
+ */
 export interface VoiceSettings {
-  /** 速さ (1 分あたりの単語数) */
+  /** Speaking speed in words per minute. */
   speed?: number;
-  /** 高さ (Hz) */
+  /** Pitch in Hz. */
   pitch?: number;
-  /** 言語 (BCP 47。例: "en-US") と、その Windows の言語 ID (例: 0x0409) */
+  /** Language as a BCP 47 tag (e.g. `"en-US"`). */
   language?: string;
+  /** Language as a Windows language ID (e.g. `0x0409`). */
   languageId?: number;
-  /** 方言 (空なら undefined) */
+  /** Dialect, if any. */
   dialect?: string;
+  /** Gender of the voice. */
   gender?: "neutral" | "female" | "male";
-  /** 年齢 */
+  /** Age of the voice. */
   age?: number;
-  /** 話し方 (例: "Business") */
+  /** Speaking style (e.g. `"Business"`). */
   style?: string;
-  /** 音声合成エンジンと、その声の GUID (例: L&H TruVoice) */
+  /** GUID of the speech engine (e.g. L&H TruVoice). */
   engine?: string;
+  /** GUID of the engine's voice (the TTS mode). */
   mode?: string;
 }
 
-/** キャラクターファイルに入っている、吹き出しの見た目 (Microsoft Agent の Character Editor で決めたもの) */
+/**
+ * Word balloon appearance, as set in the Microsoft Agent Character Editor and stored in the character file.
+ * Also used to override it with `agent.balloonStyle`.
+ */
 export interface BalloonStyle {
-  /** 行数 */
+  /** Number of lines. */
   lines: number;
-  /** 1 行の文字数 */
+  /** Characters per line (determines the width unless `width` is set). */
   charsPerLine: number;
-  /** 文字・背景・縁の色 (CSS の色。例: "#ffffe1") */
+  /** Text color (a CSS color, e.g. `"#000000"`). */
   foreground: string;
+  /** Background color (a CSS color, e.g. `"#ffffe1"`). */
   background: string;
+  /** Border color (a CSS color). */
   border: string;
+  /** Font family. */
   fontFamily: string;
-  /** 文字の大きさ (px) */
+  /** Font size in CSS pixels. */
   fontSize: number;
-  /** 文字の太さ (400: 標準, 700: 太字) */
+  /** Font weight (`400` normal, `700` bold). */
   fontWeight: number;
+  /** Italic text. */
   italic: boolean;
+  /** Underlined text. */
   underline: boolean;
+  /** Struck-through text. */
   strikethrough: boolean;
-  /** 吹き出しを使うか (false なら speak は声だけ、think は何も出さない) */
+  /** Use the balloon. If `false`, `speak()` is voice only and `think()` shows nothing. */
   enabled: boolean;
-  /** 高さを文の量に合わせるか。false なら lines 行の高さに固定し、はみ出した分は上へ流す */
+  /** Fit the height to the text. If `false`, the height is fixed at `lines` lines and overflowing text scrolls up. */
   sizeToText: boolean;
-  /** しゃべり終えたら自動で閉じるか。false なら次の speak / think、hide、キャラクターのクリック・ドラッグまで出したまま */
+  /**
+   * Close the balloon automatically after speaking. If `false`, it stays until the next `speak()` / `think()`,
+   * `hide()`, or the character is clicked or dragged.
+   */
   autoHide: boolean;
-  /** 読み上げに合わせて、言葉を少しずつ出すか。false なら最初から全文を出す */
+  /** Reveal the words gradually along with the speech. If `false`, the whole text is shown at once. */
   autoPace: boolean;
-  /** 吹き出しの幅 (px。縁と余白を含む)。指定すると charsPerLine より優先する (msagent.js で足したもの) */
+  /** Balloon width in CSS pixels, including border and padding. Takes precedence over `charsPerLine`. (msagent.js extension) */
   width?: number | undefined;
-  /** 吹き出しの高さ (px。縁と余白を含む)。指定すると、この高さに固定し、はみ出した分は上へ流す (sizeToText・lines より優先) */
+  /**
+   * Balloon height in CSS pixels, including border and padding. Fixes the height (overflowing text scrolls up),
+   * taking precedence over `sizeToText` and `lines`. (msagent.js extension)
+   */
   height?: number | undefined;
 }
 
 /**
- * 吹き出しの見た目の既定値 (キャラクターファイルに設定が無いとき。.act など)。
- * Office アシスタントの吹き出しと同じ、薄い黄色に黒い縁
+ * Default balloon appearance, used when the character file has no balloon settings (such as .act files):
+ * light yellow with a black border, like the Office Assistant.
  */
 export const DEFAULT_BALLOON_STYLE: Readonly<BalloonStyle> = {
   lines: 2,
@@ -77,44 +98,53 @@ export const DEFAULT_BALLOON_STYLE: Readonly<BalloonStyle> = {
 };
 
 /**
- * プレイヤー・待機動作・しゃべる機能が使う、キャラクターの共通の形。
- * ACS・ACF (Microsoft Agent) と ACT (Office 97 のアシスタント) の読み込み結果は、どれもこの形で扱う
+ * A parsed character file. ACS and ACF (Microsoft Agent) and ACT (Office 97 Assistant) characters all have this shape.
+ * Create one with `parseCharacter()`, or use `agent.character`.
  */
 export interface Character {
+  /** Width of the character's frames in pixels. */
   readonly width: number;
+  /** Height of the character's frames in pixels. */
   readonly height: number;
-  /** 名前 (ブラウザの言語に一番合うもの。getName() で言語を選べる) */
+  /** Name in the language that best matches the browser's. Use `getName()` to choose the language. */
   readonly name: string | undefined;
-  /** 紹介文 (ブラウザの言語に一番合うもの。getDescription() で言語を選べる) */
+  /** Description in the language that best matches the browser's. Use `getDescription()` to choose the language. */
   readonly description: string | undefined;
-  /** 名前・紹介文が入っている言語 (BCP 47。例: ["en", "ja-JP"])。言語ごとに入っていなければ空 */
+  /** Languages the name and description are stored in, as BCP 47 tags (e.g. `["en", "ja-JP"]`). May be empty. */
   readonly languages: readonly string[];
-  /** 指定した言語の名前 (無ければ近い言語。省略時はブラウザの言語) */
+  /** Name in the given language, or the closest one available. Default: the browser's languages. */
   getName(language?: Language | readonly Language[]): string | undefined;
-  /** 指定した言語の紹介文 (無ければ近い言語。省略時はブラウザの言語) */
+  /** Description in the given language, or the closest one available. Default: the browser's languages. */
   getDescription(language?: Language | readonly Language[]): string | undefined;
-  /** 作者が入れたおまけの文字 (本家の ExtraData。言語ごと。無ければ undefined) */
+  /** Extra text the author stored, in the given language or the closest one. Same as Microsoft Agent's `ExtraData`. */
   getExtraData(language?: Language | readonly Language[]): string | undefined;
-  /** キャラクターファイルの版 (本家の Version。例: "2.1"。無ければ undefined) */
+  /** Version of the character file (e.g. `"2.1"`), if known. Same as Microsoft Agent's `Version`. */
   readonly version: string | undefined;
-  /** 吹き出しの見た目 (入っていなければ undefined) */
+  /** Balloon appearance stored in the file, if any. */
   readonly balloon: BalloonStyle | undefined;
+  /** Animations by name. */
   readonly animations: Map<string, Animation>;
-  /** タスクトレイ用の小さなアイコン (無ければ undefined) */
+  /** Small icon for the taskbar / system tray, if any. */
   readonly trayIcon: AcsImage | undefined;
-  /** 読み上げの声の設定 (無い項目は undefined) */
+  /** Voice settings. */
   readonly voice: VoiceSettings;
-  /** キャラクターの GUID (例: "{4E574F44-B521-11D0-9E9A-00C04FD7081F}")。無ければ undefined */
+  /** The character's GUID (e.g. `"{4E574F44-B521-11D0-9E9A-00C04FD7081F}"`), if any. */
   readonly guid: string | undefined;
+  /** Number of images. */
   readonly imageCount: number;
-  /** 状態 (例: "IdlingLevel1"、大文字小文字は問わない) に割り当てられたアニメーション名。無ければ空 */
+  /** Names of the animations assigned to a state (e.g. `"IdlingLevel1"`, case-insensitive). Empty if none. */
   stateAnimations(state: string): string[];
+  /**
+   * Returns an image, decoded to RGBA.
+   *
+   * @throws If the index is out of range.
+   */
   getImage(index: number): AcsImage;
-  /** 効果音 (WAV) の生データ。存在しなければ undefined */
+  /** Raw data (WAV) of a sound effect, or `undefined` if it does not exist. */
   getSound(index: number): Uint8Array | undefined;
   /**
-   * アニメーションのコマを取り寄せる (ACF のキャラクターだけ。ACS / ACT は最初から全部あるので無い)。
-   * 取り寄せるまで、animations のそのアニメーションのコマは空
+   * Downloads the frames of animations (ACF characters only; ACS and ACT files are complete, so they lack this method).
+   * Until then, those animations in `animations` have no frames.
    */
   prepare?(names: readonly string[]): Promise<void>;
 }

@@ -1,4 +1,4 @@
-import type { BalloonStyle } from "./character";
+import type { BalloonStyle } from "./character.js";
 
 /** 吹き出しを出す向き (例: top-left = キャラクターの左上) */
 type Side = "top-left" | "top-right" | "bottom-left" | "bottom-right";
@@ -16,6 +16,11 @@ const TIP_INSET = 30;
  */
 export class Balloon {
   readonly element: HTMLDivElement;
+  /**
+   * スクリーンリーダーに読ませる、見えない要素 (.msagent-live)。吹き出しの文は少しずつ伸びるので、
+   * 吹き出しそのものを読ませると何度も読み直される。こちらに全文を 1 度だけ入れる
+   */
+  readonly live: HTMLDivElement;
   private readonly content: HTMLDivElement;
   private side: Side | undefined;
   private thinking = false;
@@ -36,6 +41,13 @@ export class Balloon {
     this.content = document.createElement("div");
     this.content.className = "msagent-content";
     this.element.append(tip, this.content);
+    // 同じ文を 2 度読まれないように、見える吹き出しは読ませない (文は .msagent-live に残る)
+    this.element.setAttribute("aria-hidden", "true");
+    this.live = document.createElement("div");
+    this.live.className = "msagent-live";
+    this.live.setAttribute("role", "status");
+    this.live.setAttribute("aria-live", "polite");
+    this.live.setAttribute("aria-atomic", "true");
     this.setStyle(style);
   }
 
@@ -94,9 +106,17 @@ export class Balloon {
     if (!was) this.onVisibleChange?.(true);
   }
 
+  /** 出す文の全文を、スクリーンリーダーに読ませる */
+  announce(text: string, lang: string) {
+    this.live.lang = lang;
+    this.live.textContent = text;
+  }
+
   hide() {
     const was = this.visible;
     this.element.style.display = "none";
+    // 次に同じ文を出したときも読まれるように、空にしておく
+    this.live.textContent = "";
     if (was) this.onVisibleChange?.(false);
   }
 
@@ -158,7 +178,8 @@ export class Balloon {
       left: side.endsWith("left") ? cx - w + TIP_INSET : cx - TIP_INSET,
       top: side.startsWith("top") ? a.top - h - this.gap : a.bottom + this.gap,
     });
-    const fits = ({ left, top }: { left: number; top: number }) => left >= 0 && top >= 0 && left + w <= vw && top + h <= vh;
+    const fits = ({ left, top }: { left: number; top: number }) =>
+      left >= 0 && top >= 0 && left + w <= vw && top + h <= vh;
     const side = SIDES.find((s) => fits(place(s))) ?? SIDES[0]!;
     const pos = place(side);
     if (this.side !== side) {

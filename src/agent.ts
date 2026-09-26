@@ -1,27 +1,41 @@
-import { AcfCharacter, isAcfFile, type AcfOptions } from "./acf/reader";
-import { AcsPlayer } from "./acs/player";
-import { AcsCharacter } from "./acs/reader";
-import { ActCharacter, isActFile } from "./act/reader";
-import { audioOutput, registerAudioClient } from "./audio";
-import { animateCandidates, findAnimation, restFrame, stateAnimation, thinkingAnimation } from "./animations";
-import { Balloon } from "./balloon";
-import { DEFAULT_BALLOON_STYLE, type BalloonStyle, type Character } from "./character";
-import { AgentCommands, type GlobalVoiceCommand, type VoiceMatch } from "./commands";
-import { CommandsWindow, type CommandsWindowContent } from "./commandswindow";
-import { pointerDetail, type AgentEventListener, type AgentEventMap, type HelpCause, type MoveCause, type VisibilityCause } from "./events";
-import { IdleController, isIdleAnimation } from "./idle";
-import { languageTag, type Language } from "./language";
-import { Listener, recognitionClass, type HeardAlternative, type ListenCause, type ListenMode, type SrStatus } from "./listen";
-import { ListeningTip } from "./listentip";
-import { PopupMenu, type MenuEntry } from "./menu";
-import { attachPointerInput } from "./pointer";
-import { RequestQueue, type Task } from "./queue";
-import { AgentRequestError, RequestError, type AgentRequest, type RequestType } from "./request";
-import { Speaker } from "./speak";
-import { injectStyles } from "./styles";
-import { Talk } from "./talk";
-import { TaskbarIcon } from "./taskbar";
-import { findVoice, pickVoice, voiceParams, type SpeakParams } from "./voice";
+import { AcfCharacter, isAcfFile, type AcfOptions } from "./acf/reader.js";
+import { AcsPlayer } from "./acs/player.js";
+import { AcsCharacter } from "./acs/reader.js";
+import { ActCharacter, isActFile } from "./act/reader.js";
+import { audioOutput, registerAudioClient } from "./audio.js";
+import { animateCandidates, findAnimation, restFrame, stateAnimation, thinkingAnimation } from "./animations.js";
+import { Balloon } from "./balloon.js";
+import { DEFAULT_BALLOON_STYLE, type BalloonStyle, type Character } from "./character.js";
+import { AgentCommands, type GlobalVoiceCommand, type VoiceMatch } from "./commands.js";
+import { CommandsWindow, type CommandsWindowContent } from "./commandswindow.js";
+import {
+  pointerDetail,
+  type AgentEventListener,
+  type AgentEventMap,
+  type HelpCause,
+  type MoveCause,
+  type VisibilityCause,
+} from "./events.js";
+import { IdleController, isIdleAnimation } from "./idle.js";
+import { languageTag, type Language } from "./language.js";
+import {
+  Listener,
+  recognitionClass,
+  type HeardAlternative,
+  type ListenCause,
+  type ListenMode,
+  type SrStatus,
+} from "./listen.js";
+import { ListeningTip } from "./listentip.js";
+import { PopupMenu, type MenuEntry } from "./menu.js";
+import { attachPointerInput } from "./pointer.js";
+import { RequestQueue, type Task } from "./queue.js";
+import { AgentRequestError, RequestError, type AgentRequest, type RequestType } from "./request.js";
+import { Speaker } from "./speak.js";
+import { injectStyles } from "./styles.js";
+import { Talk } from "./talk.js";
+import { TaskbarIcon } from "./taskbar.js";
+import { findVoice, pickVoice, voiceParams, type SpeakParams } from "./voice.js";
 
 export type {
   AgentEventListener,
@@ -33,113 +47,144 @@ export type {
   MoveCause,
   PointerDetail,
   VisibilityCause,
-} from "./events";
-export type { ListenCause, ListenMode, SrStatus } from "./listen";
+} from "./events.js";
+export type { ListenCause, ListenMode, SrStatus } from "./listen.js";
 
+/** Options for {@link Agent} and `msagent.load()`. */
 export interface AgentOptions {
-  /** キャラクターを置く要素 (既定: document.body) */
+  /** Element the character is placed in. Default: `document.body`. */
   container?: HTMLElement;
-  /** 効果音を鳴らすか (既定: true)。ブラウザの制限で、ページが一度クリックされるまでは鳴らない */
+  /**
+   * Play the character's sound effects. Default: `true`.
+   * Browsers block audio until the user has interacted with the page once.
+   */
   sound?: boolean;
-  /** speak() で声に出して読み上げるか (既定: true)。false なら吹き出しと口の動きだけ */
+  /** Read `speak()` text aloud with speech synthesis. Default: `true`. If `false`, only the balloon and mouth move. */
   voice?: boolean;
   /**
-   * speak() / think() の文の、読み上げの制御タグ (\Pau=500\ や SAPI 5 の <silence/> など) を使うか (既定: true)。
-   * false なら、タグも文字としてそのまま読み、吹き出しに出す (agent.tags と同じ。msagent.js で足したもの)
+   * Interpret speech output tags in `speak()` / `think()` text (such as `\Pau=500\` or SAPI 5 `<silence/>`).
+   * Default: `true`. If `false`, tags are spoken and shown as plain text. Same as {@link Agent.tags}.
+   * (msagent.js extension)
    */
   tags?: boolean;
-  /** 何もしていない間、ときどき待機動作 (Idle 系) を再生するか (既定: true) */
+  /** Play idle animations from time to time while the character is doing nothing. Default: `true`. */
   idle?: boolean;
-  /** name / description の言語 (BCP 47 の "ja" など、または Windows の言語 ID)。省略時はブラウザの言語 */
+  /**
+   * Language for `name` / `description` and speech: a BCP 47 tag (`"ja"`, `"en-US"`) or a Windows language ID
+   * (`0x0411`). A list is tried in order. Default: the browser's languages.
+   */
   language?: Language | readonly Language[];
-  /** 表示の倍率 (既定: 1 = キャラクターファイルのままの大きさ) */
+  /** Display scale. Default: `1` (the size in the character file). */
   scale?: number;
-  /** 吹き出しの見た目。キャラクターファイルの設定の上に、指定した項目だけを重ねる (agent.balloonStyle と同じ) */
+  /**
+   * Balloon appearance. Only the given properties are layered over the character file's settings.
+   * Same as {@link Agent.balloonStyle}.
+   */
   balloon?: Partial<BalloonStyle>;
-  /** キャラクターを右クリックしたときに、メニューを出すか (既定: true。本家の AutoPopupMenu と同じ) */
+  /** Show the popup menu when the character is right-clicked. Default: `true`. Same as Microsoft Agent's `AutoPopupMenu`. */
   autoPopupMenu?: boolean;
   /**
-   * 聞き取りキー (本家の Listening key)。押している間、声のコマンドを聞く。KeyboardEvent の key か code
-   * (例: "ScrollLock"、"F8")。既定: なし (listen() でだけ聞く)
+   * Listening key: voice commands are recognized while this key is held down. A `KeyboardEvent` `key` or `code`
+   * (e.g. `"ScrollLock"`, `"F8"`). Default: none (listen only via `listen()`). Same as Microsoft Agent's Listening key.
    */
   listeningKey?: string;
   /**
-   * 聞き取りキーを離してから、聞き続ける秒数 (既定: 0 = すぐやめる。本家の Listening key の time-out。本家の既定は 2)。
-   * その時に話している途中なら、言い終えるまで聞く
+   * Seconds to keep listening after the listening key is released. Default: `0` (stop immediately).
+   * If the user is in the middle of speaking, listening continues until they finish.
+   * Same as Microsoft Agent's Listening key time-out (whose default is 2).
    */
   listeningKeyTimeout?: number;
-  /** 聞いている間、キャラクターの下に聞き取りのヒントを出すか (既定: true。本家の Listening Tip) */
+  /** Show the Listening Tip under the character while listening. Default: `true`. */
   listeningTip?: boolean;
   /**
-   * 命令の失敗を例外にするか (既定: false。本家の RaiseRequestErrors。本家の既定は true だが、msagent.js では false)。
-   * true なら、失敗した命令を await すると AgentRequestError になり、無いアニメーションの play() などはその場で例外を投げる
+   * Turn request failures into exceptions. Default: `false` (Microsoft Agent's `RaiseRequestErrors` defaults to
+   * `true`). If `true`, awaiting a failed request rejects with {@link AgentRequestError}, and calls that fail up
+   * front (such as `play()` with an unknown animation) throw.
    */
   raiseRequestErrors?: boolean;
   /**
-   * タスクバーのアイコンを出すか (既定: false。本家の Character Taskbar Icon)。画面の右下に出し、
-   * クリックで隠れたキャラクターを出し直し、右クリックでメニューを出す
+   * Show a taskbar icon at the bottom right of the page. Default: `false`. Clicking it shows a hidden character;
+   * right-clicking opens the popup menu. Same as Microsoft Agent's Character Taskbar Icon.
    */
   taskbarIcon?: boolean;
   /**
-   * 読み上げに使う声 (ブラウザの声の voiceURI か名前。本家の TTSModeID)。既定: 言語と、キャラクターの声の性別から選ぶ
+   * Voice used for speech: the `voiceURI` or name of a browser voice. Default: chosen from the language and the
+   * character's voice gender. Same as Microsoft Agent's `TTSModeID`.
    */
   ttsModeId?: string;
+  /**
+   * Language for speech recognition (`listen()` and the listening key): a BCP 47 tag such as `"ja-JP"`. Default: the
+   * speech language ({@link AgentOptions.language}, or the browser's language). Same as Microsoft Agent's `SRModeID`.
+   */
+  srModeId?: string;
 }
 
-/** speak() の 2 つ目の引数 (true / false なら hold と同じ) */
+/** The second argument of {@link Agent.speak}. `true` / `false` is the same as `{ hold }`. */
 export interface SpeakOptions {
-  /** 読み終えても吹き出しを閉じず、closeBalloon() まで次の命令に進まない */
+  /** Keep the balloon open after speaking, and do not start the next request until `closeBalloon()` is called. */
   hold?: boolean;
   /**
-   * 音声ファイルでしゃべる (本家の Speak の Url と同じ。.wav / .mp3 など、ブラウザで鳴らせるもの)。
-   * 音の大きさに合わせて口を動かし、text は吹き出しに出す (目印 \Mrk\ も使える)
+   * Speak with an audio file instead of speech synthesis (any format the browser can play, such as .wav or .mp3).
+   * The mouth follows the audio volume and `text` is shown in the balloon (`\Mrk\` bookmarks still work).
+   * Same as the `Url` argument of Microsoft Agent's `Speak`.
    */
   url?: string | URL | Blob | ArrayBuffer;
-  /**
-   * 声に出すか (この 1 回だけ。省略時は agent.voice)。false なら、吹き出しと口の動きだけ
-   */
+  /** Read aloud for this call only. Default: {@link Agent.voice}. If `false`, only the balloon and mouth move. */
   voice?: boolean;
-  /** 読み上げの制御タグを使うか (この 1 回だけ。省略時は agent.tags)。false なら、タグも文字としてそのまま */
+  /** Interpret speech output tags for this call only. Default: {@link Agent.tags}. */
   tags?: boolean;
 }
 
-/** think() の 2 つ目の引数 */
+/** The second argument of {@link Agent.think}. */
 export interface ThinkOptions {
   /**
-   * true なら、考えごとの吹き出しのまま声に出して読み、口も動かす (msagent.js で足したもの。本家の Think は声を出さない)。
-   * 読み上げの制御タグも使える
+   * Read the text aloud (and move the mouth) while keeping the thought balloon. Speech output tags work too.
+   * (msagent.js extension; Microsoft Agent's `Think` is always silent)
    */
   voice?: boolean;
-  /** 読み上げの制御タグを使うか (この 1 回だけ。省略時は agent.tags)。false なら、タグも文字としてそのまま */
+  /** Interpret speech output tags for this call only. Default: {@link Agent.tags}. */
   tags?: boolean;
 }
 
+/** Options for {@link Agent.hide}. */
 export interface HideOptions {
   /**
-   * true なら、順番待ちを捨てて、すぐに隠れる。
-   * 省略時 (false) は Microsoft Agent と同じく順番待ちに入り、前の命令が終わってから隠れる
+   * Discard the queue and hide right away. By default (`false`) the request is queued like in Microsoft Agent,
+   * and the character hides after the earlier requests finish.
    */
   immediate?: boolean;
 }
 
-/** stop() / stopAll() / stopCurrent() の設定 */
+/** Options for {@link Agent.stop}, {@link Agent.stopAll} and {@link Agent.stopCurrent}. */
 export interface StopOptions {
   /**
-   * true なら、アニメーションを終わりの動き (終了分岐) をせずに、その場で切り、止まっているときの絵に戻す。
-   * 省略時 (false) は、本家と同じく終わりの動きをたどって自然に終わらせる
+   * Cut the animation where it is, without playing its exit branch, and return to the rest pose.
+   * By default (`false`) the animation follows its exit branch and ends naturally, like in Microsoft Agent.
    */
   immediate?: boolean;
 }
 
-/** stopAll() で選べる種類 (本家の StopAll と同じ。play には gestureAt、speak には think も含む) */
+/**
+ * Request kinds for {@link Agent.stopAll}. `"play"` includes `gestureAt`, `"speak"` includes `think`, and `"move"`
+ * is `moveTo`. Same as Microsoft Agent's `StopAll`.
+ */
 export type StopType = "play" | "speak" | "move";
 
 const STOP_TYPES: Record<RequestType, StopType | undefined> = {
-  play: "play", gestureAt: "play", speak: "speak", think: "speak", moveTo: "move",
-  show: undefined, hide: undefined, delay: undefined, wait: undefined, interrupt: undefined, get: undefined,
+  play: "play",
+  gestureAt: "play",
+  speak: "speak",
+  think: "speak",
+  moveTo: "move",
+  show: undefined,
+  hide: undefined,
+  delay: undefined,
+  wait: undefined,
+  interrupt: undefined,
+  get: undefined,
 };
 
-/** get() で取り寄せるものの種類 (本家の Get の Type と同じ。大文字小文字は問わない) */
+/** What {@link Agent.get} loads. Case-insensitive. Same as the `Type` argument of Microsoft Agent's `Get`. */
 export type GetType = "animation" | "state" | "wavefile";
 
 /** get("state", …) で、まとめて指定できる状態 (Gesturing なら GesturingDown / Left / Right / Up の全部) */
@@ -158,17 +203,21 @@ const DEFAULT_TIMEOUT_MS = 5000;
 /** 音声コマンドの窓を開く・閉じる声のコマンド (本家の Global Commands) */
 const OPEN_COMMANDS_VOICE =
   "((open | show) [the] commands [window] | what can I say [now] | (コマンド | こまんど) [の] [一覧] [を] (見せて | みせて | 開いて | ひらいて | 表示して) | (何 | なん) (と | て) (言えば | いえば) [いい])";
-const CLOSE_COMMANDS_VOICE = "(close [the] commands [window] | (コマンド | こまんど) [の] [一覧] [を] (閉じて | とじて))";
+const CLOSE_COMMANDS_VOICE =
+  "(close [the] commands [window] | (コマンド | こまんど) [の] [一覧] [を] (閉じて | とじて))";
 
 /** 聞き取りのヒントに、聞こえた文を出しておく時間 (ms) */
 const HEARD_TIP_MS = 3000;
 
 /** 隠れているときの speak / think の失敗の理由 */
-const HIDDEN = "キャラクターが隠れています";
+const HIDDEN = "The character is hidden";
 
 /**
- * ACS・ACF (Microsoft Agent) か ACT (Office 97 のアシスタント) を、中身から見分けて読み込む。
- * ACF なら、options.baseUrl が、アニメーション (ACA) のファイル名の基準の URL になる
+ * Parses a character file, detecting the format from its contents: ACS or ACF (Microsoft Agent) or ACT
+ * (Office 97 Assistant). For ACF, `options.baseUrl` is the URL the animation (.aca) file names are resolved against.
+ *
+ * @param data - The contents of the character file.
+ * @throws If the data is not a supported character file.
  */
 export function parseCharacter(data: ArrayBuffer, options: AcfOptions = {}): Character {
   if (isAcfFile(data)) return new AcfCharacter(data, options);
@@ -188,38 +237,54 @@ let topmost: Agent | undefined;
 const agents = new Set<Agent>();
 
 /**
- * キャラクター 1 体。
- * show / hide / play / speak / think / moveTo / gestureAt / delay は順番待ちに入り、前のものが終わってから 1 つずつ実行される
+ * One character on the page.
+ *
+ * Like in Microsoft Agent, `show` / `hide` / `play` / `speak` / `think` / `moveTo` / `gestureAt` / `delay` /
+ * `wait` / `interrupt` / `get` are queued and run one at a time, each after the previous one finishes.
+ * Each returns an {@link AgentRequest}, which can be awaited.
+ *
+ * Usually created with `msagent.load()`; construct it directly when you already have a parsed {@link Character}.
+ *
+ * ```js
+ * const agent = await msagent.load("merlin.acs");
+ * agent.show();
+ * agent.play("Greet");
+ * await agent.speak("Hello!");
+ * ```
  */
 export class Agent extends EventTarget {
-  /** キャラクターの要素 (div.msagent)。この中に canvas がある */
+  /** The character's element (`div.msagent`), which contains {@link Agent.canvas}. */
   readonly element: HTMLDivElement;
+  /** The canvas the character is drawn on. */
   readonly canvas: HTMLCanvasElement;
+  /** The animation player that draws frames and plays sound effects. */
   readonly player: AcsPlayer;
-  /** speak() で声に出すか */
+  /** Read `speak()` text aloud with speech synthesis. See {@link AgentOptions.voice}. */
   voice: boolean;
-  /** speak() / think() の文の、読み上げの制御タグを使うか。false なら、タグも文字としてそのまま (AgentOptions の tags を参照) */
+  /** Interpret speech output tags in `speak()` / `think()` text. See {@link AgentOptions.tags}. */
   tags: boolean;
-  /** name / description の言語 (BCP 47 か Windows の言語 ID)。undefined ならブラウザの言語 */
-  language: Language | readonly Language[] | undefined;
-  /** 右クリックのメニューに足す項目 (本家の Commands と同じ) */
+  private currentLanguage: Language | readonly Language[] | undefined;
+  /** Commands shown in the popup menu and recognized by voice. Same as Microsoft Agent's `Commands`. */
   readonly commands = new AgentCommands();
   /**
-   * 音声コマンドの窓 (本家の CommandsWindow)。いま声で言えるコマンドの一覧。visible で開く・閉じる。
-   * 開いている間にコマンドを変えたら refresh() で出し直す
+   * The Voice Commands Window, listing the commands that can be spoken now. Open or close it with `visible`;
+   * call `refresh()` after changing commands while it is open. Same as Microsoft Agent's `CommandsWindow`.
    */
   readonly commandsWindow: CommandsWindow;
-  /** キャラクターを右クリックしたときに、メニューを出すか (本家の AutoPopupMenu と同じ) */
+  /** Show the popup menu when the character is right-clicked. Same as Microsoft Agent's `AutoPopupMenu`. */
   autoPopupMenu: boolean;
-  /** 聞き取りキー (KeyboardEvent の key か code。例: "ScrollLock")。undefined なら使わない (本家の Listening key) */
+  /** Listening key (`KeyboardEvent` `key` or `code`, e.g. `"ScrollLock"`), or `undefined` for none. See {@link AgentOptions.listeningKey}. */
   listeningKey: string | undefined;
-  /** 聞き取りキーを離してから、聞き続ける秒数 (0 ならすぐやめる。話している途中なら、言い終えるまで聞く) */
+  /** Seconds to keep listening after the listening key is released. See {@link AgentOptions.listeningKeyTimeout}. */
   listeningKeyTimeout: number;
-  /** 聞いている間、聞き取りのヒントを出すか (本家の Listening Tip) */
+  /** Show the Listening Tip while listening. */
   listeningTip: boolean;
-  /** 命令の失敗を例外にするか (本家の RaiseRequestErrors。AgentOptions の raiseRequestErrors を参照) */
+  /** Turn request failures into exceptions. See {@link AgentOptions.raiseRequestErrors}. */
   raiseRequestErrors: boolean;
-  /** キャラクターをクリック・ドラッグしてヘルプモードが終わったときに、helpcomplete で渡す番号 (本家の HelpContextID) */
+  /**
+   * Number passed in `helpcomplete` when Help mode ends by clicking or dragging the character.
+   * Same as Microsoft Agent's `HelpContextID`.
+   */
   helpContextId: number | undefined;
 
   private readonly balloon: Balloon;
@@ -256,9 +321,16 @@ export class Agent extends EventTarget {
   private taskbar: TaskbarIcon | undefined;
   /** 代入した声 (voiceURI か名前。undefined なら言語と性別から選ぶ) */
   private ttsVoice: string | undefined;
+  /** 代入した聞き取りの言語 (undefined なら読み上げと同じ言語) */
+  private srLanguage: string | undefined;
   private readonly cleanups: (() => void)[] = [];
 
+  /**
+   * @param character - A parsed character (see {@link parseCharacter}).
+   * @param options - Initial settings.
+   */
   constructor(
+    /** The parsed character file. */
     readonly character: Character,
     options: AgentOptions = {},
   ) {
@@ -267,6 +339,8 @@ export class Agent extends EventTarget {
     injectStyles();
     this.element = document.createElement("div");
     this.element.className = "msagent";
+    // スクリーンリーダーには、名前の付いた 1 枚の絵として見せる
+    this.element.setAttribute("role", "img");
     this.element.style.display = "none";
     this.canvas = document.createElement("canvas");
     this.element.append(this.canvas);
@@ -274,7 +348,7 @@ export class Agent extends EventTarget {
     this.player.soundEnabled = options.sound ?? true;
     this.voice = options.voice ?? true;
     this.tags = options.tags ?? true;
-    this.language = options.language;
+    this.currentLanguage = options.language;
     this.autoPopupMenu = options.autoPopupMenu ?? true;
     this.listeningKey = options.listeningKey;
     this.listeningKeyTimeout = options.listeningKeyTimeout ?? 0;
@@ -290,7 +364,12 @@ export class Agent extends EventTarget {
       () => String(++zIndexCounter),
     );
     this.applyScale(options.scale ?? 1);
-    (options.container ?? document.body).append(this.element, this.balloon.element, this.tip.element);
+    (options.container ?? document.body).append(
+      this.element,
+      this.balloon.element,
+      this.balloon.live,
+      this.tip.element,
+    );
 
     const speaker = new Speaker(() => this.player);
     this.talk = new Talk({
@@ -327,7 +406,7 @@ export class Agent extends EventTarget {
       busy: () => this.hidden || this.queue.busy || this.speaking || this.player.isPaused || this.listener.listening,
     });
     this.listener = new Listener({
-      lang: () => this.speechLanguage ?? (typeof navigator === "undefined" ? "en-US" : navigator.language),
+      lang: () => this.recognitionLanguage,
       onStart: (mode) => this.onListenStart(mode),
       onHearing: () => this.playListenState("Hearing"),
       onHeard: (alternatives) => this.onHeard(alternatives),
@@ -353,7 +432,9 @@ export class Agent extends EventTarget {
     if (this.idleEnabled) this.idle.start();
     this.watchAnimations();
     this.taskbarIcon = options.taskbarIcon ?? false;
+    this.refreshLabel();
     this.ttsVoice = options.ttsModeId || undefined;
+    this.srLanguage = options.srModeId || undefined;
 
     attachPointerInput({
       element: this.element,
@@ -384,7 +465,8 @@ export class Agent extends EventTarget {
       const before = this.position;
       this.reposition();
       const after = this.position;
-      if (!this.hidden && (before.x !== after.x || before.y !== after.y)) this.emit("move", { ...after, by: "reposition" });
+      if (!this.hidden && (before.x !== after.x || before.y !== after.y))
+        this.emit("move", { ...after, by: "reposition" });
     });
     // 聞き取りキー: 押している間聞く (いちばん手前のキャラクターだけ)
     this.listenTo(window, "keydown", (e) => {
@@ -408,8 +490,9 @@ export class Agent extends EventTarget {
   // --- 基本の命令 ---
 
   /**
-   * 登場する。キャラクターの Showing の状態に割り当てられたアニメーション (多くは Show) を再生する。
-   * fast なら、アニメーションなしですぐ出す。Microsoft Agent と同じく順番待ちに入る
+   * Shows the character, playing the animation assigned to its Showing state (usually `Show`). Queued.
+   *
+   * @param fast - Show right away without the animation.
    */
   show(fast?: boolean): AgentRequest {
     return this.queueShow(fast, "program");
@@ -440,60 +523,85 @@ export class Agent extends EventTarget {
   }
 
   /**
-   * 退場する。キャラクターの Hiding の状態に割り当てられたアニメーション (多くは Hide) を再生してから消す。
-   * fast なら、アニメーションなしですぐ消す。
-   * Microsoft Agent と同じく順番待ちに入り、前の命令が終わってから隠れる。すぐ隠れたいときは { immediate: true }
+   * Hides the character after playing the animation assigned to its Hiding state (usually `Hide`).
+   * Queued like in Microsoft Agent, so the character hides after the earlier requests finish;
+   * pass `{ immediate: true }` to hide right away.
+   *
+   * @param fast - Hide without the animation.
+   * @param callback - Called once the character is hidden.
    */
   hide(fast?: boolean, callback?: () => void, options: HideOptions = {}): AgentRequest {
     return this.queueHide(fast, callback, options, "program");
   }
 
   /**
-   * アニメーションを再生する。timeout (ms、既定 5000。0 なら無制限) を過ぎても終わらなければ、終了分岐で自然に終わらせる。
-   * 終わったら callback。キャラクターに無いアニメーションなら false (raiseRequestErrors なら例外)。
-   * 最後の姿勢 (指す・見るなど) は、次のアニメーションまで保ち、戻りの動きはその前に再生する
+   * Plays an animation. Queued. The final pose (pointing, looking, etc.) is held until the next animation, and the
+   * return animation is played just before that.
+   *
+   * @param animation - Animation name (case-insensitive).
+   * @param timeout - Milliseconds after which a looping animation is ended through its exit branch. `0` means no limit.
+   * @param callback - Called when the animation finishes.
+   * @returns `false` if the character has no such animation (throws instead with `raiseRequestErrors`).
    */
   play(animation: string, timeout = DEFAULT_TIMEOUT_MS, callback?: () => void): AgentRequest | false {
     const name = findAnimation(this.character, animation);
-    if (!name) return this.fail(RequestError.animationNotFound, `アニメーションがありません: ${animation}`);
+    if (!name) return this.fail(RequestError.animationNotFound, `Animation not found: ${animation}`);
     return this.enqueue("play", (complete) => this.runPlay(name, timeout, callback, complete));
   }
 
-  /** 待機動作以外から、アニメーションを 1 つ選んで再生する */
+  /**
+   * Plays a random non-idle animation (what double-clicking the character does).
+   *
+   * @returns `false` if there is no animation to choose from.
+   */
   animate(): AgentRequest | false {
     const names = animateCandidates(this.character);
     const name = names[Math.floor(Math.random() * names.length)];
     return name !== undefined && this.play(name);
   }
 
-  /** アニメーション名の一覧 */
+  /** Names of all the character's animations. */
   animations(): string[] {
     return [...this.character.animations.keys()];
   }
 
+  /** Whether the character has an animation with this name (case-insensitive). */
   hasAnimation(name: string): boolean {
     return findAnimation(this.character, name) !== undefined;
   }
 
   /**
-   * 吹き出しでしゃべる (声に出すのは agent.voice が true のとき。{ voice: false } なら、この 1 回だけ声を出さない)。
-   * hold なら、読み終えても吹き出しを閉じず、closeBalloon() まで次の命令に進まない
+   * Speaks text in a word balloon, reading it aloud when {@link Agent.voice} is `true`. Queued.
+   * Fails while the character is hidden.
+   *
+   * The text may contain speech output tags (see {@link parseSpeechTags}), and `"A|B|C"` picks one alternative at
+   * random, like Microsoft Agent.
+   *
+   * @param options - `true` / `false` is the same as `{ hold }`.
    */
   speak(text: string, options?: boolean | SpeakOptions): AgentRequest {
     text = pickAlternative(text);
-    const { hold, url, voice, tags } = typeof options === "object" ? options : { hold: options, url: undefined, voice: undefined, tags: undefined };
+    const { hold, url, voice, tags } =
+      typeof options === "object" ? options : { hold: options, url: undefined, voice: undefined, tags: undefined };
     return this.enqueue("speak", (complete) => {
       // 隠れている間は、吹き出しも声も出せない (本家も隠れたキャラクターは音を出せず、失敗になる)
       if (this.hidden) return complete("failed", HIDDEN, RequestError.hidden);
       const gen = this.queue.generation;
-      void this.talk.speak(text, { hold: !!hold, url, voice, tags: tags ?? this.tags }, complete, () => gen !== this.queue.generation);
+      void this.talk.speak(
+        text,
+        { hold: !!hold, url, voice, tags: tags ?? this.tags },
+        complete,
+        () => gen !== this.queue.generation,
+      );
     });
   }
 
   /**
-   * 考えごとの吹き出し (雲形) に文を出す (本家の Think と同じ)。声は出さず、口も動かさない。
-   * キャラクターの声の速さで読んだときの時間をかけて文字を出し (声なしの speak と同じ)、出し終えたら次の命令に進み、少しして吹き出しを閉じる。
-   * { voice: true } なら、考えごとの吹き出しのまま声に出して読み、読み終えたら次の命令に進む
+   * Shows text in a thought balloon, without speech or mouth movement. Queued. Same as Microsoft Agent's `Think`.
+   *
+   * The text appears at the pace of the character's speaking speed; the next request starts once it is all shown,
+   * and the balloon closes shortly after. With `{ voice: true }` the text is read aloud in the thought balloon.
+   * Fails while the character is hidden.
    */
   think(text: string, options: ThinkOptions = {}): AgentRequest {
     text = pickAlternative(text);
@@ -507,27 +615,37 @@ export class Agent extends EventTarget {
     });
   }
 
-  /** 吹き出しを閉じる (読み上げ中ならやめる) */
+  /** Closes the balloon, stopping speech if it is in progress. */
   closeBalloon(): void {
     this.talk.close();
   }
 
   /**
-   * (x, y) の方を指す。キャラクターの Gesturing〜 の状態に割り当てられたアニメーション
-   * (無ければ Gesture〜、Look〜) を再生する。向きは順番が来たときの位置で決める。指す動きが 1 つも無ければ false
+   * Points toward a position on the page, playing the animation assigned to the `Gesturing*` state for that direction
+   * (falling back to `Gesture*`, then `Look*`). Queued; the direction is decided when the request starts.
+   *
+   * @param x - Viewport x in CSS pixels (like `clientX`).
+   * @param y - Viewport y in CSS pixels (like `clientY`).
+   * @returns `false` if the character has no gesture animations (throws instead with `raiseRequestErrors`).
    */
   gestureAt(x: number, y: number): AgentRequest | false {
-    if (!DIRECTIONS.some((d) => this.gestureAnimation(d))) return this.fail(RequestError.stateNotFound, "指す動きがありません");
+    if (!DIRECTIONS.some((d) => this.gestureAnimation(d)))
+      return this.fail(RequestError.stateNotFound, "The character has no gesture animations");
     return this.enqueue("gestureAt", (complete) => {
       const name = this.gestureAnimation(this.direction(x, y));
-      if (!name) return complete("failed", "その向きの動きがありません", RequestError.stateNotFound);
+      if (!name) return complete("failed", "No gesture animation for that direction", RequestError.stateNotFound);
       this.runPlay(name, DEFAULT_TIMEOUT_MS, undefined, complete);
     });
   }
 
   /**
-   * (x, y) へ移動する。Move〜 のアニメーションがあれば、Microsoft Agent と同じく
-   * 移動前の動き → 最後のコマのまま移動 → 移動後の動き (戻りアニメか終了分岐) の順にする。duration が 0 なら、すぐ移る
+   * Moves the character's top-left corner to a position. Queued.
+   * If the character has `Moving*` / `Move*` animations, it plays the start of the animation, slides holding the last
+   * frame, then plays the return animation, like Microsoft Agent. While hidden, it moves instantly.
+   *
+   * @param x - Left in CSS pixels from the viewport's left edge.
+   * @param y - Top in CSS pixels from the viewport's top edge.
+   * @param duration - Milliseconds the slide takes. `0` moves instantly.
    */
   moveTo(x: number, y: number, duration = 1000): AgentRequest {
     return this.enqueue("moveTo", async (complete, request) => {
@@ -557,7 +675,11 @@ export class Agent extends EventTarget {
     });
   }
 
-  /** 次の命令まで、time (ms、既定 250) 待つ */
+  /**
+   * Waits before the next request. Queued.
+   *
+   * @param time - Milliseconds to wait.
+   */
   delay(time = 250): AgentRequest {
     return this.enqueue("delay", (complete) => {
       const timer = window.setTimeout(() => complete(), time);
@@ -569,60 +691,70 @@ export class Agent extends EventTarget {
   }
 
   /**
-   * 別のキャラクターの命令が終わるまで、このキャラクターの順番待ちを止める (本家の Wait と同じ)。
-   * 2 体の掛け合いで、相手がしゃべり終えてから、こちらがしゃべるときに使う
+   * Holds this character's queue until another character's request finishes. Same as Microsoft Agent's `Wait`.
+   * Use it for conversations between characters. Waiting for this character's own request fails.
    *
    * ```js
-   * const q = genie.speak("なぜニワトリは道を渡ったの？");
+   * const q = genie.speak("Why did the chicken cross the road?");
    * robby.wait(q);
-   * robby.speak("わからないなあ");
+   * robby.speak("I don't know.");
    * ```
    */
   wait(request: AgentRequest): AgentRequest {
     return this.enqueue("wait", (complete) => {
       // 自分の命令を待つと、順番によっては終わらなくなる (本家もできない)
-      if (request.agent === this) return complete("failed", "自分の命令は待てません", RequestError.waitSelf);
+      if (request.agent === this)
+        return complete("failed", "An agent cannot wait for its own request", RequestError.waitSelf);
       if (request.done) return complete();
-      void request.then(() => complete(), () => complete());
+      void request.then(
+        () => complete(),
+        () => complete(),
+      );
       this.queue.onAbort(() => complete());
     });
   }
 
   /**
-   * 順番が来たら、別のキャラクターの命令を止める (本家の Interrupt と同じ)。
-   * その命令が実行中なら終わらせて相手の次の命令へ進め、順番待ちなら取り除く。相手の順番待ちは捨てない
+   * When its turn comes, stops another character's request. Same as Microsoft Agent's `Interrupt`.
+   * A running request is ended and that character moves on to its next request; a queued one is removed.
+   * The rest of the other character's queue is kept. Interrupting this character's own request fails; use `stop()`.
    */
   interrupt(request: AgentRequest): AgentRequest {
     return this.enqueue("interrupt", (complete) => {
-      if (request.agent === this) return complete("failed", "自分の命令は止められません (stop を使う)", RequestError.interruptSelf);
+      if (request.agent === this)
+        return complete("failed", "An agent cannot interrupt its own request (use stop)", RequestError.interruptSelf);
       request.agent.stop(request);
       complete();
     });
   }
 
   /**
-   * アニメーション・状態・音声ファイルを、先に取り寄せる (本家の Get と同じ)。
-   * .acf のキャラクターは、アニメーションのコマ (.aca) を取り寄せる (取り寄せられなければ failed)。
-   * .acs / .act はファイルを丸ごと読み込み済みなので、アニメーションと状態は、あるかどうかを確かめるだけ
-   * (無ければ failed)。"wavefile" は URL を読み込んでおき (ブラウザのキャッシュに入る)、後の speak(text, { url }) を速くする。
-   * name はカンマ区切りで複数指定できる。queue が true (既定) なら順番待ちに入り、false ならすぐ実行する
+   * Loads animations, states or sound files ahead of time. Same as Microsoft Agent's `Get`.
+   *
+   * For .acf characters, animation data (.aca) is downloaded; the request fails if it cannot be.
+   * .acs / .act files are already fully loaded, so this only checks that the animations or states exist.
+   * `"wavefile"` fetches the URL (into the browser cache) so that a later `speak(text, { url })` starts faster.
+   *
+   * @param name - One name, or several separated by commas.
+   * @param queue - Queue the request (default). If `false`, it runs right away.
    *
    * ```js
    * agent.get("animation", "Wave, Greet");
-   * agent.get("state", "Gesturing"); // GesturingDown / Left / Right / Up の全部
+   * agent.get("state", "Gesturing"); // all of GesturingDown / Left / Right / Up
    * agent.get("wavefile", "hello.wav", false);
    * ```
    */
   get(type: GetType, name: string, queue = true): AgentRequest {
-    const task: Task = (complete) => void this.runGet(type, name).then(([description, number]) =>
-      number ? complete("failed", description, number) : complete(),
-    );
+    const task: Task = (complete) =>
+      void this.runGet(type, name).then(([description, number]) =>
+        number ? complete("failed", description, number) : complete(),
+      );
     return queue ? this.enqueue("get", task) : this.queue.runNow("get", task);
   }
 
   /**
-   * いまのアニメーションを、終了分岐で自然に終わらせる (しゃべっている途中なら、読み終えたら吹き出しを閉じる)。
-   * { immediate: true } なら、アニメーションをその場で切る
+   * Ends the current animation naturally through its exit branch (with `{ immediate: true }`, cuts it where it is).
+   * If the character is speaking, the balloon closes when it finishes. The queue is not touched.
    */
   stopCurrent(options: StopOptions = {}): void {
     this.endAnimation(options);
@@ -630,10 +762,11 @@ export class Agent extends EventTarget {
   }
 
   /**
-   * 順番待ちを全部捨て、いまのアニメーションを終わらせ、吹き出しを閉じる。
-   * 登場・退場のアニメーションの途中なら、それは最後まで再生する (本家と同じ)。
-   * request を渡すと、その命令だけを止める (実行中なら終わらせて次へ、順番待ちなら取り除く)。
-   * { immediate: true } なら、アニメーションを終わりの動きをせずに、その場で切る
+   * Discards the whole queue, ends the current animation and closes the balloon.
+   * A Show or Hide animation in progress still plays to the end, like Microsoft Agent.
+   *
+   * @param request - Stop only this request: a running one is ended and the next one starts; a queued one is removed.
+   * @param options - `{ immediate: true }` cuts the animation where it is instead of playing its exit branch.
    */
   stop(request?: AgentRequest, options: StopOptions = {}): void {
     if (request) return this.stopRequest(request, options);
@@ -648,8 +781,10 @@ export class Agent extends EventTarget {
   }
 
   /**
-   * 命令を種類ごとに止める (本家の StopAll と同じ)。types: "play" (play / gestureAt) / "speak" (speak / think) / "move" (moveTo)。
-   * 省略すると、登場・退場の途中も含めて、全部止める。{ immediate: true } なら、アニメーションをその場で切る
+   * Stops requests by kind. Same as Microsoft Agent's `StopAll`.
+   *
+   * @param types - Kinds to stop. If omitted, everything stops, including a Show or Hide animation in progress.
+   * @param options - `{ immediate: true }` cuts the animation where it is.
    */
   stopAll(types?: StopType | readonly StopType[], options: StopOptions = {}): void {
     if (types === undefined) {
@@ -667,16 +802,17 @@ export class Agent extends EventTarget {
     if (current && matches(current)) this.interruptCurrent(options);
   }
 
-  /** アニメーションを一時停止する */
+  /** Pauses the animation. */
   pause(): void {
     this.player.pause();
   }
 
+  /** Resumes an animation paused with {@link Agent.pause}. */
   resume(): void {
     this.player.resume();
   }
 
-  /** キャラクターと吹き出しを、画面の中に収める */
+  /** Moves the character (and its balloon) back inside the viewport. Done automatically when the window is resized. */
   reposition(): void {
     if (this.element.style.display === "none") return;
     const r = this.element.getBoundingClientRect();
@@ -686,8 +822,8 @@ export class Agent extends EventTarget {
   // --- msagent.js で足したもの ---
 
   /**
-   * 表示の倍率 (1 = キャラクターファイルのままの大きさ)。変えても、足もと (下端の真ん中) の位置は変わらない。
-   * 拡大するときは、ドット絵がぼけないように、ぼかさずに引き伸ばす
+   * Display scale (`1` = the size in the character file). Changing it keeps the bottom center in place and fires
+   * `resize`. Enlarged images are scaled without smoothing so the pixel art stays sharp. (msagent.js extension)
    */
   get scale(): number {
     return this.currentScale;
@@ -705,12 +841,13 @@ export class Agent extends EventTarget {
   }
 
   /**
-   * 吹き出しの見た目 (いま使われているもの。キャラクターファイルの設定 + 指定した項目)。
-   * 代入すると、キャラクターファイルの設定の上に、指定した項目だけを重ねる。undefined や {} でファイルの設定に戻す。
+   * The balloon appearance in use: the character file's settings plus any overrides.
+   * Assigning layers only the given properties over the character file's settings; `undefined` or `{}` restores them.
+   * (msagent.js extension)
    *
    * ```js
    * agent.balloonStyle = { background: "#222", foreground: "#fff", fontSize: 16 };
-   * agent.balloonStyle = { ...agent.balloonStyle, border: "red" }; // 今の見た目に足す
+   * agent.balloonStyle = { ...agent.balloonStyle, border: "red" }; // add to the current style
    * ```
    */
   get balloonStyle(): BalloonStyle {
@@ -723,7 +860,7 @@ export class Agent extends EventTarget {
     this.balloon.setStyle(this.balloonStyle);
   }
 
-  /** 表示の幅 (px)。代入すると、縦横の比を保ったまま大きさを変える (本家の Width と同じ) */
+  /** Displayed width in CSS pixels. Assigning resizes the character, keeping its aspect ratio. Same as Microsoft Agent's `Width`. */
   get width(): number {
     return Math.round(this.character.width * this.currentScale);
   }
@@ -732,7 +869,7 @@ export class Agent extends EventTarget {
     this.scale = px / this.character.width;
   }
 
-  /** 表示の高さ (px)。代入すると、縦横の比を保ったまま大きさを変える (本家の Height と同じ) */
+  /** Displayed height in CSS pixels. Assigning resizes the character, keeping its aspect ratio. Same as Microsoft Agent's `Height`. */
   get height(): number {
     return Math.round(this.character.height * this.currentScale);
   }
@@ -742,8 +879,9 @@ export class Agent extends EventTarget {
   }
 
   /**
-   * 名前 (language の言語。省略時はブラウザの言語)。代入すると変えられる (本家の Name と同じ。聞き取りのヒント・
-   * 「隠れて」の声のコマンド・タスクバーのアイコンにも使う)。undefined を代入すると、キャラクターファイルのものに戻る
+   * The character's name, in {@link Agent.language}. Also used in the Listening Tip, the "hide" voice command and the
+   * taskbar icon. Assign to change it; assign `undefined` to go back to the name in the character file.
+   * Same as Microsoft Agent's `Name`.
    */
   get name(): string | undefined {
     return this.customName ?? this.character.getName(this.language);
@@ -751,15 +889,29 @@ export class Agent extends EventTarget {
 
   set name(name: string | undefined) {
     this.customName = name;
-    this.taskbar?.refresh();
+    this.refreshLabel();
+  }
+
+  /** Language for `name` / `description` and speech. `undefined` uses the browser's languages. See {@link AgentOptions.language}. */
+  get language(): Language | readonly Language[] | undefined {
+    return this.currentLanguage;
+  }
+
+  set language(language: Language | readonly Language[] | undefined) {
+    this.currentLanguage = language;
+    this.refreshLabel();
   }
 
   /**
-   * 読み上げに使う声 (本家の TTSModeID)。ブラウザの声 (speechSynthesis.getVoices()) の voiceURI か名前を代入すると、
-   * その声で読む (制御タグで言語・性別を変えた部分は除く)。undefined か "" を代入すると、言語と、キャラクターの声の
-   * 性別から選ぶ (既定) に戻る。読み出すと、いま使う声の voiceURI を返す。声に出さない (voice / audioOutput.enabled が
-   * false)、ブラウザが読み上げに対応していない、合う声が無いときは "" (本家と同じ)。
-   * 代入した声が見つからないときは、言語と性別から選ぶ (ブラウザの声の一覧は、あとから届くことがあるので、代入では確かめない)
+   * Voice used for speech. Same as Microsoft Agent's `TTSModeID`.
+   *
+   * Assign the `voiceURI` or name of a browser voice (`speechSynthesis.getVoices()`) to use it, except in parts whose
+   * language or gender is changed with speech output tags. Assign `undefined` or `""` to go back to choosing a voice
+   * from the language and the character's voice gender (the default). If the assigned voice is not found, the default
+   * choice is used; assignment is not validated because browsers may load their voice list later.
+   *
+   * Reading returns the `voiceURI` of the voice in use, or `""` when speech is off (`voice` or
+   * `audioOutput.enabled` is `false`), unsupported, or no voice matches.
    */
   get ttsModeId(): string {
     if (!this.voice || !audioOutput.enabled || typeof speechSynthesis === "undefined") return "";
@@ -773,7 +925,27 @@ export class Agent extends EventTarget {
     this.ttsVoice = id || undefined;
   }
 
-  /** 紹介文 (language の言語。省略時はブラウザの言語)。代入すると変えられる (本家の Description と同じ)。undefined で戻る */
+  /**
+   * Language for speech recognition, as a BCP 47 tag. Same as Microsoft Agent's `SRModeID`.
+   *
+   * Browsers do not let pages choose a recognition engine, so this picks the language instead. Assign a tag such as
+   * `"en-US"` to listen in that language while speaking in another; assign `undefined` or `""` to go back to the speech
+   * language ({@link Agent.language}, or the browser's language). Takes effect the next time listening starts.
+   *
+   * Reading returns the language used for listening, or `""` when the browser has no speech recognition.
+   */
+  get srModeId(): string {
+    return recognitionClass() ? this.recognitionLanguage : "";
+  }
+
+  set srModeId(id: string | undefined) {
+    this.srLanguage = id || undefined;
+  }
+
+  /**
+   * The character's description, in {@link Agent.language}. Assign to change it; assign `undefined` to go back to the
+   * description in the character file. Same as Microsoft Agent's `Description`.
+   */
   get description(): string | undefined {
     return this.customDescription ?? this.character.getDescription(this.language);
   }
@@ -783,9 +955,11 @@ export class Agent extends EventTarget {
   }
 
   /**
-   * タスクバーのアイコンを出すか (本家の Character Taskbar Icon)。画面の右下に出す。ポインターを重ねると名前を出し、
-   * クリックで出す (見えていれば手前に出す)。右クリックでメニュー (隠れている間は「表示」と音声コマンドの窓だけ)。
-   * アイコンのクリックも click / dblclick で知らせる (detail.source が "taskbarIcon")
+   * Show a taskbar icon at the bottom right of the page. Same as Microsoft Agent's Character Taskbar Icon.
+   *
+   * Hovering shows the name; clicking shows the character (or brings it to the front); right-clicking opens the popup
+   * menu (only Show and the Voice Commands Window item while hidden). Clicks on the icon also fire `click` /
+   * `dblclick` with `detail.source === "taskbarIcon"`.
    */
   get taskbarIcon(): boolean {
     return this.taskbar !== undefined;
@@ -807,22 +981,36 @@ export class Agent extends EventTarget {
     });
   }
 
-  /** しゃべっている途中か (speak(text, true) で吹き出しを出したままのときも true) */
+  /** Whether the character is speaking. Also `true` while a balloon is held open by `speak(text, true)`. */
   get speaking(): boolean {
     return this.talk.speaking;
   }
 
-  /** イベントを受け取る (addEventListener と同じ。detail に中身が入る) */
+  /**
+   * Adds an event listener. The same as `addEventListener`, with types; the event data is in `event.detail`.
+   *
+   * ```js
+   * agent.on("command", (e) => console.log(e.detail.name));
+   * ```
+   *
+   * @returns This agent, for chaining.
+   */
   on<K extends keyof AgentEventMap>(type: K, listener: AgentEventListener<K>, options?: AddEventListenerOptions): this {
     this.addEventListener(type, listener as EventListener, options);
     return this;
   }
 
+  /**
+   * Removes an event listener added with {@link Agent.on}.
+   *
+   * @returns This agent, for chaining.
+   */
   off<K extends keyof AgentEventMap>(type: K, listener: AgentEventListener<K>): this {
     this.removeEventListener(type, listener as EventListener);
     return this;
   }
 
+  /** Play the character's sound effects. See {@link AgentOptions.sound}. */
   get sound(): boolean {
     return this.player.soundEnabled;
   }
@@ -831,17 +1019,20 @@ export class Agent extends EventTarget {
     this.player.soundEnabled = on;
   }
 
-  /** 画面上の位置 (clientX / clientY) に、キャラクターの絵があるか (透明な部分なら false) */
+  /** Whether the character's image covers a point in the viewport (`false` over transparent pixels). */
   hitTest(clientX: number, clientY: number): boolean {
     return this.player.hitTest(clientX, clientY);
   }
 
-  /** 見えているか (本家の Visible と同じ。読むだけ。出す・隠すは show() / hide()) */
+  /** Whether the character is visible. Read-only; use `show()` / `hide()`. Same as Microsoft Agent's `Visible`. */
   get visible(): boolean {
     return !this.hidden;
   }
 
-  /** 左上の位置 (px、画面の左上から。本家の Left / Top と同じ)。代入すると、アニメーションなしですぐ移る */
+  /**
+   * Left edge in CSS pixels from the viewport's left edge. Assigning moves the character instantly.
+   * Same as Microsoft Agent's `Left`.
+   */
   get left(): number {
     return this.position.x;
   }
@@ -850,6 +1041,10 @@ export class Agent extends EventTarget {
     this.moveNow(x, this.position.y);
   }
 
+  /**
+   * Top edge in CSS pixels from the viewport's top edge. Assigning moves the character instantly.
+   * Same as Microsoft Agent's `Top`.
+   */
   get top(): number {
     return this.position.y;
   }
@@ -858,17 +1053,23 @@ export class Agent extends EventTarget {
     this.moveNow(this.position.x, y);
   }
 
-  /** 最後に動いた原因 (本家の MoveCause と同じ) */
+  /** What last moved the character. Same as Microsoft Agent's `MoveCause`. */
   get moveCause(): MoveCause {
     return this.lastMoveCause;
   }
 
-  /** 最後に出た・消えた原因 (本家の VisibilityCause と同じ。まだ一度も出ていなければ "none") */
+  /**
+   * What last showed or hid the character, or `"none"` if it has never been shown.
+   * Same as Microsoft Agent's `VisibilityCause`.
+   */
   get visibilityCause(): VisibilityCause | "none" {
     return this.lastVisibilityCause;
   }
 
-  /** 待機動作 (Idle 系) を自動で再生するか (本家の IdleOn と同じ)。false にすると、待機状態を自分で扱える */
+  /**
+   * Play idle animations automatically. Set to `false` to handle the idle state yourself (`idlestart` / `idlecomplete`).
+   * Same as Microsoft Agent's `IdleOn`.
+   */
   get idleOn(): boolean {
     return this.idleEnabled;
   }
@@ -884,9 +1085,10 @@ export class Agent extends EventTarget {
   }
 
   /**
-   * 吹き出しが出ているか (本家の Balloon.Visible と同じ)。
-   * false を代入すると閉じる (しゃべっている途中なら、読み終えたらすぐ閉じる)。
-   * true を代入すると、最後の文をもう一度出す (自動では閉じない。隠れている間や、吹き出しを使わないキャラクターでは何もしない)
+   * Whether the balloon is shown. Same as Microsoft Agent's `Balloon.Visible`.
+   *
+   * Assigning `false` closes it (while speaking, it closes as soon as the speech finishes). Assigning `true` shows the
+   * last text again without closing it automatically; this does nothing while hidden or if the character has no balloon.
    */
   get balloonVisible(): boolean {
     return this.balloon.visible;
@@ -897,40 +1099,42 @@ export class Agent extends EventTarget {
     this.talk.setBalloonVisible(visible);
   }
 
-  /** 作者が入れたおまけの文字 (本家の ExtraData。language の言語) */
+  /** Extra text the character's author stored in the file, in {@link Agent.language}. Same as Microsoft Agent's `ExtraData`. */
   get extraData(): string | undefined {
     return this.character.getExtraData(this.language);
   }
 
-  /** キャラクターファイルの版 (本家の Version) */
+  /** Version of the character file. Same as Microsoft Agent's `Version`. */
   get version(): string | undefined {
     return this.character.version;
   }
 
-  /** キャラクターの GUID (本家の GUID) */
+  /** The character's GUID. Same as Microsoft Agent's `GUID`. */
   get guid(): string | undefined {
     return this.character.guid;
   }
 
-  /** キャラクターファイルのままの大きさ (本家の OriginalWidth / OriginalHeight) */
+  /** Width in the character file, in pixels. Same as Microsoft Agent's `OriginalWidth`. */
   get originalWidth(): number {
     return this.character.width;
   }
 
+  /** Height in the character file, in pixels. Same as Microsoft Agent's `OriginalHeight`. */
   get originalHeight(): number {
     return this.character.height;
   }
 
-  /** 読み上げの速さ (語/分) と高さ (Hz)。キャラクターファイルの設定 (本家の Speed / Pitch。読むだけ) */
+  /** Speaking speed from the character file, in words per minute. Read-only. Same as Microsoft Agent's `Speed`. */
   get speed(): number | undefined {
     return this.character.voice.speed;
   }
 
+  /** Voice pitch from the character file, in Hz. Read-only. Same as Microsoft Agent's `Pitch`. */
   get pitch(): number | undefined {
     return this.character.voice.pitch;
   }
 
-  /** 効果音を鳴らすか (本家の SoundEffectsOn。sound と同じ) */
+  /** Alias of {@link Agent.sound}. Same as Microsoft Agent's `SoundEffectsOn`. */
   get soundEffectsOn(): boolean {
     return this.sound;
   }
@@ -940,8 +1144,10 @@ export class Agent extends EventTarget {
   }
 
   /**
-   * いちばん手前に出す (本家の Activate と同じ。複数のキャラクターがいるとき)。
-   * キャラクターを表示したとき・クリックやドラッグしたときも、自動で手前に出る。隠れている間はできず、false を返す
+   * Brings the character in front of the others and makes it the one that receives input (fires `activateinput`).
+   * Also happens automatically when the character is shown, clicked or dragged. Same as Microsoft Agent's `Activate`.
+   *
+   * @returns `false` while the character is hidden.
    */
   activate(): boolean {
     if (this.hidden) return false;
@@ -979,14 +1185,16 @@ export class Agent extends EventTarget {
     Agent.setTopmost(next);
   }
 
-  /** いちばん手前にいるか (本家の Active と同じ考え方) */
+  /** Whether this is the frontmost visible character, which receives input such as the listening key. */
   get active(): boolean {
     return topmost === this && !this.hidden;
   }
 
   /**
-   * 右クリックのメニューを、画面上の (x, y) に出す (本家の ShowPopupMenu と同じ)。
-   * commands に足した項目と、「隠す」が並ぶ。隠れている間は出せず、false を返す
+   * Opens the popup menu at a position in the viewport, listing the {@link Agent.commands} and Hide.
+   * Same as Microsoft Agent's `ShowPopupMenu`.
+   *
+   * @returns `false` while the character is hidden.
    */
   showPopupMenu(x: number, y: number): boolean {
     if (this.hidden || this.destroyed) return false;
@@ -1008,7 +1216,14 @@ export class Agent extends EventTarget {
           onSelect: () => {
             // ヘルプモードなら、コマンドの代わりにヘルプを知らせる (本家と同じ)
             if (this.helpMode) return this.completeHelp(c.name, "command", c.helpContextId);
-            this.emit("command", { name: c.name, source: "menu", confidence: 100, voice: "", count: 1, alternatives: [] });
+            this.emit("command", {
+              name: c.name,
+              source: "menu",
+              confidence: 100,
+              voice: "",
+              count: 1,
+              alternatives: [],
+            });
           },
         });
       }
@@ -1020,7 +1235,13 @@ export class Agent extends EventTarget {
       const ja = this.isJapanese;
       entries.push({
         kind: "item",
-        caption: open ? (ja ? "音声コマンドを閉じる(&C)" : "&Close Voice Commands") : ja ? "音声コマンドを開く(&O)" : "&Open Voice Commands",
+        caption: open
+          ? ja
+            ? "音声コマンドを閉じる(&C)"
+            : "&Close Voice Commands"
+          : ja
+            ? "音声コマンドを開く(&O)"
+            : "&Open Voice Commands",
         enabled: true,
         onSelect: () => {
           if (this.helpMode) return this.completeHelp("", open ? "closeCommandsWindow" : "openCommandsWindow");
@@ -1047,15 +1268,22 @@ export class Agent extends EventTarget {
         },
       });
     }
-    this.menu = new PopupMenu(entries, x, y, { fontName: this.commands.fontName, fontSize: this.commands.fontSize, help: this.helpMode });
+    this.menu = new PopupMenu(entries, x, y, {
+      fontName: this.commands.fontName,
+      fontSize: this.commands.fontSize,
+      help: this.helpMode,
+    });
     // どのキャラクターよりも手前に出す (キャラクターは手前に出すたびに z-index が増える)
     this.menu.element.style.zIndex = String(++zIndexCounter);
   }
 
   /**
-   * 声のコマンドを聞く (本家の Listen と同じ)。true なら 10 秒聞き (聞いている途中なら延ばす)、1 つ言い終えたらやめる。
-   * false ならやめる。聞いた言葉は、commands の voice と照らし合わせて command イベントで知らせる。
-   * 音声認識が使えない (ブラウザが対応していないなど) ときと、聞き取りキーを押している間の listen(false) は false
+   * Starts or stops listening for voice commands, using the Web Speech API. Same as Microsoft Agent's `Listen`.
+   *
+   * `true` listens for up to 10 seconds (extending the time if already listening) and stops after one utterance.
+   * What was heard is matched against the `voice` grammars of {@link Agent.commands} and reported with a `command` event.
+   *
+   * @returns `false` if speech recognition is unavailable, or for `listen(false)` while the listening key is held.
    */
   listen(on: boolean): boolean {
     if (this.destroyed) return false;
@@ -1066,9 +1294,11 @@ export class Agent extends EventTarget {
   }
 
   /**
-   * ヘルプモード (本家の HelpModeOn と同じ)。true の間は、キャラクターのクリック・ドラッグ、メニューの項目、声のコマンドを選ぶと、
-   * click / dragstart / command の代わりに helpcomplete イベントが来て、ヘルプモードが終わる (右クリックのメニューは出せる)。
-   * false を代入してやめたときは、helpcomplete は来ない
+   * Help mode. Same as Microsoft Agent's `HelpModeOn`.
+   *
+   * While `true`, clicking or dragging the character, choosing a menu item or speaking a voice command fires
+   * `helpcomplete` instead of `click` / `dragstart` / `command`, and ends Help mode. The popup menu can still be
+   * opened. Setting it to `false` yourself does not fire `helpcomplete`.
    */
   get helpModeOn(): boolean {
     return this.helpMode;
@@ -1079,21 +1309,25 @@ export class Agent extends EventTarget {
     this.element.classList.toggle("msagent-help-mode", on);
   }
 
-  /** 聞いているか */
+  /** Whether the character is listening for voice commands. */
   get listening(): boolean {
     return this.listener.listening;
   }
 
   /**
-   * 音声入力が使えるか (本家の SRStatus と同じ値)。0: 使える / 1: マイクが使えない /
-   * 4: このブラウザには音声認識が無い・認識サービスにつながらない / 5: マイク・音声認識を許可されていない / 6: そのほか。
-   * 許可されているかは、一度聞いてみるまで分からない
+   * Whether speech input is available, with the same values as Microsoft Agent's `SRStatus`:
+   * `0` available, `1` no microphone, `4` no speech recognition in this browser or the service cannot be reached,
+   * `5` microphone or speech recognition not permitted, `6` other error.
+   * Permission is not known until the first attempt to listen.
    */
   get srStatus(): SrStatus {
     return this.listener.srStatus;
   }
 
-  /** 後片付け: 再生・読み上げ・待機動作をやめ、要素を取り除く */
+  /**
+   * Stops animation, speech and idling, fails the pending requests and removes the character's elements from the page.
+   * The agent cannot be used afterwards.
+   */
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
@@ -1113,6 +1347,7 @@ export class Agent extends EventTarget {
     for (const cleanup of this.cleanups) cleanup();
     this.element.remove();
     this.balloon.element.remove();
+    this.balloon.live.remove();
     this.tip.element.remove();
     this.commandsWindow.destroy();
   }
@@ -1130,7 +1365,12 @@ export class Agent extends EventTarget {
   }
 
   /** hide() の中身。cause: 誰が隠したか (右クリックのメニューなら "user") */
-  private queueHide(fast: boolean | undefined, callback: (() => void) | undefined, options: HideOptions, cause: VisibilityCause) {
+  private queueHide(
+    fast: boolean | undefined,
+    callback: (() => void) | undefined,
+    options: HideOptions,
+    cause: VisibilityCause,
+  ) {
     if (options.immediate) {
       // いまの動き (登場・退場の途中でも) と順番待ちを捨てて、すぐ隠れる
       this.transition = undefined;
@@ -1168,20 +1408,25 @@ export class Agent extends EventTarget {
 
   /** get() の中身。できたら ["", 0]、できなければ [理由, 番号] */
   private async runGet(type: GetType, name: string): Promise<[string, number]> {
-    const names = name.split(",").map((n) => n.trim()).filter(Boolean);
+    const names = name
+      .split(",")
+      .map((n) => n.trim())
+      .filter(Boolean);
     switch (type.toLowerCase()) {
       case "animation": {
         const missing = names.find((n) => !findAnimation(this.character, n));
-        if (missing) return [`アニメーションがありません: ${missing}`, RequestError.animationNotFound];
+        if (missing) return [`Animation not found: ${missing}`, RequestError.animationNotFound];
         return this.prepareAnimations(names.map((n) => findAnimation(this.character, n)!));
       }
       case "state": {
         const missing = names.find((n) =>
           (STATE_GROUPS[n.toLowerCase()] ?? [n]).every((state) => this.character.stateAnimations(state).length === 0),
         );
-        if (missing) return [`状態にアニメーションがありません: ${missing}`, RequestError.stateNotFound];
+        if (missing) return [`State has no animations: ${missing}`, RequestError.stateNotFound];
         return this.prepareAnimations(
-          names.flatMap((n) => (STATE_GROUPS[n.toLowerCase()] ?? [n]).flatMap((state) => this.character.stateAnimations(state))),
+          names.flatMap((n) =>
+            (STATE_GROUPS[n.toLowerCase()] ?? [n]).flatMap((state) => this.character.stateAnimations(state)),
+          ),
         );
       }
       case "wavefile":
@@ -1191,12 +1436,15 @@ export class Agent extends EventTarget {
             if (!res.ok) throw new Error(`${res.status} ${res.url}`);
             await res.arrayBuffer();
           } catch (e) {
-            return [`音声ファイルを読み込めません: ${e instanceof Error ? e.message : String(e)}`, RequestError.invalidSound];
+            return [
+              `Failed to load sound file: ${e instanceof Error ? e.message : String(e)}`,
+              RequestError.invalidSound,
+            ];
           }
         }
         return ["", 0];
       default:
-        return [`get() の type が正しくありません: ${type}`, RequestError.invalidGetType];
+        return [`Invalid get() type: ${type}`, RequestError.invalidGetType];
     }
   }
 
@@ -1346,7 +1594,11 @@ export class Agent extends EventTarget {
   /** ヘルプモードを終え、helpcomplete で知らせる (キャラクターなら、キャラクターの helpContextId) */
   private completeHelp(name: string, cause: HelpCause, helpContextId?: number) {
     this.helpModeOn = false;
-    this.emit("helpcomplete", { name, cause, helpContextId: cause === "character" ? this.helpContextId : helpContextId });
+    this.emit("helpcomplete", {
+      name,
+      cause,
+      helpContextId: cause === "character" ? this.helpContextId : helpContextId,
+    });
   }
 
   // --- 内部: 聞き取り ---
@@ -1387,7 +1639,10 @@ export class Agent extends EventTarget {
       sections.push({
         caption: ja ? "全体のコマンド" : "Global Commands",
         items: [
-          { caption: ja ? "音声コマンドを閉じる" : "Close Voice Commands Window", hint: ja ? "「コマンドを閉じて」" : '"close commands window"' },
+          {
+            caption: ja ? "音声コマンドを閉じる" : "Close Voice Commands Window",
+            hint: ja ? "「コマンドを閉じて」" : '"close commands window"',
+          },
           { caption: ja ? `${name}を隠す` : `Hide ${name}`, hint: ja ? "「隠れて」" : `"hide ${name}"` },
         ],
       });
@@ -1396,7 +1651,12 @@ export class Agent extends EventTarget {
     return {
       title: ja ? "音声コマンド" : "Voice Commands",
       closeLabel: ja ? "閉じる" : "Close",
-      notice: status === 0 ? undefined : ja ? `音声認識が使えません (srStatus: ${status})` : `Speech input is not available (srStatus: ${status})`,
+      notice:
+        status === 0
+          ? undefined
+          : ja
+            ? `音声認識が使えません (srStatus: ${status})`
+            : `Speech input is not available (srStatus: ${status})`,
       sections,
     };
   }
@@ -1467,8 +1727,12 @@ export class Agent extends EventTarget {
     this.tipTimer = undefined;
     const caption = this.commands.voiceCaption ?? this.commands.caption;
     const body = this.isJapanese
-      ? caption ? `「${caption}」のコマンドをどうぞ` : "コマンドをどうぞ"
-      : caption ? `for "${caption}" commands` : "for commands";
+      ? caption
+        ? `「${caption}」のコマンドをどうぞ`
+        : "コマンドをどうぞ"
+      : caption
+        ? `for "${caption}" commands`
+        : "for commands";
     this.tip.show(this.tipTitle(true), body);
   }
 
@@ -1478,9 +1742,15 @@ export class Agent extends EventTarget {
     const ja = this.isJapanese;
     const low = best?.command?.confidence !== undefined && best.confidence <= best.command.confidence;
     const body =
-      low && best?.command?.confidenceText ? best.command.confidenceText
-      : best ? (ja ? `「${best.voice}」と聞こえました` : `Heard "${best.voice}"`)
-      : ja ? `「${transcript}」は分かりませんでした` : `Didn't understand "${transcript}"`;
+      low && best?.command?.confidenceText
+        ? best.command.confidenceText
+        : best
+          ? ja
+            ? `「${best.voice}」と聞こえました`
+            : `Heard "${best.voice}"`
+          : ja
+            ? `「${transcript}」は分かりませんでした`
+            : `Didn't understand "${transcript}"`;
     window.clearTimeout(this.tipTimer);
     this.tip.show(this.tipTitle(this.listener.mode === "key"), body);
     this.tipTimer = window.setTimeout(() => {
@@ -1511,6 +1781,17 @@ export class Agent extends EventTarget {
     const first = Array.isArray(this.language) ? this.language[0] : this.language;
     if (first === undefined) return undefined;
     return typeof first === "number" ? languageTag(first) : first;
+  }
+
+  /** 名前が変わったら、スクリーンリーダー向けの名前とタスクバーのアイコンの表示を合わせる */
+  private refreshLabel() {
+    this.element.setAttribute("aria-label", this.name ?? "");
+    this.taskbar?.refresh();
+  }
+
+  /** 聞き取りの言語 (srModeId、無ければ読み上げの言語、それも無ければブラウザの言語) */
+  private get recognitionLanguage(): string {
+    return this.srLanguage ?? this.speechLanguage ?? (typeof navigator === "undefined" ? "en-US" : navigator.language);
   }
 
   /** メニューなどの文言を日本語にするか (agent.language、無ければブラウザの言語) */
@@ -1589,7 +1870,12 @@ export class Agent extends EventTarget {
     });
   }
 
-  private listenTo(target: EventTarget, type: string, handler: (e: Event) => void, options: boolean | AddEventListenerOptions = false) {
+  private listenTo(
+    target: EventTarget,
+    type: string,
+    handler: (e: Event) => void,
+    options: boolean | AddEventListenerOptions = false,
+  ) {
     target.addEventListener(type, handler, options);
     this.cleanups.push(() => target.removeEventListener(type, handler, options));
   }

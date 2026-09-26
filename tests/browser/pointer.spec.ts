@@ -47,7 +47,11 @@ test("絵をつかむとドラッグで動き、透明な部分からは動か�
   await harness.mouse.move(400, 350, { steps: 5 });
   await harness.mouse.up();
   expect(await harness.evaluate(() => [window.a.left, window.a.top])).toEqual([300, 250]);
-  expect(await harness.evaluate(() => (window as unknown as { log: string[] }).log)).toEqual(["dragstart", "dragend", "move"]);
+  expect(await harness.evaluate(() => (window as unknown as { log: string[] }).log)).toEqual([
+    "dragstart",
+    "dragend",
+    "move",
+  ]);
   expect(await harness.evaluate(() => window.a.moveCause)).toBe("drag");
 });
 
@@ -82,7 +86,9 @@ test("click: 左・右・中ボタンと Shift。dblclick は preventDefault で
   ]);
 });
 
-test("右クリックのメニュー: 足した項目・区切り・隠す。アクセスキー・矢印キー・Esc・外のクリック", async ({ harness }) => {
+test("右クリックのメニュー: 足した項目・区切り・隠す。アクセスキー・矢印キー・Esc・外のクリック", async ({
+  harness,
+}) => {
   await harness.evaluate(() => {
     const a = window.a;
     const log: string[] = [];
@@ -126,10 +132,19 @@ test("右クリックのメニュー: 足した項目・区切り・隠す。ア
     window.a.commands.fontSize = 12;
   });
   expect(await harness.evaluate(() => window.a.showPopupMenu(300, 300))).toBe(true);
-  expect(await harness.$eval(".msagent-menu", (e) => [(e as HTMLElement).style.fontFamily, (e as HTMLElement).style.fontSize])).toEqual(["Georgia", "12pt"]);
+  expect(
+    await harness.$eval(".msagent-menu", (e) => [
+      (e as HTMLElement).style.fontFamily,
+      (e as HTMLElement).style.fontSize,
+    ]),
+  ).toEqual(["Georgia", "12pt"]);
   await harness.click(".msagent-menu >> text=隠す");
   await harness.waitForFunction(() => !window.a.visible);
-  expect(await harness.evaluate(() => (window as unknown as { log: string[] }).log)).toEqual(["about", "about", "hide user"]);
+  expect(await harness.evaluate(() => (window as unknown as { log: string[] }).log)).toEqual([
+    "about",
+    "about",
+    "hide user",
+  ]);
 });
 
 declare global {
@@ -150,7 +165,9 @@ test("右クリックのメニューは、何度手前に出したキャラク�
   expect(r.menu).toBeGreaterThan(r.agent);
 });
 
-test("ヘルプモード: キャラクターを押すと click / ドラッグの代わりに helpcomplete。メニューの項目も同じ。終わるとふつうに戻る", async ({ harness }) => {
+test("ヘルプモード: キャラクターを押すと click / ドラッグの代わりに helpcomplete。メニューの項目も同じ。終わるとふつうに戻る", async ({
+  harness,
+}) => {
   await harness.evaluate(() => {
     const a = window.a;
     const log: string[] = [];
@@ -158,7 +175,9 @@ test("ヘルプモード: キャラクターを押すと click / ドラッグの
     a.helpContextId = 10;
     a.commands.add("search", "検索(&S)", { helpContextId: 42 });
     for (const type of ["click", "dragstart", "command", "hide"] as const) a.on(type, () => log.push(type));
-    a.on("helpcomplete", (e) => log.push(`help ${e.detail.cause} ${e.detail.name || "-"} ${e.detail.helpContextId ?? "-"}`));
+    a.on("helpcomplete", (e) =>
+      log.push(`help ${e.detail.cause} ${e.detail.name || "-"} ${e.detail.helpContextId ?? "-"}`),
+    );
     a.helpModeOn = true;
   });
   const pt = await opaquePoint(harness);

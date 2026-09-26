@@ -1,4 +1,4 @@
-import { pointerDetail, type PointerDetail } from "./events";
+import { pointerDetail, type PointerDetail } from "./events.js";
 
 /** ドラッグとみなすまでの動き (px)。これより小さければクリック */
 const DRAG_THRESHOLD = 3;
@@ -23,7 +23,12 @@ export interface PointerHost {
   helpMode(): boolean;
   help(): void;
   /** イベントを受け取る (後片付けで外す) */
-  listen(target: EventTarget, type: string, handler: (e: Event) => void, options?: boolean | AddEventListenerOptions): void;
+  listen(
+    target: EventTarget,
+    type: string,
+    handler: (e: Event) => void,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
 }
 
 /**

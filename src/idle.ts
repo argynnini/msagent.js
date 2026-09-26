@@ -1,5 +1,5 @@
-import type { AcsPlayer } from "./acs/player";
-import type { Character } from "./character";
+import type { AcsPlayer } from "./acs/player.js";
+import type { Character } from "./character.js";
 
 /** 待機中 (放置中) に再生する動きの名前。Merlin: Idle1_1 など / クリッピー: IdleSnooze など / イルカ: Idle(3), DeepIdle1 */
 const IDLE_NAME = /^(Idle|DeepIdle)/i;
@@ -22,15 +22,18 @@ function idleStates(character: Character): string[][] {
 }
 
 /**
- * 待機動作かどうか。状態の一覧に割り当てられているもの (Blink や Sleep など、名前が Idle で始まらないものも含む) と、
- * 名前が Idle / DeepIdle で始まるもの
+ * Whether an animation is an idle animation: one assigned to an `IdlingLevel*` state (including names such as
+ * `Blink` or `Sleep`), or one whose name starts with `Idle` / `DeepIdle`.
  */
 export function isIdleAnimation(character: Character | undefined, name: string | undefined): boolean {
   if (name === undefined) return false;
   return isIdleName(name) || (!!character && idleStates(character).some((names) => names.includes(name)));
 }
 
-/** 待機動作の「深さ」。Idle1_x < Idle2_x < Idle3_x、居眠りや DeepIdle は最深 */
+/**
+ * Idle level (1–3) guessed from an animation name: `Idle1_x` < `Idle2_x` < `Idle3_x`; `DeepIdle`, snoozing and
+ * sleeping are the deepest.
+ */
 export function idleLevel(name: string): number {
   const m = /^Idle(\d)_/i.exec(name);
   if (m) return Math.min(Number(m[1]), MAX_LEVEL);
@@ -38,8 +41,18 @@ export function idleLevel(name: string): number {
   return 1;
 }
 
-/** maxLevel 以下の待機動作から 1 つ選ぶ。深い段階ほど選ばれやすい (重み = 段階の 2 乗)。直前と同じものは、他に候補があれば避ける */
-export function pickIdle(names: Iterable<string>, maxLevel: number, last?: string, random = Math.random): string | undefined {
+/**
+ * Picks an idle animation of level `maxLevel` or lower from animation names (by name only). Deeper levels are more
+ * likely (weighted by the square of the level), and `last` is avoided if there are other choices.
+ *
+ * @param random - Random number source, for tests.
+ */
+export function pickIdle(
+  names: Iterable<string>,
+  maxLevel: number,
+  last?: string,
+  random = Math.random,
+): string | undefined {
   const pool = [...names].filter((n) => IDLE_NAME.test(n) && idleLevel(n) <= maxLevel);
   const fresh = pool.filter((n) => n !== last);
   const src = fresh.length > 0 ? fresh : pool;
@@ -53,8 +66,11 @@ export function pickIdle(names: Iterable<string>, maxLevel: number, last?: strin
 }
 
 /**
- * 放置の段階 (1〜3) に合う待機動作を選ぶ。キャラクターに状態の一覧 (IdlingLevel1〜3) があれば、作者の割り当てに従い
- * (その段階が無ければ、より浅い段階から)、無ければ名前から推測する (pickIdle)。選んだ動作と、その段階を返す
+ * Picks an idle animation for an idle level (1–3). If the character assigns animations to `IdlingLevel1`–`3`, those
+ * are used (falling back to shallower levels); otherwise the choice is made by name with {@link pickIdle}.
+ *
+ * @param last - The previous choice, avoided if there are other choices.
+ * @returns The animation and its level, or `undefined` if the character has no idle animations.
  */
 export function pickIdleFor(
   character: Character,
@@ -76,16 +92,20 @@ export function pickIdleFor(
   return name === undefined ? undefined : { name, level: idleLevel(name) };
 }
 
+/** What {@link IdleController} needs. */
 export interface IdleDeps {
+  /** The player to play idle animations on. */
   player: () => AcsPlayer | undefined;
+  /** The character whose idle animations to use. */
   character: () => Character | undefined;
-  /** 入力中・検索中など、待機動作を始めてはいけない状態 */
+  /** Whether idle animations must not start now (e.g. while a request runs or the user is typing). */
   busy: () => boolean;
 }
 
 /**
- * 何も操作されない間、ときどき待機動作 (Idle 系) を再生する。
- * 放置が長いほど深い段階の動きが出る。ユーザーが触ったら終了分岐で自然に終わらせる。
+ * Plays idle animations from time to time while nothing happens. The longer the character is left alone, the deeper
+ * the idle level. When interrupted, the idle animation ends naturally through its exit branch.
+ * Used by `Agent`; use it directly with an {@link AcsPlayer} to build your own UI.
  */
 export class IdleController {
   private lastActivity = Date.now();
@@ -99,24 +119,25 @@ export class IdleController {
     this.reschedule();
   }
 
+  /** Starts watching for idle time. */
   start() {
     this.stop();
     this.interval = window.setInterval(() => this.tick(), 1000);
   }
 
-  /** 待機動作の見張りをやめる (再生中の待機動作は止めない) */
+  /** Stops watching for idle time. An idle animation already playing is not stopped. */
   stop() {
     window.clearInterval(this.interval);
     this.interval = undefined;
   }
 
-  /** ユーザー操作があった: 放置時間をリセットして、次の待機動作を先送りする */
+  /** Reports activity: resets the idle time and postpones the next idle animation. */
   userActivity() {
     this.lastActivity = Date.now();
     this.reschedule();
   }
 
-  /** 何かのアニメーションが終わった: 少し間を置いてから次の待機動作 */
+  /** Reports that an animation ended, so the next idle animation comes after a short delay. */
   animationEnded() {
     this.reschedule();
   }
@@ -129,7 +150,10 @@ export class IdleController {
     return this.idlePlaying && this.deps.player()?.requestedAnimation === this.lastName;
   }
 
-  /** 再生中の待機動作を終了分岐で終わらせる (長引くときは打ち切る)。待機動作中でなければ即 resolve */
+  /**
+   * Ends a playing idle animation through its exit branch (cutting it off if that takes too long).
+   * Resolves right away if no idle animation is playing.
+   */
   async interrupt(): Promise<void> {
     const player = this.deps.player();
     if (!this.idleActive || !player) return;

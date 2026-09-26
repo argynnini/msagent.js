@@ -1,28 +1,36 @@
-import { Agent, parseCharacter, type AgentOptions } from "./agent";
-import { audioOutput } from "./audio";
-import type { Character } from "./character";
+import { Agent, parseCharacter, type AgentOptions } from "./agent.js";
+import { audioOutput } from "./audio.js";
+import type { Character } from "./character.js";
 
-/** キャラクターファイルの中身。文字列 / URL なら fetch で取ってくる */
+/**
+ * A character file: its bytes, a `File` / `Blob`, or a URL (string or `URL`) to fetch.
+ * A bare name such as `"Merlin"` becomes `path + "Merlin.acs"`.
+ */
 export type CharacterSource = ArrayBuffer | ArrayBufferView | Blob | string | URL;
 
+/** Options for {@link load}: what to load, plus the {@link AgentOptions} for the new agent. */
 export interface LoadOptions extends AgentOptions {
-  /** キャラクター名 ("Merlin" → path + "Merlin.acs")、URL (.acs / .acf / .act)、File / Blob、バイト列 */
+  /**
+   * The character: a name (`"Merlin"` → `path + "Merlin.acs"`), a URL (.acs / .acf / .act), a `File` / `Blob`, or bytes.
+   */
   name: CharacterSource;
+  /** Called with the new agent once it is loaded. */
   successCb?: (agent: Agent) => void;
+  /** Called if loading fails. */
   failCb?: (error: unknown) => void;
-  /** 名前から URL を作るときの前置き (既定: msagent.BASE_PATH) */
+  /** Prefix used to turn a bare name into a URL. Default: `msagent.BASE_PATH`. */
   path?: string;
-  /** キャラクターを置く要素の CSS セレクター (既定: body) */
+  /** CSS selector of the element to place the character in. Default: `document.body`. */
   selector?: string;
   /**
-   * .acf のキャラクターで、読み込みを終える前に取り寄せておくアニメーション (.aca)。状態名 ("Showing" など) かアニメーション名。
-   * "all" なら全部。省略時は、登場・退場・しゃべるときと、止まっているときの絵 (Showing, Hiding, Speaking, RestPose)。
-   * それ以外は、再生するときに取り寄せる (取り寄せる間だけ、動き出すのが遅れる)。agent.get() で先に取り寄せてもよい
+   * For .acf characters: the animations (.aca) to download before loading finishes, as state names (`"Showing"`, ...)
+   * or animation names, or `"all"`. Default: `["Showing", "Hiding", "Speaking", "RestPose"]`.
+   * Other animations are downloaded when first played (delaying them a little); `agent.get()` can fetch them earlier.
    */
   preload?: "all" | readonly string[];
   /**
-   * .acf のキャラクターで、アニメーション (.aca) のファイル名の基準の URL。
-   * 省略時は、.acf を URL で読み込んだならその URL、File / バイト列ならページの URL
+   * For .acf characters: the URL the animation (.aca) file names are resolved against.
+   * Default: the .acf URL if it was loaded from a URL, otherwise the page URL.
    */
   baseUrl?: string | URL;
 }
@@ -56,7 +64,7 @@ async function readSource(source: CharacterSource, path: string): Promise<{ data
   if (source instanceof Blob) return { data: await source.arrayBuffer() };
   const url = typeof source === "string" ? resolveUrl(source, path) : source;
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`キャラクターファイルを取得できません: ${res.status} ${res.url}`);
+  if (!res.ok) throw new Error(`Failed to fetch character file: ${res.status} ${res.url}`);
   return { data: await res.arrayBuffer(), url: res.url };
 }
 
@@ -65,14 +73,21 @@ function isLoadOptions(v: unknown): v is LoadOptions {
 }
 
 /**
- * キャラクターを読み込む。
+ * Loads a character file (.acs / .acf / .act) and creates an {@link Agent}. The agent starts hidden; call `show()`.
  *
  * ```js
  * msagent.load("Merlin", (agent) => agent.show());              // msagent.BASE_PATH + "Merlin.acs"
  * msagent.load({ name: "Merlin", successCb: (agent) => agent.show() });
- * msagent.load({ name: "Merlin", scale: 2 }, (agent) => agent.show()); // 設定とコールバックを分けても同じ
- * const agent = await msagent.load(file);                        // Promise でも受け取れる
+ * msagent.load({ name: "Merlin", scale: 2 }, (agent) => agent.show()); // options and callbacks can be separate
+ * const agent = await msagent.load(file);                        // or use the returned Promise
  * ```
+ *
+ * @param name - The character, or {@link LoadOptions}.
+ * @param successCb - Called with the new agent. Ignored if `name` is options with its own `successCb`.
+ * @param failCb - Called if loading fails. Ignored if `name` is options with its own `failCb`.
+ *   If only `successCb` is given, errors are logged to the console.
+ * @param path - Prefix used to turn a bare name into a URL. Default: `msagent.BASE_PATH`.
+ * @returns The new agent.
  */
 export function load(
   name: CharacterSource | LoadOptions,
@@ -88,19 +103,23 @@ export function load(
     const { data, url } = await readSource(options.name, options.path ?? msagent.BASE_PATH);
     const character = parseCharacter(data, { baseUrl: options.baseUrl ?? url });
     if (character.prepare) await character.prepare(preloadNames(character, options.preload ?? DEFAULT_PRELOAD));
-    const container = options.selector ? (document.querySelector<HTMLElement>(options.selector) ?? undefined) : options.container;
+    const container = options.selector
+      ? (document.querySelector<HTMLElement>(options.selector) ?? undefined)
+      : options.container;
     return new Agent(character, { ...options, container });
   })();
   if (options.successCb || options.failCb) promise.then(options.successCb, options.failCb ?? ((e) => console.error(e)));
   return promise;
 }
 
-/** ライブラリの入り口 (<script> で読み込むと window.msagent になる) */
+/** The library's entry point (`window.msagent` when loaded with a `<script>` tag). */
 export const msagent = {
-  /** 名前だけで load() したときに、前に付ける場所 (例: "/agents/") */
+  /** Prefix added when {@link load} is given a bare name (e.g. `"/agents/"`). */
   BASE_PATH: "",
+  /** See {@link load}. */
   load,
+  /** See {@link Agent}. */
   Agent,
-  /** 全キャラクターの音の設定と状態 (本家の AudioOutput) */
+  /** Audio settings and status shared by all characters. Same as Microsoft Agent's `AudioOutput`. */
   audioOutput,
 };

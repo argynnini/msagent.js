@@ -19,7 +19,9 @@ test("name / description: 代入すると変わり、undefined でキャラク�
   expect(r.restored).toEqual(["マーリン", true]);
 });
 
-test("タスクバーのアイコン: クリックで出し直し、隠れている間の右クリックは「表示」と音声コマンドだけ", async ({ harness }) => {
+test("タスクバーのアイコン: クリックで出し直し、隠れている間の右クリックは「表示」と音声コマンドだけ", async ({
+  harness,
+}) => {
   requireCharacters(CHARACTERS.merlin);
   await harness.evaluate(async () => {
     const log: string[] = [];
@@ -32,30 +34,34 @@ test("タスクバーのアイコン: クリックで出し直し、隠れてい
   expect(await harness.$eval(".msagent-taskbar-icon", (e) => e.firstElementChild!.tagName)).toBe("IMG");
 
   await harness.click(".msagent-taskbar-icon");
-  await harness.waitForFunction(() => (window as any).a.visible);
-  await harness.evaluate(() => (window as any).a.hide(true));
+  await harness.waitForFunction(() => window.a.visible);
+  await harness.evaluate(() => window.a.hide(true));
 
   await harness.click(".msagent-taskbar-icon", { button: "right" });
   const items = await harness.$$eval(".msagent-menu .msagent-menu-item", (els) => els.map((e) => e.textContent));
   expect(items.at(-1)).toBe("表示(S)");
   expect(items.some((t) => t!.includes("隠す"))).toBe(false);
   await harness.click(".msagent-menu >> text=表示");
-  await harness.waitForFunction(() => (window as any).a.visible);
+  await harness.waitForFunction(() => window.a.visible);
 
   // 見えているときの右クリックは、キャラクターと同じメニュー
   await harness.click(".msagent-taskbar-icon", { button: "right" });
   expect(await harness.$$eval(".msagent-menu .msagent-menu-item", (els) => els.at(-1)!.textContent)).toBe("隠す(H)");
   await harness.keyboard.press("Escape");
 
-  const log = await harness.evaluate(() => (window as any).log as string[]);
+  const log = await harness.evaluate(() => window.log);
   expect(log).toEqual([
-    "click:taskbarIcon:left", "show:user",
-    "click:taskbarIcon:right", "show:user",
+    "click:taskbarIcon:left",
+    "show:user",
+    "click:taskbarIcon:right",
+    "show:user",
     "click:taskbarIcon:right",
   ]);
 });
 
-test("タスクバーのアイコン: アイコンの無いキャラクターは止まっているときの絵。消す・破棄すると取り除く", async ({ harness }) => {
+test("タスクバーのアイコン: アイコンの無いキャラクターは止まっているときの絵。消す・破棄すると取り除く", async ({
+  harness,
+}) => {
   requireCharacters(CHARACTERS.merlin, CHARACTERS.clippit);
   const r = await harness.evaluate(async () => {
     const a = await window.loadAgent("Merlin.acs", { taskbarIcon: true });

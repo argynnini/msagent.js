@@ -1,9 +1,19 @@
-import type { AcsPlayer } from "./acs/player";
-import { ipaAt, LWV_MOUTH_RATE, type LwvInfo, type LwvWord } from "./lwv";
-import { MORA_MS, MOUTH_CLOSED, PAUSE_MS, mouthForIpa, mouthForLevel, mouthSteps, randomVowelMouth, stepsDuration, type MouthStep } from "./mouth";
-import { paceText, withTrailingPunctuation } from "./pace";
-import { bookmarkNotifier, parseSpeechTags, shownText, type Bookmark, type SpeechPart } from "./tags";
-import { findVoice, pickVoice, type SpeakParams } from "./voice";
+import type { AcsPlayer } from "./acs/player.js";
+import { ipaAt, LWV_MOUTH_RATE, type LwvInfo, type LwvWord } from "./lwv.js";
+import {
+  MORA_MS,
+  MOUTH_CLOSED,
+  PAUSE_MS,
+  mouthForIpa,
+  mouthForLevel,
+  mouthSteps,
+  randomVowelMouth,
+  stepsDuration,
+  type MouthStep,
+} from "./mouth.js";
+import { paceText, withTrailingPunctuation } from "./pace.js";
+import { bookmarkNotifier, parseSpeechTags, shownText, type Bookmark, type SpeechPart } from "./tags.js";
+import { findVoice, pickVoice, type SpeakParams } from "./voice.js";
 
 /**
  * キャラクターにしゃべらせる: ブラウザの音声合成 (Web Speech API) で読み上げ、その間は口の形 (ACS の口の画像) を切り替える。
@@ -24,12 +34,13 @@ const SILENT_PART_MIN_MS = 300;
 /** 音声ファイルでしゃべるとき、音の大きさを測って口を変える間隔 (ms) */
 const LEVEL_TICK_MS = 60;
 
+/** Callbacks for {@link Speaker}. */
 export interface SpeakHandlers {
-  /** 吹き出しに出す、読み上げ済みの部分 (最後は全文) */
+  /** The text spoken so far, to show in the balloon (the whole text at the end). */
   onProgress(shown: string): void;
-  /** 読み上げが終わった (cancel() でも呼ばれる) */
+  /** Speaking finished (also called after `cancel()`). */
   onEnd(): void;
-  /** 目印 (\Mrk=番号\ か <bookmark/>) まで読んだ */
+  /** Speech reached a bookmark (`\Mrk=number\` or `<bookmark/>`). */
   onBookmark?(bookmark: Bookmark): void;
 }
 
@@ -65,6 +76,15 @@ interface Run {
   voice?: string | undefined;
 }
 
+/**
+ * Speaks text with the browser's speech synthesis (Web Speech API) while switching the character's mouth images.
+ * Used by `Agent`; use it directly with an {@link AcsPlayer} to build your own UI.
+ *
+ * Speech synthesis reports only the start, the end and word boundaries, so the mouth is approximated: each word is
+ * split into morae and a mouth shape is shown per vowel, re-synchronizing at every boundary. For voices without
+ * boundary events, the timing of the whole text is estimated. Without speech synthesis, the mouth moves silently for
+ * the estimated time.
+ */
 export class Speaker {
   private mouthTimer: number | undefined;
   private fallbackTimer: number | undefined;
@@ -82,16 +102,21 @@ export class Speaker {
   /** 音声ファイルでしゃべっているときの、再生している音 */
   private source: AudioBufferSourceNode | undefined;
 
+  /** @param player - Returns the player whose mouth to move. */
   constructor(private readonly player: () => AcsPlayer | undefined) {}
 
+  /** Whether speaking is in progress. */
   get speaking(): boolean {
     return this.run !== undefined;
   }
 
   /**
-   * 読み上げる。input は文 (読み上げの制御タグ \Pau=500\ などを含んでよい) か、parseSpeechTags() で作った部分の並び。
-   * params: 読み上げの速さ・高さ (ブラウザの値。標準 = 1。voiceParams() で ACS の設定から作る)・言語・声の性別。
-   * aloud が false なら声を出さず、見積もった時間だけ口を動かし、吹き出しの文も少しずつ出す
+   * Speaks text, cancelling any speech in progress.
+   *
+   * @param input - Text (may contain speech output tags such as `\Pau=500\`) or parts from {@link parseSpeechTags}.
+   * @param params - Rate and pitch (browser values, normal = 1; see {@link voiceParams}), language and voice.
+   *   Without `lang`, Japanese is assumed if the text contains kana or kanji, otherwise English.
+   * @param aloud - If `false`, no sound is made: the mouth moves and the text is revealed for the estimated time.
    */
   speak(
     input: string | readonly SpeechPart[],
@@ -112,9 +137,13 @@ export class Speaker {
   }
 
   /**
-   * 音声ファイル (デコード済み) でしゃべる (本家の Speak の Url と同じ)。音の大きさに合わせて口を動かし、
-   * 吹き出しの文 (parts。目印も含めてよい) は、音の長さに合わせて少しずつ出す。volume が 0 なら音は出さず、口だけ動かす。
-   * lwv (.lwv の単語と音素) があれば、口は音素から決め (1 秒に 30 回。本家と同じ)、吹き出しの文は単語の時刻に合わせて出す
+   * Speaks with a decoded audio file, like the `Url` argument of Microsoft Agent's `Speak`.
+   * The mouth follows the audio volume, and the text (`parts`, which may include bookmarks) is revealed over the
+   * length of the audio.
+   *
+   * @param volume - `0` plays no sound but still moves the mouth.
+   * @param lwv - Word and phoneme timings from a .lwv file (see {@link readLwv}). If given, the mouth follows the
+   *   phonemes (30 times per second, like Microsoft Agent) and the text is revealed word by word.
    */
   speakAudio(
     audio: AudioBuffer,
@@ -179,7 +208,7 @@ export class Speaker {
     tick();
   }
 
-  /** 読み上げを途中でやめる (読み上げ中でなければ何もしない) */
+  /** Stops speaking. Does nothing if not speaking. */
   cancel() {
     if (!this.speaking) return;
     if (this.utterance) {

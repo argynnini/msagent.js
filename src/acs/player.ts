@@ -1,8 +1,8 @@
-import { audioOutput } from "../audio";
-import { decodeWav } from "./wav";
-import type { Character } from "../character";
-import type { Animation, Frame } from "./reader";
-import { restFrame } from "../animations";
+import { audioOutput } from "../audio.js";
+import { decodeWav } from "./wav.js";
+import type { Character } from "../character.js";
+import type { Animation, Frame } from "./reader.js";
+import { restFrame } from "../animations.js";
 
 /**
  * 描画の色空間。ACS の色は、Windows (GDI) では、色の変換なしで、そのまま画面に出る (本家 = VSTO 版の見た目)。
@@ -23,11 +23,19 @@ function getColorSpace(): PredefinedColorSpace {
   return colorSpace;
 }
 
-/** ACS キャラクターのアニメーションを canvas に再生する */
+/**
+ * Plays a character's animations on a canvas, with sound effects and mouth overlays. Used by `Agent`
+ * (`agent.player`); use it directly to build your own UI without the queue, balloon or speech.
+ *
+ * ```js
+ * const player = new AcsPlayer(character, canvas);
+ * await player.play("Wave");
+ * ```
+ */
 export class AcsPlayer {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly sprites = new Map<number, HTMLCanvasElement>();
-  /** 効果音を鳴らすか (ブラウザの自動再生制限のため、ユーザー操作後に有効) */
+  /** Play sound effects. Browsers block audio until the user has interacted with the page. */
   soundEnabled = true;
   private audioCtx: AudioContext | undefined;
   private readonly buffers = new Map<number, AudioBuffer | null>();
@@ -49,11 +57,11 @@ export class AcsPlayer {
   private current: string | undefined;
   /** play() で頼まれたアニメーションの名前 (その前の戻りの動きの間も同じ) */
   private requested: string | undefined;
-  /** 再生中かどうかが変わったときに呼ばれる (UI のアイコン切り替え用) */
+  /** Called when {@link AcsPlayer.isPlaying} changes. */
   onPlayingChange: ((playing: boolean) => void) | undefined;
   /**
-   * 描いているアニメーションが変わったときに呼ばれる (current: 新しい名前、previous: 前の名前。止まれば undefined)。
-   * 戻りアニメ (MoveRightReturn など) を再生している間は、その名前になる
+   * Called when the animation being drawn changes. `current` is `undefined` when playback stops.
+   * While a return animation (such as `MoveRightReturn`) plays, it is reported under its own name.
    */
   onAnimationChange: ((current: string | undefined, previous: string | undefined) => void) | undefined;
   /** 現在の play() 全体 (戻りアニメ含む) の完了 Promise */
@@ -63,6 +71,10 @@ export class AcsPlayer {
   /** 最後に描いたフレーム (口の形を変えたときに描き直す) */
   private lastFrame: Frame | undefined;
 
+  /**
+   * @param character - The character to play.
+   * @param canvas - The canvas to draw on. It is resized to the character's size.
+   */
   constructor(
     private readonly character: Character,
     private readonly canvas: HTMLCanvasElement,
@@ -71,26 +83,26 @@ export class AcsPlayer {
     canvas.height = character.height;
     // 当たり判定 (hitTest) で画素を読み出すので、読み出し向けにしておく (キャラクターは小さいので描画の速さは気にならない)
     const ctx = canvas.getContext("2d", { colorSpace: getColorSpace(), willReadFrequently: true });
-    if (!ctx) throw new Error("canvas 2d を取得できません");
+    if (!ctx) throw new Error("Failed to get a 2D canvas context");
     // 画像を拡大・縮小して描くとき (ACT の合成コマ) も、ドット絵をぼかさない
     ctx.imageSmoothingEnabled = false;
     this.ctx = ctx;
   }
 
-  /** 再生中のアニメーション名 (再生中でなければ undefined) */
+  /** Name of the animation being played (including a return animation), or `undefined` when not playing. */
   get currentAnimation(): string | undefined {
     return this.current;
   }
 
   /**
-   * play() で頼まれたアニメーションの名前 (再生中でなければ undefined)。
-   * currentAnimation と違い、前のアニメーションの戻りの動きを再生している間も、頼まれた名前を返す
+   * Name passed to `play()`, or `undefined` when not playing. Unlike `currentAnimation`, this stays the requested
+   * name while the previous animation's return animation plays first.
    */
   get requestedAnimation(): string | undefined {
     return this.requested;
   }
 
-  /** アニメーション再生中か (stop() や再生完了で false) */
+  /** Whether an animation is playing. */
   get isPlaying(): boolean {
     return this.active;
   }
@@ -110,8 +122,9 @@ export class AcsPlayer {
   }
 
   /**
-   * 再生をやめる (いまのコマのまま止まる)。鳴っている効果音も止める
-   * (待機動作の途中で hide したときなどに、前のアニメーションの音が残らないように)。keepSounds なら、音は最後まで鳴らす
+   * Stops playback, leaving the current frame on the canvas, and stops sound effects.
+   *
+   * @param options - `keepSounds`: let the sound effects play to the end.
    */
   stop(options: { keepSounds?: boolean } = {}) {
     if (!options.keepSounds) this.stopSounds();
@@ -128,7 +141,7 @@ export class AcsPlayer {
     settle?.();
   }
 
-  /** 再生を一時停止する (いまのフレームのまま止まる) */
+  /** Pauses playback on the current frame. */
   pause() {
     if (this.paused) return;
     this.paused = true;
@@ -136,7 +149,7 @@ export class AcsPlayer {
     this.timer = undefined;
   }
 
-  /** 一時停止をやめて、次のフレームから続ける */
+  /** Resumes paused playback from the next frame. */
   resume() {
     if (!this.paused) return;
     this.paused = false;
@@ -145,6 +158,7 @@ export class AcsPlayer {
     step?.();
   }
 
+  /** Whether playback is paused. */
   get isPaused(): boolean {
     return this.paused;
   }
@@ -159,9 +173,12 @@ export class AcsPlayer {
   }
 
   /**
-   * アニメーションを再生する。終了 (戻りアニメ含む) か、別の再生・stop() で resolve。
-   * hold なら、戻りの動きをせずに最後のコマのまま止める (Microsoft Agent と同じく、指す動きなどは次の再生まで姿勢を保つ)。
-   * 止めているアニメーションがあれば、先にその戻りの動きを再生してから始める
+   * Plays an animation. If an animation is being held, its return animation plays first.
+   * Resolves when the animation (including its return) finishes, or when it is replaced by another `play()` or
+   * `stop()`. For an ACF character, the frames are downloaded first if needed.
+   *
+   * @param options - `hold`: stop on the last frame without the return animation, so a pose such as pointing is
+   *   kept until the next animation, like Microsoft Agent.
    */
   play(name: string, options: { hold?: boolean } = {}): Promise<void> {
     const held = this.held;
@@ -214,26 +231,25 @@ export class AcsPlayer {
   }
 
   /**
-   * 再生中のアニメーションを自然に終わらせる。分岐による繰り返しをやめ、
-   * 各フレームの終了分岐 (exit) をたどって「やめる動き」を最後まで再生する。
-   * 再生中でなければすぐ resolve。stop() のように途中で切らない。
+   * Ends the animation naturally: stops looping through branches and follows the frames' exit branches to the end.
+   * Unlike `stop()`, it does not cut the animation. Resolves when it finishes (right away if nothing is playing).
    */
   release(): Promise<void> {
     this.releasing = true;
     return this.running ?? Promise.resolve();
   }
 
-  /** いま出しているコマに口の画像があるか (無ければ、しゃべっても口が動かない) */
+  /** Whether the current frame has mouth overlays (if not, the mouth does not move while speaking). */
   get hasMouth(): boolean {
     return (this.lastFrame?.overlays.length ?? 0) > 0;
   }
 
-  /** hold で止めているアニメーションがあるか (次の再生の前に、戻りの動きが入る) */
+  /** Whether an animation is held on its last frame by `play(name, { hold: true })`. */
   get isHolding(): boolean {
     return this.held !== undefined;
   }
 
-  /** hold で止めたアニメーションの、戻りの動きだけを再生する。止めていなければ、すぐ resolve */
+  /** Plays only the return animation of a held animation. Resolves right away if nothing is held. */
   playReturn(): Promise<void> {
     const held = this.held;
     if (!held) return Promise.resolve();
@@ -327,16 +343,15 @@ export class AcsPlayer {
   }
 
   /**
-   * ブラウザの自動再生制限で、ユーザー操作 (クリック・キー入力) より前は音を鳴らせない。
-   * 効果音が鳴るタイミングまで AudioContext の再開を待つと、その分だけ後の操作でも
-   * 反映が遅れることがあるので、何か操作があった時点で先に再開しておく (無害な空振りも許容)
+   * Resumes the `AudioContext`. Call it from a user interaction (click, key press) so that later sound effects are not
+   * blocked by the browser's autoplay policy. `Agent` does this automatically.
    */
   unlockAudio() {
     this.audioCtx ??= new AudioContext();
     if (this.audioCtx.state === "suspended") void this.audioCtx.resume().catch(() => undefined);
   }
 
-  /** 効果音と同じ AudioContext (音声ファイルでしゃべるときにも使う) */
+  /** The `AudioContext` used for sound effects (and for speaking with audio files). */
   audioContext(): AudioContext {
     this.audioCtx ??= new AudioContext();
     return this.audioCtx;
@@ -393,15 +408,19 @@ export class AcsPlayer {
     if (img.width > 0 && img.height > 0) {
       // 画像の数値も、同じ色空間として扱う (sRGB のキャンバスとの間で、変換が入らないようにする)
       const space = getColorSpace();
-      c.getContext("2d", { colorSpace: space })!.putImageData(new ImageData(img.rgba, img.width, img.height, { colorSpace: space }), 0, 0);
+      c.getContext("2d", { colorSpace: space })!.putImageData(
+        new ImageData(img.rgba, img.width, img.height, { colorSpace: space }),
+        0,
+        0,
+      );
     }
     this.sprites.set(index, c);
     return c;
   }
 
   /**
-   * 画面上の位置 (マウスイベントの clientX / clientY) に、キャラクターの絵があるか。
-   * 透明な部分 (キャラクターの周り) なら false。CSS で拡大・縮小されていても、canvas の画素に直して調べる
+   * Whether the character's image covers a point in the viewport (a mouse event's `clientX` / `clientY`).
+   * `false` over transparent pixels. Works when the canvas is scaled with CSS.
    */
   hitTest(clientX: number, clientY: number): boolean {
     const rect = this.canvas.getBoundingClientRect();
@@ -413,8 +432,8 @@ export class AcsPlayer {
   }
 
   /**
-   * 話している間の口の形を変える (undefined で口の画像を重ねるのをやめる)。
-   * 口の画像はフレームごとに入っているので、口の画像が無いフレーム (動きの途中など) では何も変わらない
+   * Sets the mouth shape drawn over the frames while speaking (`0` closed, `1`–`4` wide open, `5` medium,
+   * `6` narrow), or `undefined` to stop drawing it. Frames without mouth overlays are unaffected.
    */
   setMouth(type: number | undefined) {
     if (this.mouth === type) return;
@@ -422,6 +441,7 @@ export class AcsPlayer {
     if (this.lastFrame) this.draw(this.lastFrame);
   }
 
+  /** Draws a frame (with the current mouth shape) without playing anything. */
   draw(frame: Frame) {
     this.lastFrame = frame;
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);

@@ -3,9 +3,9 @@
  */
 
 /**
- * 音の出口の状態 (本家の AudioOutput.Status と同じ値)。
- * 0: 空いている / 1: このブラウザは音を出せない / 3: 聞き取り中で、声が聞こえている /
- * 4: キャラクターが声に出してしゃべっている / 5: 聞き取り中で、声を待っている
+ * Audio channel status, with the same values as Microsoft Agent's `AudioOutput.Status`:
+ * `0` available, `1` this browser cannot play audio, `3` listening and hearing speech,
+ * `4` a character is speaking aloud, `5` listening and waiting for speech.
  */
 export type AudioStatus = 0 | 1 | 3 | 4 | 5;
 
@@ -27,20 +27,21 @@ export function registerAudioClient(client: AudioClient): () => void {
 }
 
 /**
- * 全キャラクターの音の設定と状態 (本家の AudioOutput と同じ。本家はユーザーの設定なので読むだけだが、ここでは変えられる)。
+ * Audio settings and status shared by all characters. Same as Microsoft Agent's `AudioOutput`, except that the
+ * settings can be changed here (in Microsoft Agent they are user settings and read-only).
  *
  * ```js
- * msagent.audioOutput.enabled = false;      // 全キャラクターの声を出さない (吹き出しと口の動きだけ)
- * msagent.audioOutput.soundEffects = false; // 全キャラクターの効果音を鳴らさない
- * if (msagent.audioOutput.status === 0) agent.speak("…"); // 誰もしゃべっていない・聞いていない
+ * msagent.audioOutput.enabled = false;      // no speech from any character (balloons and mouths only)
+ * msagent.audioOutput.soundEffects = false; // no sound effects from any character
+ * if (msagent.audioOutput.status === 0) agent.speak("..."); // nobody is speaking or listening
  * ```
  */
 export const audioOutput = {
-  /** false なら、全キャラクターの声を出さない (speak(text, { voice: true }) も。本家の Enabled) */
+  /** If `false`, no character speaks aloud, even with `speak(text, { voice: true })`. Same as `AudioOutput.Enabled`. */
   enabled: true,
-  /** false なら、全キャラクターの効果音を鳴らさない (本家の SoundEffects) */
+  /** If `false`, no character plays sound effects. Same as `AudioOutput.SoundEffects`. */
   soundEffects: true,
-  /** 音の出口の状態 (本家の Status) */
+  /** Current audio channel status. Same as `AudioOutput.Status`. */
   get status(): AudioStatus {
     const all = [...clients];
     if (all.some((c) => c.hearing)) return 3;

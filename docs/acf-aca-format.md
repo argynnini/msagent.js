@@ -1,106 +1,108 @@
-# ACF / ACA の形
+# ACF / ACA format
 
-Microsoft Agent の Web 用のキャラクターは、キャラクター情報とアニメーションの一覧の `.acf` と、
-アニメーションごとの `.aca` に分かれている (本家は `Get` で `.aca` を取り寄せてから再生する)。
-公式の資料は無いので、手元のファイルと本家の `AgentDpv.dll` (Microsoft Agent 2.0 の SDK) を逆アセンブルして調べた。
+English | [日本語](acf-aca-format.ja.md)
 
-- 見本: `Genie.acf` と `robby.acf` (どちらも版 2.1)、`.aca` 6 個 (Genie の Show / Greet、Merlin の GestureUp / MoveLeft / Congratulate / Announce)
-- Merlin の `.aca` は、`Merlin.acs` とコマの時間・分岐・画素・効果音がすべて一致した
-- 本家で読むところ: ACF は `0x67fa8b58`、ACA の頭は `0x67fa6b85` のあたり、コマは `0x67fa7bac`、口の画像は `0x67fa7e73`
+Web-delivered Microsoft Agent characters are split into an `.acf` file, holding the character data and the list of animations,
+and one `.aca` file per animation (the original fetches an `.aca` with `Get` before playing it).
+There is no official documentation, so this was worked out from sample files and by disassembling `AgentDpv.dll` from the Microsoft Agent 2.0 SDK.
 
-数はすべてリトルエンディアン。**文字列は DWORD の文字数 + UTF-16LE で、ACS と違い終端の NUL が無い。**
-圧縮は ACS の画像と同じもの (`src/acs/decompress.ts`)。
+- Samples: `Genie.acf` and `robby.acf` (both version 2.1), and six `.aca` files (Genie's Show / Greet, and Merlin's GestureUp / MoveLeft / Congratulate / Announce)
+- Merlin's `.aca` files match `Merlin.acs` exactly in frame durations, branches, pixels, and sounds
+- Where the original reads them: ACF around `0x67fa8b58`, the ACA header around `0x67fa6b85`, frames at `0x67fa7bac`, and mouth images at `0x67fa7e73`
+
+All numbers are little-endian. **Strings are a DWORD character count + UTF-16LE, and unlike ACS they have no terminating NUL.**
+Compression is the same as for ACS images (`src/acs/decompress.ts`).
 
 ## ACF
 
-| 型 | 中身 |
-| --- | --- |
-| DWORD | `0xABCDABC4` (本家は `0xABCDABC2` も受け付ける) |
-| DWORD | 展開後のサイズ |
-| DWORD | 圧縮後のサイズ |
-| BYTE[] | 圧縮したデータ |
+| Type   | Contents                                              |
+| ------ | ----------------------------------------------------- |
+| DWORD  | `0xABCDABC4` (the original also accepts `0xABCDABC2`) |
+| DWORD  | Decompressed size                                     |
+| DWORD  | Compressed size                                       |
+| BYTE[] | Compressed data                                       |
 
-展開した中身:
+Decompressed contents:
 
-| 型 | 中身 |
-| --- | --- |
-| DWORD | 版。`0x00020001` = 2.1。本家は `0x1001C` / `0x1001E` / `0x1001F` / `0x20001` を受け付ける |
-| WORD | アニメーションの数 |
-| (数だけ) | 名前 (文字列)、`.aca` のファイル名 (文字列。`.acf` からの相対パス)、文字列 (見本では全部空。戻りアニメの名前と思われる)、DWORD チェックサム (版 1.30 以上) |
-| GUID | キャラクターの GUID |
-| WORD + (数だけ) | 言語ごとの名前: WORD 言語 ID、名前、紹介文、おまけの文字 (ACS と同じ並び) |
-| … | 幅・高さ・透過色・style・声・吹き出し・パレット・トレイアイコン・状態。**ACS のキャラクター情報の同じ部分と同じ並び** (文字列に NUL が無いことだけが違う) |
+| Type              | Contents                                                                                                                                                                                              |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DWORD             | Version. `0x00020001` = 2.1. The original accepts `0x1001C` / `0x1001E` / `0x1001F` / `0x20001`                                                                                                       |
+| WORD              | Number of animations                                                                                                                                                                                  |
+| (repeated)        | Name (string), `.aca` file name (string, relative to the `.acf`), a string (empty in all samples; probably the return animation name), DWORD checksum (version 1.30 and later)                        |
+| GUID              | Character GUID                                                                                                                                                                                        |
+| WORD + (repeated) | Localized info: WORD language ID, name, description, extra data (same layout as ACS)                                                                                                                  |
+| …                 | Width, height, transparent color, style, voice, balloon, palette, tray icon, states. **Same layout as the corresponding part of the ACS character info** (the only difference is strings lacking NUL) |
 
-ACS の頭にある、各部分の位置の表 (ロケーター) は無い。版 2.1 より古い版は、GUID の後ろの並びが違う (見本が無いので読まない)。
+There is no table of section locations (locators) like the one at the start of an ACS. Versions older than 2.1 have a different layout after the GUID (not read, since there are no samples).
 
 ## ACA
 
-| 型 | 中身 |
-| --- | --- |
-| DWORD | 版 (ACF と同じ値)。知らない値なら、本家は 4 バイト戻って、版もチェックサムも無い古い形として読む |
-| DWORD | チェックサム。ACF の一覧の値と違えば、本家はエラー `0x8004200F` にする |
-| BYTE | 圧縮しているか。1 なら、この後に DWORD 展開後のサイズ、DWORD 圧縮後のサイズ、圧縮したデータ |
+| Type  | Contents                                                                                                                                        |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| DWORD | Version (same values as ACF). For an unknown value, the original steps back 4 bytes and reads it as an older format with no version or checksum |
+| DWORD | Checksum. If it differs from the value in the ACF list, the original fails with error `0x8004200F`                                              |
+| BYTE  | Whether compressed. If 1, followed by a DWORD decompressed size, a DWORD compressed size, and the compressed data                               |
 
-展開した中身は、効果音 → 画像 → アニメーションの順。
+The decompressed contents are sounds → images → animation, in that order.
 
-### 効果音
+### Sounds
 
-WORD 数、それぞれ DWORD サイズ + WAV の中身。
+WORD count, then for each: DWORD size + WAV data.
 
-### 画像
+### Images
 
-WORD 数、それぞれ:
+WORD count, then for each:
 
-| 型 | 中身 |
-| --- | --- |
-| DWORD | サイズ。**0 なら絵なしで、この後ろは何も無い** |
-| BYTE | 意味は分からない (見本では常に 0) |
-| BYTE[] | 画素。8 ビットの色番号、下の行から、1 行は 4 バイト単位。**幅・高さは書いておらず、キャラクターの大きさそのもの** |
-| DWORD + BYTE[] | 形 (RGNDATA。圧縮しない) |
+| Type           | Contents                                                                                                                                     |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| DWORD          | Size. **If 0, there is no image and nothing follows**                                                                                        |
+| BYTE           | Unknown (always 0 in the samples)                                                                                                            |
+| BYTE[]         | Pixels. 8-bit palette indices, bottom row first, each row padded to 4 bytes. **Width and height aren't stored; they are the character size** |
+| DWORD + BYTE[] | Region (RGNDATA, uncompressed)                                                                                                               |
 
-ACS では 1 コマを何枚かの画像の重ね合わせで描くが、ACA では重ねた結果の 1 枚絵になっている。
+In ACS a frame is drawn by compositing several images, whereas in ACA each frame is a single, already-composited image.
 
-### アニメーション
+### Animation
 
-| 型 | 中身 |
-| --- | --- |
-| BYTE | transitionType (0: 戻りアニメ, 1: 終了分岐, 2: なし。版 1.31 より新しいときだけ) |
-| WORD | コマの数 (0 なら本家はエラー `0x8004200F`) |
+| Type | Contents                                                                                           |
+| ---- | -------------------------------------------------------------------------------------------------- |
+| BYTE | transitionType (0: return animation, 1: exit branches, 2: none; only for versions newer than 1.31) |
+| WORD | Number of frames (if 0, the original fails with error `0x8004200F`)                                |
 
-コマ 1 つ:
+Each frame:
 
-| 型 | 中身 |
-| --- | --- |
-| SHORT | 画像の番号 (この ACA の中の番号。-1 なら絵なし) |
-| SHORT | 効果音の番号 (-1 なら無し) |
-| WORD | 表示時間 (×10 ms) |
-| SHORT, SHORT | 画像を置く位置と思われる (見本では常に 0) |
-| SHORT | 終了分岐先 (版 1.31 より新しいときだけ。-2 なら無し) |
-| BYTE + (数だけ) | 分岐: WORD 分岐先のコマ、WORD 確率 |
-| BYTE | 口の画像の数 |
-| BYTE | (口の画像が 1 つ以上で、版 1.31 より新しいときだけ) 意味は分からない (見本では常に 0)。0 でなければ、DWORD サイズ付きのデータが 2 つ続く |
-| (数だけ) | 口の画像 (下) |
+| Type              | Contents                                                                                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| SHORT             | Image index (within this ACA; -1 for no image)                                                                                                               |
+| SHORT             | Sound index (-1 for none)                                                                                                                                    |
+| WORD              | Duration (×10 ms)                                                                                                                                            |
+| SHORT, SHORT      | Probably the image offset (always 0 in the samples)                                                                                                          |
+| SHORT             | Exit branch target (only for versions newer than 1.31; -2 for none)                                                                                          |
+| BYTE + (repeated) | Branches: WORD target frame, WORD probability                                                                                                                |
+| BYTE              | Number of mouth images                                                                                                                                       |
+| BYTE              | (Only when there is at least one mouth image and the version is newer than 1.31) Unknown (always 0 in the samples). If nonzero, two DWORD-sized blobs follow |
+| (repeated)        | Mouth images (below)                                                                                                                                         |
 
-口の画像 1 つ:
+Each mouth image:
 
-| 型 | 中身 |
-| --- | --- |
-| BYTE | 口の形 (0〜6) |
-| DWORD | 画素のサイズ。0 なら、この後ろは何も無い |
-| BYTE | キャラクターの絵と置き換えるか |
-| BYTE | 形 (RGNDATA) があるか (版 1.31 より新しいときだけ) |
-| SHORT, SHORT, WORD, WORD | 置く位置と、幅・高さ |
-| BYTE[] | 画素 (幅・高さの大きさだけ切り出したもの) |
-| DWORD + BYTE[] | 形 (あるときだけ) |
+| Type                     | Contents                                                               |
+| ------------------------ | ---------------------------------------------------------------------- |
+| BYTE                     | Mouth shape (0–6)                                                      |
+| DWORD                    | Pixel data size. If 0, nothing follows                                 |
+| BYTE                     | Whether it replaces the character image                                |
+| BYTE                     | Whether a region (RGNDATA) follows (only for versions newer than 1.31) |
+| SHORT, SHORT, WORD, WORD | Position, width, and height                                            |
+| BYTE[]                   | Pixels (cropped to the width and height)                               |
+| DWORD + BYTE[]           | Region (only if present)                                               |
 
-## ACS の画像の先頭バイト
+## First byte of ACS images
 
-ACS の画像の先頭の 1 バイトは「画像があるか」の旗で、0 なら中身はこの 1 バイトだけ。
-本家 (`AgentDp2.dll` の `0x67fb33e0`) は、コマを透明色で塗ってから画像を重ねていき、この画像は飛ばす (S_FALSE を返す。
-画像の場所がファイルの外なら、別に `0x80070570` = ERROR_FILE_CORRUPT を返す)。つまり壊れたファイルではなく、正式な「絵なし」。
+The first byte of an ACS image is an "image present" flag; if it is 0, the image consists of that single byte.
+The original (`0x67fb33e0` in `AgentDp2.dll`) fills the frame with the transparent color, composites the images on top, and skips this image (returning S_FALSE;
+if the image's location is outside the file, it instead returns `0x80070570` = ERROR_FILE_CORRUPT). In other words, it isn't a corrupt file but a legitimate "no image".
 
-フィンフィン (`finfin.acs`) には、この画像が 18 枚ある (Merlin・Clippit・Dolphin には無い)。
-MoveLeftReturn の最後のコマ・WriteReturn・Idle2_2・Reading と Stock の口の形など。
-チェックサムがそれぞれ違うので、作るときにはそれぞれ別の元画像があり、書き出すときに中身が入らなかったと考えられる。
-本家どおりに描くと、MoveLeftReturn の後に一瞬消えて見えるので、msagent.js は、絵なしだけのコマは描かずに前の絵のままにし、
-アニメーションの最後なら止まっているときの絵を描く。
+FinFin (`finfin.acs`) has 18 such images (Merlin, Clippit, and Dolphin have none),
+including the last frame of MoveLeftReturn, WriteReturn, Idle2_2, and the mouth shapes of Reading and Stock.
+Each has a different checksum, so there were presumably separate source images when the character was made, whose contents were lost on export.
+Drawing them as the original does makes the character flicker out briefly after MoveLeftReturn, so msagent.js leaves the previous image in place for frames made only of empty images,
+and draws the rest pose if it's the last frame of the animation.

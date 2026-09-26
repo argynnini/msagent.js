@@ -14,7 +14,9 @@ const FAKE_SYNTH = `(log) => {
 
 test.beforeEach(() => requireCharacters(CHARACTERS.merlin));
 
-test("声あり: 制御タグで部分ごとに速さ・高さ・音量を変え、目印を知らせ、吹き出しにはタグを除いた文", async ({ harness }) => {
+test("声あり: 制御タグで部分ごとに速さ・高さ・音量を変え、目印を知らせ、吹き出しにはタグを除いた文", async ({
+  harness,
+}) => {
   const r = await harness.evaluate(async (fake) => {
     const log: string[] = [];
     (0, eval)(fake)(log);
@@ -43,7 +45,9 @@ test("声あり: 制御タグで部分ごとに速さ・高さ・音量を変え
   ]);
 });
 
-test("声あり: SAPI 5 のタグでも、部分ごとに速さ・言語を変え、目印 (名前でもよい) を知らせ、吹き出しにはタグを除いた文", async ({ harness }) => {
+test("声あり: SAPI 5 のタグでも、部分ごとに速さ・言語を変え、目印 (名前でもよい) を知らせ、吹き出しにはタグを除いた文", async ({
+  harness,
+}) => {
   const r = await harness.evaluate(async (fake) => {
     const log: string[] = [];
     (0, eval)(fake)(log);
@@ -52,7 +56,9 @@ test("声あり: SAPI 5 のタグでも、部分ごとに速さ・言語を変�
     a.on("bookmark", (e) => log.push(`bookmark ${e.detail.id} ${e.detail.mark}`));
     let shown = "";
     a.on("speakend", (e) => (shown = e.detail.text));
-    await a.speak('Hello <rate absspeed="-10">slow</rate> <bookmark mark="chapter"/><lang langid="407">Guten Tag</lang> &amp; <bookmark mark="2"/>bye');
+    await a.speak(
+      'Hello <rate absspeed="-10">slow</rate> <bookmark mark="chapter"/><lang langid="407">Guten Tag</lang> &amp; <bookmark mark="2"/>bye',
+    );
     return { log, shown };
   }, FAKE_SYNTH);
   expect(r.shown).toBe("Hello slow Guten Tag & bye");
@@ -76,21 +82,21 @@ test("tags: false なら、タグも文字としてそのまま読んで出す (
     const shown: string[] = [];
     a.on("speakend", (e) => shown.push(e.detail.text));
     a.on("bookmark", (e) => log.push(`bookmark ${e.detail.id}`));
-    await a.speak('a \Mrk=1\<silence msec="100"/>b');
-    await a.speak("\Lst\\");
+    await a.speak('a \\Mrk=1\\<silence msec="100"/>b');
+    await a.speak("\\Lst\\");
     await a.speak('c<silence msec="10"/>d', { tags: true });
     a.tags = true;
-    await a.speak("e\Pau=10\f", { tags: false });
+    await a.speak("e\\Pau=10\\f", { tags: false });
     await a.think("<emph>g</emph>", { tags: false });
     return { log: log.map((l) => l.replace(/ lang=.*/, "")), shown };
   }, FAKE_SYNTH);
-  expect(r.shown).toEqual(['a \Mrk=1\<silence msec="100"/>b', "\Lst\\", "cd", "e\Pau=10\f", "<emph>g</emph>"]);
+  expect(r.shown).toEqual(['a \\Mrk=1\\<silence msec="100"/>b', "\\Lst\\", "cd", "e\\Pau=10\\f", "<emph>g</emph>"]);
   expect(r.log).toEqual([
-    'utter "a \Mrk=1\<silence msec="100"/>b"',
-    'utter "\Lst\\"',
+    'utter "a \\Mrk=1\\<silence msec="100"/>b"',
+    'utter "\\Lst\\"',
     'utter "c"',
     'utter "d"',
-    'utter "e\Pau=10\f"',
+    'utter "e\\Pau=10\\f"',
   ]);
 });
 
@@ -108,10 +114,15 @@ test("読み上げの言語: agent.language を指定すればそれ、無けれ
     await a.speak("Hello");
     return log.map((l) => l.replace(/ r=.*/, ""));
   }, FAKE_SYNTH);
-  expect(log).toEqual(['utter "こんにちは" lang=ja-JP', 'utter "Hello" lang=en-US', 'utter "Guten Tag" lang=de', 'utter "Hello" lang=ja-JP']);
+  expect(log).toEqual([
+    'utter "こんにちは" lang=ja-JP',
+    'utter "Hello" lang=en-US',
+    'utter "Guten Tag" lang=de',
+    'utter "Hello" lang=ja-JP',
+  ]);
 });
 
-test("\"A|B|C\" は候補からランダムに 1 つ", async ({ harness }) => {
+test('"A|B|C" は候補からランダムに 1 つ', async ({ harness }) => {
   const picked = await harness.evaluate(async () => {
     const a = await window.loadAgent("Merlin.acs");
     await a.show(true);
@@ -140,7 +151,13 @@ test("声なし: 間と目印も同じように扱う。think は目印だけを
     await a.think("Hmm \\Mrk=3\\\\Pau=500\\ok \\Spd=50\\done");
     return log.map((l) => l.replace(/ at \d+/, ""));
   });
-  expect(log).toEqual(["bookmark 2", 'end "Hi there" thought=false', "speak took >= 800: true", "bookmark 3", 'end "Hmm ok done" thought=true']);
+  expect(log).toEqual([
+    "bookmark 2",
+    'end "Hi there" thought=false',
+    "speak took >= 800: true",
+    "bookmark 3",
+    'end "Hmm ok done" thought=true',
+  ]);
 });
 
 test("think: 雲形の吹き出しで、口は動かさない。speak はその後", async ({ harness }) => {
@@ -166,7 +183,9 @@ test("think: 雲形の吹き出しで、口は動かさない。speak はその�
   expect(r.mouthsAfterSpeak).toBeGreaterThan(0);
 });
 
-test("口の画像が無いコマ (待機動作の後) でも、しゃべるときは Speaking の状態に切り替えて口を動かす", async ({ harness }) => {
+test("口の画像が無いコマ (待機動作の後) でも、しゃべるときは Speaking の状態に切り替えて口を動かす", async ({
+  harness,
+}) => {
   const r = await harness.evaluate(async () => {
     const a = await window.loadAgent("Merlin.acs");
     await a.show(true);
@@ -187,7 +206,8 @@ test.describe("吹き出しの動き", () => {
     requireCharacters(CHARACTERS.clippit);
     const r = await harness.evaluate(async () => {
       // \Spd\ で速く読み、少しずつ出す (autoPace) 文が 2 行を超えるまでを短くする
-      const text = "\\Spd=1700\\This is a long sentence to check how the word balloon grows or scrolls when the text does not fit in two lines at all.";
+      const text =
+        "\\Spd=1700\\This is a long sentence to check how the word balloon grows or scrolls when the text does not fit in two lines at all.";
       const merlin = await window.loadAgent("Merlin.acs");
       const clippit = await window.loadAgent("CLIPPIT.ACS");
       merlin.moveTo(150, 500, 0);
@@ -197,7 +217,10 @@ test.describe("吹き出しの動き", () => {
       clippit.speak(text, true);
       await new Promise((res) => setTimeout(res, 2000));
       const measure = (el: Element) => ({ h: Math.round(el.getBoundingClientRect().height), scroll: el.scrollTop });
-      const [m, c] = [...document.querySelectorAll(".msagent-content")].map(measure) as [ReturnType<typeof measure>, ReturnType<typeof measure>];
+      const [m, c] = [...document.querySelectorAll(".msagent-content")].map(measure) as [
+        ReturnType<typeof measure>,
+        ReturnType<typeof measure>,
+      ];
       return { m, c };
     });
     expect(r.m.h).toBeGreaterThan(40); // 3 行以上
@@ -245,20 +268,25 @@ test.describe("吹き出しの動き", () => {
 });
 
 test("音声ファイルでしゃべる: 音の大きさで口を動かし、文は音の長さに合わせて出す", async ({ harness }) => {
-  const r = await harness.evaluate(async (wav) => {
-    const a = await window.loadAgent("Merlin.acs", { voice: true });
-    a.moveTo(100, 100, 0);
-    await a.show(true);
-    const mouths: number[] = [];
-    const setMouth = a.player.setMouth.bind(a.player);
-    a.player.setMouth = (m) => (m !== undefined && mouths.at(-1) !== m && mouths.push(m), setMouth(m));
-    const bookmarks: number[] = [];
-    a.on("bookmark", (e) => bookmarks.push(e.detail.id));
-    const t0 = performance.now();
-    const status = await a.speak("Hello from a sound file. \\Mrk=5\\Here is the rest.", { url: new Uint8Array(wav).buffer });
-    const broken = await a.speak("x", { url: new ArrayBuffer(10) });
-    return { status, ms: performance.now() - t0, mouths, bookmarks, broken };
-  }, makeWav(0.4, 0.8));
+  const r = await harness.evaluate(
+    async (wav) => {
+      const a = await window.loadAgent("Merlin.acs", { voice: true });
+      a.moveTo(100, 100, 0);
+      await a.show(true);
+      const mouths: number[] = [];
+      const setMouth = a.player.setMouth.bind(a.player);
+      a.player.setMouth = (m) => (m !== undefined && mouths.at(-1) !== m && mouths.push(m), setMouth(m));
+      const bookmarks: number[] = [];
+      a.on("bookmark", (e) => bookmarks.push(e.detail.id));
+      const t0 = performance.now();
+      const status = await a.speak("Hello from a sound file. \\Mrk=5\\Here is the rest.", {
+        url: new Uint8Array(wav).buffer,
+      });
+      const broken = await a.speak("x", { url: new ArrayBuffer(10) });
+      return { status, ms: performance.now() - t0, mouths, bookmarks, broken };
+    },
+    makeWav(0.4, 0.8),
+  );
   expect(r.status).toBe("complete");
   expect(r.ms).toBeGreaterThan(1100);
   expect(r.mouths[0]).toBe(0); // 無音の間は閉じる
@@ -294,35 +322,54 @@ test("balloonVisible の代入: false は読み終えてから閉じ、true は�
   });
 });
 
-test(".lwv でしゃべる: 口は音素から、吹き出しは単語の時刻に合わせて出す。文が空ならファイルの単語", async ({ harness }) => {
-  const r = await harness.evaluate(async (lwv) => {
-    const a = await window.loadAgent("Merlin.acs");
-    a.moveTo(100, 100, 0);
-    await a.show(true);
-    const mouths: number[] = [];
-    const setMouth = a.player.setMouth.bind(a.player);
-    a.player.setMouth = (m) => (m !== undefined && mouths.at(-1) !== m && mouths.push(m), setMouth(m));
-    const content = document.querySelector(".msagent-content")!;
-    const seen: string[] = [];
-    new MutationObserver(() => seen.at(-1) !== content.textContent && seen.push(content.textContent!)).observe(content, {
-      childList: true,
-      characterData: true,
-      subtree: true,
-    });
-    const status = await a.speak("", { url: new Uint8Array(lwv).buffer });
-    return { status, mouths, seen };
-  }, makeLwv(makeWav(1.2, 0), 0x0409, [[0, 0.4, "ah"], [0.4, 0.8, "oo"], [0.8, 1.2, "mm"]], [
-    [0, 0.4, "0x0061"], // a → 4
-    [0.4, 0.8, "0x0075"], // u → 6
-    [0.8, 1.2, "0x006D"], // m → 0
-  ]));
+test(".lwv でしゃべる: 口は音素から、吹き出しは単語の時刻に合わせて出す。文が空ならファイルの単語", async ({
+  harness,
+}) => {
+  const r = await harness.evaluate(
+    async (lwv) => {
+      const a = await window.loadAgent("Merlin.acs");
+      a.moveTo(100, 100, 0);
+      await a.show(true);
+      const mouths: number[] = [];
+      const setMouth = a.player.setMouth.bind(a.player);
+      a.player.setMouth = (m) => (m !== undefined && mouths.at(-1) !== m && mouths.push(m), setMouth(m));
+      const content = document.querySelector(".msagent-content")!;
+      const seen: string[] = [];
+      new MutationObserver(() => seen.at(-1) !== content.textContent && seen.push(content.textContent!)).observe(
+        content,
+        {
+          childList: true,
+          characterData: true,
+          subtree: true,
+        },
+      );
+      const status = await a.speak("", { url: new Uint8Array(lwv).buffer });
+      return { status, mouths, seen };
+    },
+    makeLwv(
+      makeWav(1.2, 0),
+      0x0409,
+      [
+        [0, 0.4, "ah"],
+        [0.4, 0.8, "oo"],
+        [0.8, 1.2, "mm"],
+      ],
+      [
+        [0, 0.4, "0x0061"], // a → 4
+        [0.4, 0.8, "0x0075"], // u → 6
+        [0.8, 1.2, "0x006D"], // m → 0
+      ],
+    ),
+  );
   expect(r.status).toBe("complete");
   // 音は無音なので、音の大きさではなく音素で口が動く
   expect(r.mouths).toEqual([4, 6, 0]);
   expect(r.seen.filter(Boolean)).toEqual(["ah", "ah oo", "ah oo mm"]);
 });
 
-test("1 回ごとに声を切り替える: speak(text, { voice: false }) は吹き出しだけ、think(text, { voice: true }) は考えごとの吹き出しのまま声に出す", async ({ harness }) => {
+test("1 回ごとに声を切り替える: speak(text, { voice: false }) は吹き出しだけ、think(text, { voice: true }) は考えごとの吹き出しのまま声に出す", async ({
+  harness,
+}) => {
   const r = await harness.evaluate(async (fake) => {
     const log: string[] = [];
     (0, eval)(fake)(log);
@@ -362,7 +409,8 @@ test("think の間は考える動き (Thinking) を再生し、考え終えた�
     await a.think("Hmm, let me think.");
     const done = performance.now();
     // 考える動きは、止めるように言ってから、終了分岐で自然に終わる
-    while (a.player.requestedAnimation && performance.now() - done < 8000) await new Promise((res) => setTimeout(res, 100));
+    while (a.player.requestedAnimation && performance.now() - done < 8000)
+      await new Promise((res) => setTimeout(res, 100));
     return { log, holding: a.player.isHolding, playing: a.player.requestedAnimation, endMs: performance.now() - done };
   });
   expect(r.log[0]).toBe("start Thinking");
@@ -372,7 +420,9 @@ test("think の間は考える動き (Thinking) を再生し、考え終えた�
   expect(r.playing).toBeUndefined();
 });
 
-test("balloonStyle の width / height (px): 吹き出しの大きさを決め、はみ出した分は上へ流す。外すと文に合わせる", async ({ harness }) => {
+test("balloonStyle の width / height (px): 吹き出しの大きさを決め、はみ出した分は上へ流す。外すと文に合わせる", async ({
+  harness,
+}) => {
   const r = await harness.evaluate(async () => {
     const a = await window.loadAgent("Merlin.acs");
     a.moveTo(300, 300, 0);
@@ -417,7 +467,9 @@ test("少しずつ出すときも、吹き出しは最初から全文の入る�
   expect(r.sizes.length).toBeLessThanOrEqual(2);
 });
 
-test("audioOutput: enabled = false なら全キャラクターの声を出さない。status は声に出してしゃべっている間 4、ほかは 0", async ({ harness }) => {
+test("audioOutput: enabled = false なら全キャラクターの声を出さない。status は声に出してしゃべっている間 4、ほかは 0", async ({
+  harness,
+}) => {
   const r = await harness.evaluate(async (fake) => {
     const log: string[] = [];
     (0, eval)(fake)(log);
@@ -441,7 +493,9 @@ test("audioOutput: enabled = false なら全キャラクターの声を出さな
   expect(r.same).toBe(true);
 });
 
-test("ttsModeId: 代入した声で読み (タグで言語を変えた部分は除く)、undefined で言語と性別から選ぶ", async ({ harness }) => {
+test("ttsModeId: 代入した声で読み (タグで言語を変えた部分は除く)、undefined で言語と性別から選ぶ", async ({
+  harness,
+}) => {
   const r = await harness.evaluate(async () => {
     const log: string[] = [];
     // 声の一覧と発話を差し替える (本物の SpeechSynthesisVoice でないと voice に入れられないので、発話も差し替える)
@@ -452,9 +506,16 @@ test("ttsModeId: 代入した声で読み (タグで言語を変えた部分は�
       { name: "Hedda", voiceURI: "urn:hedda", lang: "de-DE", default: true },
     ];
     speechSynthesis.getVoices = () => voices as unknown as SpeechSynthesisVoice[];
-    (window as any).SpeechSynthesisUtterance = class {
-      lang = ""; rate = 1; pitch = 1; volume = 1; voice: { name: string } | null = null;
-      onstart?: () => void; onend?: () => void; onboundary?: () => void; onerror?: () => void;
+    (window as unknown as { SpeechSynthesisUtterance: unknown }).SpeechSynthesisUtterance = class {
+      lang = "";
+      rate = 1;
+      pitch = 1;
+      volume = 1;
+      voice: { name: string } | null = null;
+      onstart?: () => void;
+      onend?: () => void;
+      onboundary?: () => void;
+      onerror?: () => void;
       constructor(readonly text: string) {}
     };
     speechSynthesis.speak = (u) => {
@@ -477,4 +538,41 @@ test("ttsModeId: 代入した声で読み (タグで言語を変えた部分は�
   expect(r.log).toEqual(["Hello: Haruka ja-JP", "Guten Tag: Hedda de-DE", "Hello: David en-US"]);
   // マーリンは男性の声 (言語は language)。見つからない声は、言語と性別から選ぶ。声に出さないなら ""
   expect(r.ids).toEqual(["urn:haruka", "urn:david", "urn:david", ""]);
+});
+
+test("スクリーンリーダー: 吹き出しの全文を見えない status に 1 度だけ入れ、閉じたら空にする。キャラクターは名前の付いた絵", async ({
+  harness,
+}) => {
+  const r = await harness.evaluate(async () => {
+    const a = await window.loadAgent("Merlin.acs", { voice: false, language: "en-US" });
+    await a.show(true);
+    const live = document.querySelector<HTMLElement>(".msagent-live")!;
+    const seen: string[] = [];
+    new MutationObserver(() => seen.push(live.textContent ?? "")).observe(live, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+    const attrs = {
+      role: live.getAttribute("role"),
+      balloonHidden: document.querySelector(".msagent-balloon")!.getAttribute("aria-hidden"),
+      agentRole: a.element.getAttribute("role"),
+      label: a.element.getAttribute("aria-label"),
+    };
+    await a.speak("Hello there, how are you?");
+    const spoken = { text: live.textContent, lang: live.lang };
+    a.closeBalloon();
+    const closed = live.textContent;
+    a.name = "Wizard";
+    const renamed = a.element.getAttribute("aria-label");
+    a.destroy();
+    return { attrs, spoken, closed, renamed, seen, removed: !live.isConnected };
+  });
+  expect(r.attrs).toEqual({ role: "status", balloonHidden: "true", agentRole: "img", label: "Merlin" });
+  expect(r.spoken).toEqual({ text: "Hello there, how are you?", lang: "en-US" });
+  expect(r.closed).toBe("");
+  // 少しずつ出しても、読ませる文は全文の 1 度だけ
+  expect(r.seen.filter((s) => s)).toEqual(["Hello there, how are you?"]);
+  expect(r.renamed).toBe("Wizard");
+  expect(r.removed).toBe(true);
 });

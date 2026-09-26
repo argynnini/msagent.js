@@ -4,7 +4,9 @@ import { expect, test } from "./fixtures";
 /** アニメーションの始まりを記録する */
 const recordAnimations = `(a, log) => a.on("animationstart", (e) => log.push(e.detail.name))`;
 
-test("Rocky (.act): 登場・退場で、状態に割り当てられたアニメーション (Appear / Disappear・Goodbye) を使う", async ({ harness }) => {
+test("Rocky (.act): 登場・退場で、状態に割り当てられたアニメーション (Appear / Disappear・Goodbye) を使う", async ({
+  harness,
+}) => {
   requireCharacters(CHARACTERS.rocky);
   const log = await harness.evaluate(async (rec) => {
     const log: string[] = [];
@@ -49,7 +51,7 @@ test("隠れている間: play はすぐ終わり、moveTo はすぐ移り、spe
   expect(r.playMs).toBeLessThan(200);
   expect(r.pos).toEqual([100, 120]);
   expect(r.speak).toBe("failed");
-  expect(r.reason).toBe("キャラクターが隠れています");
+  expect(r.reason).toBe("The character is hidden");
   expect(r.balloon).toBe(false);
 });
 
@@ -66,7 +68,9 @@ test("stop() しても、登場のアニメーションは最後まで再生す�
   expect(r).toEqual({ show: "complete", wave: "interrupted" });
 });
 
-test("gestureAt: Gesturing の状態を使い、向きはキャラクターから見た向き (画面の右 = キャラクターの左)", async ({ harness }) => {
+test("gestureAt: Gesturing の状態を使い、向きはキャラクターから見た向き (画面の右 = キャラクターの左)", async ({
+  harness,
+}) => {
   requireCharacters(CHARACTERS.clippit);
   const log = await harness.evaluate(async (rec) => {
     const log: string[] = [];
@@ -208,7 +212,9 @@ test("hide やほかのアニメーションを始めると、前のアニメー
   expect(r.log).toEqual(["start", "stop", "start"]);
 });
 
-test("移動の途中で stop() して別の場所へ moveTo すると、前の移動はやめ、新しい移動は歩いて (移動のアニメーションで) 進む", async ({ harness }) => {
+test("移動の途中で stop() して別の場所へ moveTo すると、前の移動はやめ、新しい移動は歩いて (移動のアニメーションで) 進む", async ({
+  harness,
+}) => {
   requireCharacters(CHARACTERS.finfin);
   const r = await harness.evaluate(async () => {
     const a = await window.loadAgent("finfin.acs");
@@ -261,7 +267,9 @@ test("移動の途中で stop() すると、その場で止まり、戻りの動
   expect(r.holding).toBe(false);
 });
 
-test("最後のコマの絵が空 (0x0) のアニメーションは、止まっているときの絵で終わる (フィンフィンの MoveLeftReturn)", async ({ harness }) => {
+test("最後のコマの絵が空 (0x0) のアニメーションは、止まっているときの絵で終わる (フィンフィンの MoveLeftReturn)", async ({
+  harness,
+}) => {
   requireCharacters(CHARACTERS.finfin);
   const r = await harness.evaluate(async () => {
     const a = await window.loadAgent("finfin.acs");
@@ -273,7 +281,10 @@ test("最後のコマの絵が空 (0x0) のアニメーションは、止まっ�
     await a.moveTo(700, 400, 300); // 画面の右へ = MoveLeft → MoveLeftReturn
     const ret = a.character.animations.get("MoveLeftReturn")!;
     return {
-      emptyLast: (a.player as unknown as { sprite(i: number): HTMLCanvasElement }).sprite(ret.frames.at(-1)!.images[0]!.imageIndex).width === 0,
+      emptyLast:
+        (a.player as unknown as { sprite(i: number): HTMLCanvasElement }).sprite(
+          ret.frames.at(-1)!.images[0]!.imageIndex,
+        ).width === 0,
       rest: last === a.character.animations.get("RestPose")!.frames[0],
     };
   });

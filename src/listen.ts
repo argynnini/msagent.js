@@ -7,26 +7,32 @@
  * ブラウザによっては (Chrome・Edge)、声をインターネット上のサーバーに送って認識する
  */
 
-/** 聞き取りを始めた方法: listen() (プログラム) / 聞き取りキー */
+/** How listening started: `listen()` (the program) or the listening key. */
 export type ListenMode = "program" | "key";
 
 /**
- * 聞き取りが終わった原因 (本家の ListenComplete の Cause と同じ考え方)。
- * program: listen(false) / timeout: 時間切れ / key: 聞き取りキーを離した / finished: 言い終えた /
- * error: 音声認識が使えなかった (マイクを許可されていないなど。srStatus で理由が分かる)
+ * Why listening ended. Same idea as the `Cause` of Microsoft Agent's `ListenComplete`.
+ *
+ * - `"program"`: `listen(false)`
+ * - `"timeout"`: the time ran out
+ * - `"key"`: the listening key was released
+ * - `"finished"`: the user finished speaking
+ * - `"error"`: speech recognition failed (e.g. the microphone is not permitted; see `agent.srStatus`)
  */
 export type ListenCause = "program" | "timeout" | "key" | "finished" | "error";
 
 /**
- * 音声入力が使えるか (本家の SRStatus と同じ値)。
- * 0: 使える / 1: マイクが使えない / 4: このブラウザには音声認識が無い・認識サービスにつながらない /
- * 5: マイク・音声認識を許可されていない / 6: そのほかの理由
+ * Whether speech input is available, with the same values as Microsoft Agent's `SRStatus`:
+ * `0` available, `1` no microphone, `4` no speech recognition in this browser or the service cannot be reached,
+ * `5` microphone or speech recognition not permitted, `6` other error.
  */
 export type SrStatus = 0 | 1 | 4 | 5 | 6;
 
-/** 聞き取った文の候補 1 つ (confidence: 0〜1) */
+/** One recognized alternative. */
 export interface HeardAlternative {
+  /** The recognized text. */
   transcript: string;
+  /** Recognition confidence, 0–1. */
   confidence: number;
 }
 
@@ -206,10 +212,13 @@ export class Listener {
       // 何も言わなかった・止めた、は続ける (時間切れまで聞く)
       if (e.error === "no-speech" || e.error === "aborted") return;
       this.status =
-        e.error === "not-allowed" || e.error === "service-not-allowed" ? 5
-        : e.error === "audio-capture" ? 1
-        : e.error === "network" || e.error === "language-not-supported" ? 4
-        : 6;
+        e.error === "not-allowed" || e.error === "service-not-allowed"
+          ? 5
+          : e.error === "audio-capture"
+            ? 1
+            : e.error === "network" || e.error === "language-not-supported"
+              ? 4
+              : 6;
       this.stop("error");
     };
     rec.onend = () => {

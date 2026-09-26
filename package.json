@@ -5,17 +5,17 @@
   "type": "module",
   "main": "./dist/msagent.js",
   "module": "./dist/msagent.js",
-  "types": "./dist/types/index.d.ts",
+  "types": "./dist/msagent.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/types/index.d.ts",
+      "types": "./dist/msagent.d.ts",
       "import": "./dist/msagent.js"
     }
   },
   "unpkg": "./dist/msagent.iife.js",
   "jsdelivr": "./dist/msagent.iife.js",
   "files": [
-    "dist"
+    "dist/msagent.*"
   ],
   "sideEffects": false,
   "keywords": [
@@ -34,17 +34,29 @@
   },
   "scripts": {
     "dev": "vite example",
-    "build": "vite build && vite build --mode global && tsc -p tsconfig.build.json",
+    "build": "vite build && vite build --mode global && tsc -p tsconfig.build.json && rollup -c && tsc -p tsconfig.dist.json",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run typecheck && npm run build",
+    "prepublishOnly": "npm run typecheck && npm run lint && npm run format:check && npm run build",
     "test": "playwright test",
-    "test:unit": "playwright test --project=unit"
+    "test:unit": "playwright test --project=unit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.63.0",
-    "@types/node": "^22.20.4",
-    "typescript": "^5.6.0",
-    "vite": "^6.0.0"
+    "@types/node": "^24.19.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "eslint": "^10.11.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.9",
+    "rollup": "^4.63.5",
+    "rollup-plugin-dts": "^6.5.1",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-eslint": "^8.70.1",
+    "vite": "^8.3.1"
   },
   "license": "MIT"
 }

@@ -1,122 +1,167 @@
-import type { ListenCause, ListenMode } from "./listen";
-import type { AgentRequest } from "./request";
+import type { ListenCause, ListenMode } from "./listen.js";
+import type { AgentRequest } from "./request.js";
 
-/** クリックされたときの、ボタンと Shift / Ctrl / Alt キーの状態 (本家の Click の Button / Shift と同じ) */
+/**
+ * Details of a `click` / `dblclick`: the position, the button and the modifier keys.
+ * Same idea as the `Button` / `Shift` arguments of Microsoft Agent's `Click`.
+ */
 export interface PointerDetail {
-  /** 画面上の位置 (clientX / clientY) */
+  /** Viewport x in CSS pixels (`clientX`). */
   x: number;
+  /** Viewport y in CSS pixels (`clientY`). */
   y: number;
+  /** Which mouse button was pressed. */
   button: "left" | "middle" | "right";
+  /** Whether Shift was held. */
   shift: boolean;
+  /** Whether Ctrl was held. */
   ctrl: boolean;
+  /** Whether Alt was held. */
   alt: boolean;
-  /** どこを押したか: キャラクター / タスクバーのアイコン (taskbarIcon。本家と同じく、アイコンのクリックも click で知らせる) */
+  /** What was clicked: the character or its taskbar icon (clicks on the icon fire `click` too, like Microsoft Agent). */
   source: "character" | "taskbarIcon";
+  /** The original mouse event. */
   originalEvent: MouseEvent;
 }
 
-/** 出た・消えた原因 (本家の VisibilityCause と同じ考え方): プログラムから / ユーザーの操作 (右クリックのメニューなど) */
+/**
+ * What showed or hid the character: the program, or the user (e.g. the popup menu, a voice command or the taskbar icon).
+ * Same idea as Microsoft Agent's `VisibilityCause`.
+ */
 export type VisibilityCause = "program" | "user";
 
-/** 最後に動いた原因 (本家の MoveCause と同じ考え方): まだ動いていない / ドラッグ / プログラム / 画面の中に戻した */
+/**
+ * What last moved the character: nothing yet, the user dragging it, the program (`moveTo()` / `left` / `top`), or
+ * being moved back inside a shrunken viewport. Same idea as Microsoft Agent's `MoveCause`.
+ */
 export type MoveCause = "none" | "drag" | "moveTo" | "reposition";
 
-/** 2 番目・3 番目に合ったコマンド (本家の Alt1Name / Alt1Confidence / Alt1Voice など) */
+/** A runner-up voice command match. Same as Microsoft Agent's `Alt1Name` / `Alt1Confidence` / `Alt1Voice`, etc. */
 export interface CommandAlternative {
+  /** Name of the matched command. */
   name: string;
+  /** Recognition confidence, 0–100. */
   confidence: number;
+  /** The text that was heard. */
   voice: string;
 }
 
 /**
- * コマンドが選ばれた (本家の Command イベントの UserInput と同じ考え方)。
- * 右クリックのメニューなら source: "menu"、confidence: 100、voice: ""。
- * 声なら、name は最も合ったコマンド ("" なら、どのコマンドにも合わなかったか、msagent.js が用意したコマンド)
+ * Details of a `command` event. Same idea as the `UserInput` of Microsoft Agent's `Command` event.
+ *
+ * From the popup menu, `source` is `"menu"`, `confidence` is `100` and `voice` is `""`.
  */
 export interface CommandDetail {
+  /**
+   * Name of the chosen command. For voice input, the best match; `""` if nothing matched or it was one of the
+   * built-in global commands (such as "hide").
+   */
   name: string;
+  /** Whether the command was chosen from the popup menu or by voice. */
   source: "menu" | "voice";
-  /** 聞き取った確かさ (0〜100) */
+  /** Recognition confidence, 0–100. */
   confidence: number;
-  /** 聞き取った文 */
+  /** The text that was heard. */
   voice: string;
-  /** 合ったコマンドの数 (声で、どれにも合わなければ 0) */
+  /** Number of matching commands (`0` if speech matched nothing). */
   count: number;
-  /** 2 番目・3 番目に合ったもの */
+  /** The second and third best matches. */
   alternatives: CommandAlternative[];
 }
 
 /**
- * ヘルプモードで選ばれたもの (本家の HelpComplete の Cause と同じ考え方)。
- * command: commands の項目 (メニューか声) / hide: 「隠す」 / character: キャラクターをクリック・ドラッグした /
- * openCommandsWindow / closeCommandsWindow: 音声コマンドの窓を開く・閉じる
+ * What was chosen in Help mode. Same idea as the `Cause` of Microsoft Agent's `HelpComplete`.
+ *
+ * - `"command"`: an item of `agent.commands` (from the menu or by voice)
+ * - `"hide"`: Hide
+ * - `"character"`: the character was clicked or dragged
+ * - `"openCommandsWindow"` / `"closeCommandsWindow"`: opening or closing the Voice Commands Window
  */
 export type HelpCause = "command" | "hide" | "character" | "openCommandsWindow" | "closeCommandsWindow";
 
-/** 右クリックのメニューで選ばれたもの・キャラクターのヘルプ (helpcomplete) */
+/** Details of a `helpcomplete` event. */
 export interface HelpDetail {
-  /** 選ばれたコマンドの名前 (msagent.js が用意したもの・キャラクターなら "") */
+  /** Name of the chosen command, or `""` for built-in items and the character. */
   name: string;
+  /** What was chosen. */
   cause: HelpCause;
-  /** 選ばれたコマンド (無ければキャラクター) の helpContextId。ヘルプのどこを出すかに使う */
+  /** `helpContextId` of the chosen command (or of the character), to decide which help to show. */
   helpContextId: number | undefined;
 }
 
-/** agent.on() で受け取れるイベントと、その detail */
+/** Events fired by an `Agent` (listen with `agent.on()`), and the type of each `event.detail`. */
 export interface AgentEventMap {
-  /** キャラクターの絵の部分がクリックされた (左・中・右ボタン。ドラッグの後は来ない) */
+  /** The character's image was clicked with any button. Not fired after a drag. */
   click: PointerDetail;
-  /** ダブルクリックされた。event.preventDefault() すると、animate() しない */
+  /** The character was double-clicked. Call `event.preventDefault()` to skip the default `animate()`. */
   dblclick: PointerDetail;
-  /** ドラッグで動かし始めた / 動かし終えた (x, y はキャラクターの左上の位置) */
+  /** The user started dragging the character. `x` / `y` is its top-left corner. */
   dragstart: { x: number; y: number };
+  /** The user finished dragging the character. `x` / `y` is its top-left corner. */
   dragend: { x: number; y: number };
   /**
-   * 別の場所に移った。by: ドラッグ (ユーザー) / moveTo (プログラム) /
-   * reposition (ブラウザの窓が小さくなり、画面の中に戻した。本家の「画面の解像度が変わった」と同じ)
+   * The character moved. `by`: `"drag"` (the user), `"moveTo"` (the program), or `"reposition"` (moved back inside a
+   * shrunken viewport, like Microsoft Agent does when the screen resolution changes).
    */
   move: { x: number; y: number; by: Exclude<MoveCause, "none"> };
-  /** 大きさが変わった (scale / width / height)。width, height は表示の大きさ (px) */
+  /** The displayed size changed (`scale` / `width` / `height`). `width` / `height` are in CSS pixels. */
   resize: { width: number; height: number; scale: number };
-  /** 出た / 消えた */
+  /** The character was shown. */
   show: { cause: VisibilityCause };
+  /** The character was hidden. */
   hide: { cause: VisibilityCause };
-  /** 命令 (show / play / speak など) を始めた / 終えた。request.status で結果が分かる */
+  /** A request (`show`, `play`, `speak`, ...) started. */
   requeststart: { request: AgentRequest };
+  /** A request finished; check `request.status` for the result. */
   requestcomplete: { request: AgentRequest };
-  /** 吹き出しが出た / 閉じた */
+  /** The balloon opened. */
   balloonshow: Record<string, never>;
+  /** The balloon closed. */
   balloonhide: Record<string, never>;
   /**
-   * いちばん手前のキャラクター (クリック・声のコマンドを受け取る。本家の入力アクティブ) になった / でなくなった
-   * (本家の ActivateInput / DeactivateInput と同じ)。表示・クリック・ドラッグ・activate() でなり、
-   * 別のキャラクターがなるか、隠れる・破棄されるとでなくなる (見えている残りのうち一番手前のものに移る)
+   * The character became the frontmost one, which receives input such as the listening key. Happens when it is shown,
+   * clicked, dragged or `activate()`d. Same as Microsoft Agent's `ActivateInput`.
    */
   activateinput: Record<string, never>;
+  /**
+   * The character is no longer the frontmost one: another character became active, or this one was hidden or
+   * destroyed (input then moves to the frontmost remaining visible character). Same as Microsoft Agent's
+   * `DeactivateInput`.
+   */
   deactivateinput: Record<string, never>;
-  /** 待機状態 (Idling) に入った / 抜けた (次の命令が始まった) */
+  /** The character entered the idle state. Same as Microsoft Agent's `IdleStart`. */
   idlestart: Record<string, never>;
+  /** The character left the idle state because a request started. Same as Microsoft Agent's `IdleComplete`. */
   idlecomplete: Record<string, never>;
-  /** 右クリックのメニューか声で、commands に足した項目が選ばれた (本家の Command と同じ) */
+  /** A command from `agent.commands` was chosen from the popup menu or by voice. Same as Microsoft Agent's `Command`. */
   command: CommandDetail;
   /**
-   * ヘルプモード (agent.helpModeOn) で、キャラクター・メニューの項目・声のコマンドが選ばれた (本家の HelpComplete と同じ)。
-   * ヘルプモードは終わる。この間は click / dragstart / command は来ない
+   * In Help mode (`agent.helpModeOn`), the character, a menu item or a voice command was chosen, and Help mode ended.
+   * `click` / `dragstart` / `command` are not fired while in Help mode. Same as Microsoft Agent's `HelpComplete`.
    */
   helpcomplete: HelpDetail;
-  /** 聞き取りを始めた / 終えた (本家の ListenStart / ListenComplete と同じ) */
+  /** Listening for voice commands started. Same as Microsoft Agent's `ListenStart`. */
   listenstart: { mode: ListenMode };
+  /** Listening for voice commands ended. Same as Microsoft Agent's `ListenComplete`. */
   listencomplete: { cause: ListenCause };
-  /** アニメーションが始まった / 終わった (idle: 待機動作か) */
+  /** An animation started. `idle`: whether it is an idle animation. Return animations count as animations too. */
   animationstart: { name: string; idle: boolean };
+  /** An animation ended. `idle`: whether it is an idle animation. */
   animationend: { name: string; idle: boolean };
-  /** しゃべり始めた / しゃべり終えた (途中でやめたときも来る)。text は吹き出しに出す文 (タグを除いたもの)。thought: think() か */
+  /**
+   * Speaking started. `text` is the text shown in the balloon (without tags); `thought` is `true` for `think()`.
+   */
   speakstart: { text: string; thought: boolean };
+  /** Speaking ended, including when it was stopped. */
   speakend: { text: string; thought: boolean };
-  /** 読み上げの目印 (\Mrk=番号\ か SAPI 5 の <bookmark mark="…"/>) まで来た (本家の Bookmark と同じ)。id は番号 (数字でない SAPI 5 の目印は NaN)、mark は書いてあったとおりの文字 */
+  /**
+   * Speech reached a bookmark (`\Mrk=number\` or SAPI 5 `<bookmark mark="..."/>`). Same as Microsoft Agent's `Bookmark`.
+   * `id` is the number (`NaN` for a non-numeric SAPI 5 mark) and `mark` is the text as written.
+   */
   bookmark: { id: number; mark: string };
 }
 
+/** A listener for an `Agent` event. The data is in `event.detail`. */
 export type AgentEventListener<K extends keyof AgentEventMap> = (event: CustomEvent<AgentEventMap[K]>) => void;
 
 /** イベントを出す関数 (cancelable で preventDefault() されたら false) */
@@ -125,5 +170,14 @@ export type Emit = <K extends keyof AgentEventMap>(type: K, detail: AgentEventMa
 /** マウスのイベントから、click / dblclick の detail を作る */
 export function pointerDetail(e: MouseEvent, source: PointerDetail["source"] = "character"): PointerDetail {
   const button = e.button === 1 ? "middle" : e.button === 2 ? "right" : "left";
-  return { x: e.clientX, y: e.clientY, button, shift: e.shiftKey, ctrl: e.ctrlKey, alt: e.altKey, source, originalEvent: e };
+  return {
+    x: e.clientX,
+    y: e.clientY,
+    button,
+    shift: e.shiftKey,
+    ctrl: e.ctrlKey,
+    alt: e.altKey,
+    source,
+    originalEvent: e,
+  };
 }

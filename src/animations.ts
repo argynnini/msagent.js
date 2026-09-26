@@ -1,6 +1,6 @@
-import type { Frame } from "./acs/reader";
-import type { Character } from "./character";
-import { isIdleAnimation } from "./idle";
+import type { Frame } from "./acs/reader.js";
+import type { Character } from "./character.js";
+import { isIdleAnimation } from "./idle.js";
 
 /** animate() で選ばないもの (待機動作や登場・退場の状態のほかに) */
 const NOT_FOR_ANIMATE = /^(Show|Hide|RestPose)$/i;

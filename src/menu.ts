@@ -1,7 +1,6 @@
 /** メニューに出す 1 行 (separator は区切り線) */
 export type MenuEntry =
-  | { kind: "item"; caption: string; enabled: boolean; bold?: boolean; onSelect: () => void }
-  | { kind: "separator" };
+  { kind: "item"; caption: string; enabled: boolean; bold?: boolean; onSelect: () => void } | { kind: "separator" };
 
 /** メニューの文字 (本家の Commands.FontName / FontSize。指定が無ければ CSS のまま) */
 export interface MenuFont {
@@ -26,6 +25,8 @@ export class PopupMenu {
 
   constructor(entries: readonly MenuEntry[], x: number, y: number, font: MenuFont = {}) {
     openMenu?.close();
+    // 開いているメニューは 1 つだけ。新しく開いたら、前のものを閉じる
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     openMenu = this;
     this.element = document.createElement("div");
     this.element.className = "msagent-menu";

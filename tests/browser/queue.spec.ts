@@ -9,7 +9,12 @@ test("命令は Request を返し、await すると終わったときの状態�
     const show = a.show(true);
     const statusBefore = show.status;
     const played = await (a.play("Wave") as ReturnType<typeof a.show>);
-    return { isRequest: show instanceof window.M.AgentRequest, statusBefore, played, missing: a.play("NoSuchAnimation") };
+    return {
+      isRequest: show instanceof window.M.AgentRequest,
+      statusBefore,
+      played,
+      missing: a.play("NoSuchAnimation"),
+    };
   });
   expect(r).toEqual({ isRequest: true, statusBefore: "pending", played: "complete", missing: false });
 });
@@ -30,7 +35,7 @@ test("stop(request): その命令だけを止める", async ({ harness }) => {
   expect(r).toEqual({ after: ["interrupted", "pending"], r1: "complete", r3: "complete" });
 });
 
-test("stopAll(\"speak\"): しゃべりだけ止め、次の play は続ける", async ({ harness }) => {
+test('stopAll("speak"): しゃべりだけ止め、次の play は続ける', async ({ harness }) => {
   const r = await harness.evaluate(async () => {
     const a = await window.loadAgent("Merlin.acs");
     await a.show(true);
@@ -81,7 +86,9 @@ test("requeststart / requestcomplete が命令ごとに来る", async ({ harness
   expect(log).toEqual(["start show", "end show complete", "start delay", "end delay complete"]);
 });
 
-test("get: アニメーション・状態はあるか確かめ、音声ファイルは読み込む。queue = false なら順番待ちに入らない", async ({ harness }) => {
+test("get: アニメーション・状態はあるか確かめ、音声ファイルは読み込む。queue = false なら順番待ちに入らない", async ({
+  harness,
+}) => {
   const r = await harness.evaluate(async () => {
     const a = await window.loadAgent("Merlin.acs");
     const E = window.M.RequestError;
@@ -128,7 +135,12 @@ test("Request.number: 本家のエラー番号 (隠れている・止められ�
     await new Promise((res) => setTimeout(res, 50));
     a.stop(stopped);
     await self;
-    return { hidden: hidden.number, stopped: [stopped.status, stopped.number], self: [self.status, self.number], ok: d.number };
+    return {
+      hidden: hidden.number,
+      stopped: [stopped.status, stopped.number],
+      self: [self.status, self.number],
+      ok: d.number,
+    };
   });
   expect(r).toEqual({
     hidden: -2147213302, // 0x8004200A
@@ -138,7 +150,9 @@ test("Request.number: 本家のエラー番号 (隠れている・止められ�
   });
 });
 
-test("raiseRequestErrors: 失敗した命令は await で AgentRequestError、無いアニメーションの play はその場で例外。既定は例外にしない", async ({ harness }) => {
+test("raiseRequestErrors: 失敗した命令は await で AgentRequestError、無いアニメーションの play はその場で例外。既定は例外にしない", async ({
+  harness,
+}) => {
   const r = await harness.evaluate(async () => {
     const quiet = await window.loadAgent("Merlin.acs");
     const loud = await window.loadAgent("Merlin.acs", { raiseRequestErrors: true });
@@ -147,7 +161,9 @@ test("raiseRequestErrors: 失敗した命令は await で AgentRequestError、�
         await f();
         return "no error";
       } catch (e) {
-        return e instanceof window.M.AgentRequestError ? `${e.name} ${e.number} ${e.request ? "request" : "-"}` : String(e);
+        return e instanceof window.M.AgentRequestError
+          ? `${e.name} ${e.number} ${e.request ? "request" : "-"}`
+          : String(e);
       }
     };
     return {

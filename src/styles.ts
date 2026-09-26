@@ -8,6 +8,11 @@ const CSS = `
 .msagent { pointer-events: none; user-select: none; -webkit-user-select: none; }
 .msagent.msagent-hit { pointer-events: auto; cursor: pointer; touch-action: none; }
 .msagent canvas { display: block; }
+/* スクリーンリーダーだけが読む吹き出しの文 (画面には出さない) */
+.msagent-live {
+  position: fixed; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
 /* ヘルプモード (agent.helpModeOn): キャラクターとメニューの上で、ヘルプのポインターにする */
 .msagent.msagent-hit.msagent-help-mode, .msagent-menu.msagent-help-mode, .msagent-menu.msagent-help-mode .msagent-menu-item { cursor: help; }
 /*

@@ -14,10 +14,12 @@ export function decodeWav(data: Uint8Array): DecodedWav | undefined {
   const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
   if (data.length < 12 || dv.getUint32(0, true) !== 0x46464952 /* RIFF */) return undefined;
 
-  let fmt: { tag: number; channels: number; rate: number; blockAlign: number; bits: number; coefs: [number, number][] } | undefined;
+  let fmt:
+    | { tag: number; channels: number; rate: number; blockAlign: number; bits: number; coefs: [number, number][] }
+    | undefined;
   let pcm: Uint8Array | undefined;
 
-  for (let p = 12; p + 8 <= data.length; ) {
+  for (let p = 12; p + 8 <= data.length;) {
     const id = String.fromCharCode(data[p]!, data[p + 1]!, data[p + 2]!, data[p + 3]!);
     const size = dv.getUint32(p + 4, true);
     const body = p + 8;
@@ -26,7 +28,8 @@ export function decodeWav(data: Uint8Array): DecodedWav | undefined {
       const tag = dv.getUint16(body, true);
       if (tag === 2 && size >= 22) {
         const n = dv.getUint16(body + 20, true);
-        for (let i = 0; i < n; i++) coefs.push([dv.getInt16(body + 22 + i * 4, true), dv.getInt16(body + 24 + i * 4, true)]);
+        for (let i = 0; i < n; i++)
+          coefs.push([dv.getInt16(body + 22 + i * 4, true), dv.getInt16(body + 24 + i * 4, true)]);
       }
       fmt = {
         tag,

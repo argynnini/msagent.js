@@ -1,27 +1,35 @@
-/** 音声コマンドの窓の、見出し 1 つとその下のコマンド */
+/** A heading in the Voice Commands Window and the commands under it. */
 export interface CommandsWindowSection {
+  /** Heading text. */
   caption: string;
-  /** コマンドの名前と、言う言葉 (文法や例) */
+  /** Command names, with what to say (a grammar or an example) as the hint. */
   items: { caption: string; hint?: string | undefined }[];
 }
 
-/** 音声コマンドの窓に出すもの (開くたびに作り直す) */
+/** What the Voice Commands Window shows. Rebuilt every time it is opened or refreshed. */
 export interface CommandsWindowContent {
+  /** Window title. */
   title: string;
-  /** 閉じるボタンの名前 (読み上げソフト用) */
+  /** Accessible name of the close button. */
   closeLabel: string;
-  /** 音声認識が使えないときの知らせ */
+  /** Message shown when speech recognition is unavailable. */
   notice?: string | undefined;
+  /** The sections of commands. */
   sections: CommandsWindowSection[];
 }
 
 /**
- * 音声コマンドの窓 (本家の Voice Commands Window / CommandsWindow オブジェクト)。いま声で言えるコマンドの一覧を出す。
- * 画面の右下に出す (本家はタスクバーのアイコンの隣)。位置は CSS (.msagent-commands-window) で変えられる
+ * The Voice Commands Window (`agent.commandsWindow`), listing the commands that can be spoken now.
+ * Same as Microsoft Agent's `CommandsWindow` object.
+ *
+ * It opens at the bottom right of the page (Microsoft Agent puts it next to the taskbar icon); style
+ * `.msagent-commands-window` to move it.
  */
 export class CommandsWindow {
+  /** The window's element (`div.msagent-commands-window`). */
   readonly element: HTMLDivElement;
 
+  /** @internal Created by {@link Agent}. */
   constructor(
     private readonly content: () => CommandsWindowContent,
     /** 開くときの z-index (どのキャラクターよりも手前に出す) */
@@ -33,7 +41,7 @@ export class CommandsWindow {
     this.element.style.display = "none";
   }
 
-  /** 開いているか (本家の CommandsWindow.Visible)。代入すると開く・閉じる */
+  /** Whether the window is open. Assign to open or close it. Same as `CommandsWindow.Visible`. */
   get visible(): boolean {
     return this.element.style.display !== "none";
   }
@@ -50,28 +58,32 @@ export class CommandsWindow {
     this.element.style.display = "block";
   }
 
-  /** 開いていれば、いまのコマンドで作り直す (コマンドを足したり変えたりしたとき) */
+  /** Redraws the window with the current commands, if it is open. Call it after changing commands. */
   refresh() {
     if (this.visible) this.render();
   }
 
-  /** 画面上の位置と大きさ (px。本家の Left / Top / Width / Height。閉じていれば 0) */
+  /** Left edge in CSS pixels in the viewport, or `0` while closed. Same as `CommandsWindow.Left`. */
   get left(): number {
     return this.visible ? this.element.getBoundingClientRect().left : 0;
   }
 
+  /** Top edge in CSS pixels in the viewport, or `0` while closed. Same as `CommandsWindow.Top`. */
   get top(): number {
     return this.visible ? this.element.getBoundingClientRect().top : 0;
   }
 
+  /** Width in CSS pixels, or `0` while closed. Same as `CommandsWindow.Width`. */
   get width(): number {
     return this.visible ? this.element.offsetWidth : 0;
   }
 
+  /** Height in CSS pixels, or `0` while closed. Same as `CommandsWindow.Height`. */
   get height(): number {
     return this.visible ? this.element.offsetHeight : 0;
   }
 
+  /** @internal Removes the window's element. Called by `agent.destroy()`. */
   destroy() {
     this.element.remove();
   }

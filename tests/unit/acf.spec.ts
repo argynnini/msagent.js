@@ -18,8 +18,21 @@ test.describe("ACF / ACA の読み込み", () => {
     expect(c.getName("ja")).toBe("ジニー");
     expect(c.getName("xx")).toBe("Genie");
     expect(c.languages.length).toBe(30);
-    expect(c.voice).toMatchObject({ speed: 157, pitch: 64, language: "en-US", gender: "male", age: 30, style: "Business" });
-    expect(c.balloon).toMatchObject({ background: "#ffffe1", fontFamily: "MS Sans Serif", fontSize: 13, lines: 2, charsPerLine: 28 });
+    expect(c.voice).toMatchObject({
+      speed: 157,
+      pitch: 64,
+      language: "en-US",
+      gender: "male",
+      age: 30,
+      style: "Business",
+    });
+    expect(c.balloon).toMatchObject({
+      background: "#ffffe1",
+      fontFamily: "MS Sans Serif",
+      fontSize: 13,
+      lines: 2,
+      charsPerLine: 28,
+    });
     expect(c.palette.length).toBe(256);
     expect(c.trayIcon).toBeDefined();
     expect(c.animations.size).toBe(76);
@@ -47,7 +60,12 @@ test.describe("ACF / ACA の読み込み", () => {
     expect(c.isLoaded("Show")).toBe(true);
     expect(show.transitionType).toBe(2);
     expect(show.frames.length).toBe(11);
-    expect(show.frames[0]).toMatchObject({ images: [{ imageIndex: 0, x: 0, y: 0 }], soundIndex: 0, duration: 50, exitFrame: 1 });
+    expect(show.frames[0]).toMatchObject({
+      images: [{ imageIndex: 0, x: 0, y: 0 }],
+      soundIndex: 0,
+      duration: 50,
+      exitFrame: 1,
+    });
     expect(show.frames[10]!.exitFrame).toBe(-2);
     const img = c.getImage(show.frames[5]!.images[0]!.imageIndex);
     expect([img.width, img.height]).toEqual([128, 128]);
@@ -78,7 +96,7 @@ test.describe("ACF / ACA の読み込み", () => {
   test("ACA: ACF とチェックサムが合わない (別のキャラクターの) ものは読まない", () => {
     requireCharacters(CHARACTERS.genie, CHARACTERS.merlinGestureUp);
     const c = genie();
-    expect(() => c.addAnimationData("GestureUp", readCharacter(CHARACTERS.merlinGestureUp))).toThrow(/チェックサム/);
+    expect(() => c.addAnimationData("GestureUp", readCharacter(CHARACTERS.merlinGestureUp))).toThrow(/checksum/);
     expect(c.isLoaded("GestureUp")).toBe(false);
     expect(c.animations.get("GestureUp")!.frames).toEqual([]);
   });

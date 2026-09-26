@@ -99,7 +99,11 @@ function renderName(a: Agent, fileName: string) {
   const badge = document.createElement("span");
   badge.className = "format";
   badge.textContent = format;
-  nameLabel.append(strong, badge, ` · ${a.character.width}×${a.character.height} · ${a.animations().length} アニメーション`);
+  nameLabel.append(
+    strong,
+    badge,
+    ` · ${a.character.width}×${a.character.height} · ${a.animations().length} アニメーション`,
+  );
   nameLabel.title = `${fileName} (画像 ${a.character.width}×${a.character.height} px)`;
   nameLabel.dataset.file = fileName;
 }
@@ -134,14 +138,21 @@ function renderInfo(a: Agent) {
             v.gender && gender[v.gender],
             v.age && `${v.age} 歳`,
             v.style,
-          ].filter(Boolean).join(" · "),
+          ]
+            .filter(Boolean)
+            .join(" · "),
     ],
     ["音声エンジン", v.engine ? [code(v.engine)] : "なし"],
     [
       "吹き出し",
       b
         ? [
-            swatch(b.background), `背景 ${b.background}  `, swatch(b.foreground), `文字 ${b.foreground}  `, swatch(b.border), `縁 ${b.border}`,
+            swatch(b.background),
+            `背景 ${b.background}  `,
+            swatch(b.foreground),
+            `文字 ${b.foreground}  `,
+            swatch(b.border),
+            `縁 ${b.border}`,
             document.createElement("br"),
             `${b.fontFamily} ${b.fontSize}px${b.fontWeight >= 700 ? " 太字" : ""}${b.italic ? " 斜体" : ""} · ${b.lines} 行 × ${b.charsPerLine} 文字`,
             document.createElement("br"),
@@ -229,7 +240,10 @@ function swatch(color: string) {
 
 /** 名前・紹介文の言語の選択肢: 「ブラウザの言語」+ キャラクターファイルにある言語 */
 function renderLanguages(a: Agent) {
-  const display = typeof Intl.DisplayNames === "function" ? new Intl.DisplayNames([navigator.language], { type: "language" }) : undefined;
+  const display =
+    typeof Intl.DisplayNames === "function"
+      ? new Intl.DisplayNames([navigator.language], { type: "language" })
+      : undefined;
   const label = (tag: string) => {
     try {
       return display?.of(tag) ?? tag;
@@ -261,10 +275,17 @@ function greeting(): string {
 function addCommands(a: Agent) {
   // voice: 声で選ぶときの言葉 (「🎤 聞く」のあとに言う)
   a.commands.add("hello", "あいさつ(&G)", { voice: "[...] (こんにちは | こんばんは | おはよう | hello | hi) [...]" });
-  a.commands.add("animate", "おまかせの動き(&A)", { voice: "[...] (おまかせ | なにか して | 何か して | animate) [...]" });
-  a.commands.add("intro", "自己紹介(&I)", { voice: "[...] (自己紹介 | じこしょうかい | introduce yourself | who are you) [...]" });
+  a.commands.add("animate", "おまかせの動き(&A)", {
+    voice: "[...] (おまかせ | なにか して | 何か して | animate) [...]",
+  });
+  a.commands.add("intro", "自己紹介(&I)", {
+    voice: "[...] (自己紹介 | じこしょうかい | introduce yourself | who are you) [...]",
+  });
   a.commands.add("think", "考える(&T)", { voice: "[...] (考えて | かんがえて | think) [...]" });
-  a.commands.add("wave", "手を振る(&W)", { enabled: a.hasAnimation("Wave"), voice: "[...] (手を振って | てをふって | wave) [...]" });
+  a.commands.add("wave", "手を振る(&W)", {
+    enabled: a.hasAnimation("Wave"),
+    voice: "[...] (手を振って | てをふって | wave) [...]",
+  });
   a.commands.defaultCommand = "intro";
   a.on("command", (e) => {
     if (e.detail.name === "hello") a.speak(greeting());
@@ -278,10 +299,28 @@ function addCommands(a: Agent) {
 /** 届いたイベントを、プレイヤーの下に新しい順で出す */
 function watchEvents(a: Agent) {
   const types: (keyof AgentEventMap)[] = [
-    "click", "dblclick", "dragstart", "dragend", "move", "resize", "show", "hide",
-    "animationstart", "animationend", "speakstart", "speakend", "bookmark",
-    "requeststart", "requestcomplete", "balloonshow", "balloonhide", "idlestart", "idlecomplete", "command",
-    "listenstart", "listencomplete",
+    "click",
+    "dblclick",
+    "dragstart",
+    "dragend",
+    "move",
+    "resize",
+    "show",
+    "hide",
+    "animationstart",
+    "animationend",
+    "speakstart",
+    "speakend",
+    "bookmark",
+    "requeststart",
+    "requestcomplete",
+    "balloonshow",
+    "balloonhide",
+    "idlestart",
+    "idlecomplete",
+    "command",
+    "listenstart",
+    "listencomplete",
   ];
   // 聞いている間は「🎤 聞く」を押した見た目にする
   a.on("listenstart", () => toggle($("listen"), true));
@@ -399,7 +438,8 @@ function selfIntroduction(a: Agent): string {
 $("listen").onclick = () => {
   if (!agent) return;
   if (agent.listening) agent.listen(false);
-  else if (!agent.listen(true)) agent.speak("このブラウザでは音声認識が使えません (Chrome・Edge・Safari で試してください)");
+  else if (!agent.listen(true))
+    agent.speak("このブラウザでは音声認識が使えません (Chrome・Edge・Safari で試してください)");
 };
 $("think").onclick = () => {
   if (agent) agent.think($<HTMLInputElement>("text").value.trim() || selfIntroduction(agent));

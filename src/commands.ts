@@ -1,58 +1,75 @@
-import { compileVoiceGrammar } from "./grammar";
-import type { HeardAlternative } from "./listen";
+import { compileVoiceGrammar } from "./grammar.js";
+import type { HeardAlternative } from "./listen.js";
 
-/** 右クリックのメニューの項目・声のコマンド 1 つ (本家の Command オブジェクトと同じ) */
+/**
+ * One popup menu item / voice command. Same as Microsoft Agent's `Command` object.
+ * Changes to the properties take effect the next time the menu or the Voice Commands Window is shown.
+ */
 export interface AgentCommand {
-  /** 選ばれたときに command イベントで返る名前 */
+  /** Name reported in the `command` event when the command is chosen. */
   readonly name: string;
-  /** メニューに出す文字。& の次の文字がアクセスキーになる (例: "検索(&S)") */
+  /** Menu text. The character after `&` is the access key (e.g. `"&Search"`); `&&` is a literal `&`. */
   caption: string;
-  /** false なら、灰色で選べない */
+  /** If `false`, the item is grayed out and cannot be chosen (by menu or by voice). */
   enabled: boolean;
-  /** false なら、メニューに出さない (声のコマンドとしては使える。本家と同じ) */
+  /** If `false`, the item is not shown in the menu but can still be spoken, like Microsoft Agent. */
   visible: boolean;
   /**
-   * 声で選ぶときの言葉 (本家の Voice と同じ文法。例: "[please] (search | find) [...]")。
-   * 無ければ声では選べない。書き方は README の「音声認識」を参照
+   * Grammar of what to say to choose the command by voice, e.g. `"[please] (search | find) [...]"`
+   * (see {@link compileVoiceGrammar}). Without it, the command cannot be chosen by voice.
+   * Same as Microsoft Agent's `Command.Voice`.
    */
   voice?: string | undefined;
-  /** 聞き取りのヒントなどに出す、声のコマンドの名前 (本家の VoiceCaption) */
+  /** Name shown for the voice command in the Voice Commands Window. Same as Microsoft Agent's `VoiceCaption`. */
   voiceCaption?: string | undefined;
-  /** 聞き取った確かさ (0〜100) がこれ以下なら、聞き取りのヒントに confidenceText を出す (本家の Confidence) */
+  /**
+   * Confidence threshold (0–100). If a match is at or below it, the Listening Tip shows `confidenceText`.
+   * Same as Microsoft Agent's `Confidence`.
+   */
   confidence?: number | undefined;
-  /** 確かさが confidence 以下のときに、聞き取りのヒントに出す文 (本家の ConfidenceText) */
+  /** Text shown in the Listening Tip when the confidence is at or below `confidence`. Same as `ConfidenceText`. */
   confidenceText?: string | undefined;
-  /** ヘルプモードで選ばれたときに、helpcomplete イベントで渡す番号 (本家の HelpContextID) */
+  /** Number passed in `helpcomplete` when the command is chosen in Help mode. Same as `HelpContextID`. */
   helpContextId?: number | undefined;
 }
 
+/** Optional properties for {@link AgentCommands.add} / {@link AgentCommands.insert}. See {@link AgentCommand}. */
 export interface CommandOptions {
+  /** See {@link AgentCommand.enabled}. Default: `true`. */
   enabled?: boolean;
+  /** See {@link AgentCommand.visible}. Default: `true`. */
   visible?: boolean;
+  /** See {@link AgentCommand.voice}. */
   voice?: string;
+  /** See {@link AgentCommand.voiceCaption}. */
   voiceCaption?: string;
+  /** See {@link AgentCommand.confidence}. */
   confidence?: number;
+  /** See {@link AgentCommand.confidenceText}. */
   confidenceText?: string;
+  /** See {@link AgentCommand.helpContextId}. */
   helpContextId?: number;
 }
 
-/** 声のコマンドに合った候補 (よい順に並べる) */
+/** A voice command that matched what was heard. Returned best first by {@link AgentCommands.matchVoice}. */
 export interface VoiceMatch {
-  /** 合ったコマンドの名前 (msagent.js が用意したコマンドなら "") */
+  /** Name of the matched command, or `""` for a built-in global command. */
   name: string;
-  /** 聞き取った確かさ (0〜100) */
+  /** Recognition confidence, 0–100. */
   confidence: number;
-  /** 聞き取った文 */
+  /** The text that was heard. */
   voice: string;
-  /** 合ったコマンド (commands に足したもの) */
+  /** The matched command from `agent.commands`. */
   command?: AgentCommand;
-  /** msagent.js が用意したコマンド (例: "hide") */
+  /** ID of the matched built-in global command (e.g. `"hide"`). */
   global?: string;
 }
 
-/** msagent.js が用意する声のコマンド (本家の Global Commands) */
+/** A built-in global voice command (like Microsoft Agent's Global Commands). */
 export interface GlobalVoiceCommand {
+  /** ID reported in {@link VoiceMatch.global}. */
   id: string;
+  /** Grammar of what to say. */
   voice: string;
 }
 
@@ -64,7 +81,7 @@ function matcher(grammar: string) {
     try {
       m = compileVoiceGrammar(grammar);
     } catch (e) {
-      console.warn("msagent.js: 声のコマンドの文法が正しくありません", e);
+      console.warn("msagent.js: invalid voice command grammar", e);
       m = null;
     }
     compiled.set(grammar, m);
@@ -73,40 +90,65 @@ function matcher(grammar: string) {
 }
 
 /**
- * 右クリックのメニューに足す項目の一覧 (本家の Commands コレクションと同じ)。
+ * The commands shown in the popup menu and recognized by voice (`agent.commands`).
+ * Same as Microsoft Agent's `Commands` collection.
  *
  * ```js
- * agent.commands.add("search", "検索(&S)");
- * agent.commands.add("help", "ヘルプ(&H)", { enabled: false });
+ * agent.commands.add("search", "&Search", { voice: "[please] (search | find) [...]" });
+ * agent.commands.add("help", "&Help", { enabled: false });
  * agent.on("command", (e) => console.log(e.detail.name)); // → "search"
  * ```
  */
 export class AgentCommands {
   private readonly items: AgentCommand[] = [];
-  /** 太字で出す項目の名前 (本家の DefaultCommand と同じ) */
+  /** Name of the command shown in bold. Same as Microsoft Agent's `DefaultCommand`. */
   defaultCommand: string | undefined;
-  /** false なら、足した項目をメニューに出さない (本家の Commands.Visible と同じ) */
+  /** If `false`, the added commands are not shown in the menu. Same as `Commands.Visible`. */
   visible = true;
-  /** コマンドのまとまりの名前 (本家の Commands.Caption)。聞き取りのヒントに出す (voiceCaption が無いとき) */
+  /**
+   * Name of this set of commands, shown in the Listening Tip and the Voice Commands Window when `voiceCaption` is not
+   * set. Same as `Commands.Caption`.
+   */
   caption: string | undefined;
-  /** 聞き取りのヒントに出す、声のコマンドのまとまりの名前 (本家の Commands.VoiceCaption) */
+  /** Name of this set of voice commands, shown in the Listening Tip and the Voice Commands Window. Same as `Commands.VoiceCaption`. */
   voiceCaption: string | undefined;
-  /** false なら、msagent.js が用意した声のコマンド (「隠れて」など) を使わない (本家の GlobalVoiceCommandsEnabled) */
+  /**
+   * If `false`, the built-in global voice commands (hide, open / close the Voice Commands Window) are disabled.
+   * Same as `Commands.GlobalVoiceCommandsEnabled`.
+   */
   globalVoiceCommandsEnabled = true;
-  /** メニューの文字の書体 (本家の Commands.FontName と同じ。CSS の font-family)。undefined なら CSS のまま */
+  /** Font of the menu (a CSS `font-family`), or `undefined` to keep the stylesheet's. Same as `Commands.FontName`. */
   fontName: string | undefined;
-  /** メニューの文字の大きさ (ポイント。本家の Commands.FontSize と同じ)。undefined なら CSS のまま */
+  /** Font size of the menu in points, or `undefined` to keep the stylesheet's. Same as `Commands.FontSize`. */
   fontSize: number | undefined;
 
-  /** 項目を最後に足す。同じ名前があれば置き換える */
+  /**
+   * Adds a command at the end, replacing any command with the same name. Same as `Commands.Add`.
+   *
+   * @param name - Name reported in the `command` event.
+   * @param caption - Menu text (`&` marks the access key).
+   * @returns The new command; its properties can be changed later.
+   */
   add(name: string, caption: string, options: CommandOptions = {}): AgentCommand {
     this.remove(name);
-    const command: AgentCommand = { ...options, name, caption, enabled: options.enabled ?? true, visible: options.visible ?? true };
+    const command: AgentCommand = {
+      ...options,
+      name,
+      caption,
+      enabled: options.enabled ?? true,
+      visible: options.visible ?? true,
+    };
     this.items.push(command);
     return command;
   }
 
-  /** 項目を、refName の項目の前 (before が false なら後ろ) に足す。refName が無ければ最後に足す */
+  /**
+   * Adds a command next to another one, replacing any command with the same name. Same as `Commands.Insert`.
+   *
+   * @param refName - Name of the command to insert next to. If it does not exist, the command is added at the end.
+   * @param before - Insert before `refName` if `true`, after it if `false`.
+   * @returns The new command.
+   */
   insert(name: string, refName: string, before: boolean, caption: string, options: CommandOptions = {}): AgentCommand {
     const command = this.add(name, caption, options);
     this.items.pop();
@@ -116,32 +158,38 @@ export class AgentCommands {
     return command;
   }
 
+  /** Removes a command. Same as `Commands.Remove`. */
   remove(name: string): void {
     const at = this.items.findIndex((c) => c.name === name);
     if (at >= 0) this.items.splice(at, 1);
   }
 
+  /** Removes all commands. Same as `Commands.RemoveAll`. */
   removeAll(): void {
     this.items.length = 0;
   }
 
-  /** 名前から項目を取る (本家の Command メソッドと同じ) */
+  /** Returns the command with this name. Same as Microsoft Agent's `Commands.Command`. */
   get(name: string): AgentCommand | undefined {
     return this.items.find((c) => c.name === name);
   }
 
+  /** Number of commands. Same as `Commands.Count`. */
   get count(): number {
     return this.items.length;
   }
 
-  /** 項目の一覧 (足した順) */
+  /** All commands, in menu order. */
   list(): readonly AgentCommand[] {
     return [...this.items];
   }
 
   /**
-   * 聞き取った候補 (よい順) を、声のコマンド (voice のある、選べる項目) と globals に照らし合わせる。
-   * 合ったものを、候補の順に最大 3 つ返す (本家の UserInput と同じく、同じコマンドが何度か入ることもある)
+   * Matches recognized alternatives (best first) against the enabled commands that have a `voice` grammar, and
+   * against `globals`. Returns up to 3 matches in the order of the alternatives; like Microsoft Agent's `UserInput`,
+   * the same command may appear more than once.
+   *
+   * @param alternatives - Recognized text with a confidence from 0 to 1.
    */
   matchVoice(alternatives: readonly HeardAlternative[], globals: readonly GlobalVoiceCommand[] = []): VoiceMatch[] {
     const matches: VoiceMatch[] = [];
@@ -154,7 +202,8 @@ export class AgentCommands {
       }
       if (this.globalVoiceCommandsEnabled) {
         for (const g of globals) {
-          if (matcher(g.voice)?.(transcript)) matches.push({ name: "", confidence: score, voice: transcript, global: g.id });
+          if (matcher(g.voice)?.(transcript))
+            matches.push({ name: "", confidence: score, voice: transcript, global: g.id });
         }
       }
     }

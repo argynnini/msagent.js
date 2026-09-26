@@ -1,4 +1,4 @@
-import type { AcsImage } from "../acs/reader";
+import type { AcsImage } from "../acs/reader.js";
 
 /**
  * Windows メタファイル (WMF、プレースブル形式) を canvas に描いて RGBA にする。
@@ -31,8 +31,17 @@ const PS_NULL = 5;
 const BS_NULL = 1;
 const ALTERNATE = 1;
 
-interface Pen { kind: "pen"; none: boolean; width: number; color: string }
-interface Brush { kind: "brush"; none: boolean; color: string }
+interface Pen {
+  kind: "pen";
+  none: boolean;
+  width: number;
+  color: string;
+}
+interface Brush {
+  kind: "brush";
+  none: boolean;
+  color: string;
+}
 type GdiObject = Pen | Brush | undefined;
 
 interface DcState {
@@ -53,7 +62,10 @@ export function wmfSize(data: Uint8Array): { width: number; height: number } | u
   if (data.length < PLACEABLE_HEADER_SIZE) return undefined;
   const v = new DataView(data.buffer, data.byteOffset, data.byteLength);
   if (v.getUint32(0, true) !== WMF_PLACEABLE_KEY) return undefined;
-  return { width: Math.abs(v.getInt16(10, true) - v.getInt16(6, true)), height: Math.abs(v.getInt16(12, true) - v.getInt16(8, true)) };
+  return {
+    width: Math.abs(v.getInt16(10, true) - v.getInt16(6, true)),
+    height: Math.abs(v.getInt16(12, true) - v.getInt16(8, true)),
+  };
 }
 
 /** プレースブル WMF を width x height に拡大・縮小して描く */
@@ -66,7 +78,10 @@ export function renderWmf(data: Uint8Array, width: number, height: number): AcsI
   const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
   const v = new DataView(data.buffer, data.byteOffset, data.byteLength);
 
-  const left = v.getInt16(6, true), top = v.getInt16(8, true), right = v.getInt16(10, true), bottom = v.getInt16(12, true);
+  const left = v.getInt16(6, true),
+    top = v.getInt16(8, true),
+    right = v.getInt16(10, true),
+    bottom = v.getInt16(12, true);
   const numObjects = v.getUint16(PLACEABLE_HEADER_SIZE + 10, true);
   const objects: GdiObject[] = new Array(numObjects).fill(undefined);
   let dc: DcState = {
@@ -133,7 +148,12 @@ export function renderWmf(data: Uint8Array, width: number, height: number): AcsI
       case META_CREATEBRUSHINDIRECT: {
         const obj: GdiObject =
           fn === META_CREATEPENINDIRECT
-            ? { kind: "pen", none: v.getUint16(a, true) === PS_NULL, width: v.getInt16(a + 2, true), color: colorRef(v, a + 6) }
+            ? {
+                kind: "pen",
+                none: v.getUint16(a, true) === PS_NULL,
+                width: v.getInt16(a + 2, true),
+                color: colorRef(v, a + 6),
+              }
             : { kind: "brush", none: v.getUint16(a, true) === BS_NULL, color: colorRef(v, a + 2) };
         // 空いている一番小さい番号に入る
         const slot = objects.findIndex((o) => o === undefined);
@@ -172,9 +192,13 @@ export function renderWmf(data: Uint8Array, width: number, height: number): AcsI
       case META_ELLIPSE:
       case META_RECTANGLE: {
         // 引数は bottom, right, top, left の順
-        const b = py(v.getInt16(a, true)), r = px(v.getInt16(a + 2, true)), t = py(v.getInt16(a + 4, true)), l = px(v.getInt16(a + 6, true));
+        const b = py(v.getInt16(a, true)),
+          r = px(v.getInt16(a + 2, true)),
+          t = py(v.getInt16(a + 4, true)),
+          l = px(v.getInt16(a + 6, true));
         ctx.beginPath();
-        if (fn === META_ELLIPSE) ctx.ellipse((l + r) / 2, (t + b) / 2, Math.abs(r - l) / 2, Math.abs(b - t) / 2, 0, 0, Math.PI * 2);
+        if (fn === META_ELLIPSE)
+          ctx.ellipse((l + r) / 2, (t + b) / 2, Math.abs(r - l) / 2, Math.abs(b - t) / 2, 0, 0, Math.PI * 2);
         else ctx.rect(l, t, r - l, b - t);
         fillAndStroke(true);
         break;

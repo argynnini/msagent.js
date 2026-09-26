@@ -1,8 +1,8 @@
-import { decompress } from "../acs/decompress";
-import type { AcsImage, Animation, Frame, FrameImage } from "../acs/reader";
-import type { Character } from "../character";
-import { HALFTONE_PALETTE } from "./halftone";
-import { renderWmf, WMF_PLACEABLE_KEY, wmfSize } from "./wmf";
+import { decompress } from "../acs/decompress.js";
+import type { AcsImage, Animation, Frame, FrameImage } from "../acs/reader.js";
+import type { Character } from "../character.js";
+import { HALFTONE_PALETTE } from "./halftone.js";
+import { renderWmf, WMF_PLACEABLE_KEY, wmfSize } from "./wmf.js";
 
 /**
  * Office 97 のアシスタント (ACT 形式。例: ロッキー、カイル (Office 97 版)) を読む。
@@ -72,7 +72,7 @@ const ANIMATION_TYPES: Record<number, string> = {
   116: "EmptyTrash",
 };
 
-/** 先頭が "LP" なら ACT とみなす */
+/** Whether the data is an ACT file (it starts with `"LP"`). */
 export function isActFile(data: ArrayBuffer): boolean {
   return data.byteLength >= 2 && new DataView(data).getUint16(0, true) === SIGNATURE;
 }
@@ -86,6 +86,13 @@ interface Layer {
   bottom: number;
 }
 
+/**
+ * An Office 97 Assistant loaded from an .act file (e.g. Rocky, or the Office 97 version of Kairu).
+ *
+ * The format is undocumented and is read as far as analysis of real files allows. ACT files have no balloon settings,
+ * voice settings, localized names, tray icon or exit branches; Office animation types are mapped to animation names
+ * close to those of Microsoft Agent characters.
+ */
 export class ActCharacter implements Character {
   readonly width: number;
   readonly height: number;
@@ -95,7 +102,7 @@ export class ActCharacter implements Character {
   readonly trayIcon = undefined;
   readonly voice = {};
   readonly guid = undefined;
-  /** ACT には言語ごとの名前も、吹き出しの見た目も入っていない */
+  /** Always empty: ACT files have no localized names. */
   readonly languages: readonly string[] = [];
   readonly balloon = undefined;
 
@@ -115,10 +122,14 @@ export class ActCharacter implements Character {
   /** WMF の部品を描く大きさ (合成コマで使われている範囲から決める) */
   private readonly wmfDrawSize = new Map<number, { width: number; height: number }>();
 
+  /**
+   * @param buf - The contents of the .act file.
+   * @throws If the data is not an ACT file.
+   */
   constructor(buf: ArrayBuffer) {
     const v = (this.view = new DataView(buf));
     this.bytes = new Uint8Array(buf);
-    if (!isActFile(buf)) throw new Error("ACT ファイルではありません");
+    if (!isActFile(buf)) throw new Error("Not an ACT file");
 
     // --- 先頭 ---
     const nameLength = v.getUint16(0x08, true);
@@ -149,10 +160,10 @@ export class ActCharacter implements Character {
     this.scale = rasterWidth > 0 ? rasterWidth / frameTwipsW : framePixelsW / frameTwipsW;
     this.width = Math.round(frameTwipsW * this.scale);
     this.height = Math.round(frameTwipsH * this.scale);
-    if (!this.width || !this.height) throw new Error(`大きさを読めません (${framePixelsW}x${framePixelsH})`);
+    if (!this.width || !this.height) throw new Error(`Invalid frame size (${framePixelsW}x${framePixelsH})`);
 
     // --- 効果音 (区画 1): WAV (RIFF) が、詰め物なしで順に並ぶ ---
-    for (let at = sections[1]!; at + 8 <= sectionEnd(1); ) {
+    for (let at = sections[1]!; at + 8 <= sectionEnd(1);) {
       if (v.getUint32(at, false) !== 0x52494646) break; // "RIFF"
       const size = v.getUint32(at + 4, true) + 8;
       this.sounds.push({ at, size });
@@ -166,7 +177,8 @@ export class ActCharacter implements Character {
       const count = v.getUint16(at + 2, true);
       const ops: [number, number, number][] = [];
       let q = at + 10;
-      for (let r = 0; r < count - 1; r++, q += 6) ops.push([v.getUint16(q, true), v.getUint16(q + 2, true), v.getUint16(q + 4, true)]);
+      for (let r = 0; r < count - 1; r++, q += 6)
+        ops.push([v.getUint16(q, true), v.getUint16(q + 2, true), v.getUint16(q + 4, true)]);
       programs.push(ops);
       at = q;
     }
@@ -174,9 +186,12 @@ export class ActCharacter implements Character {
     const typeCount = v.getUint32(at, true);
     for (let i = 0; i < typeCount; i++) {
       const row = at + 4 + i * 6;
-      const type = v.getUint16(row, true), n = v.getUint16(row + 2, true), first = v.getUint16(row + 4, true);
+      const type = v.getUint16(row, true),
+        n = v.getUint16(row + 2, true),
+        first = v.getUint16(row + 4, true);
       const typeName = ANIMATION_TYPES[type] ?? `Type${type}`;
-      for (let k = 0; k < n; k++) if (first + k < names.length) names[first + k] = k === 0 ? typeName : `${typeName}_${k + 1}`;
+      for (let k = 0; k < n; k++)
+        if (first + k < names.length) names[first + k] = k === 0 ? typeName : `${typeName}_${k + 1}`;
     }
     programs.forEach((ops, i) => this.animations.set(names[i]!, this.toAnimation(names[i]!, ops)));
 
@@ -201,7 +216,7 @@ export class ActCharacter implements Character {
     return this.description;
   }
 
-  /** ACT にはおまけの文字も版も無い */
+  /** Always `undefined`: ACT files have no extra data. */
   getExtraData(): string | undefined {
     return undefined;
   }
@@ -225,7 +240,7 @@ export class ActCharacter implements Character {
     const cached = this.imageCache.get(index);
     if (cached) return cached;
     const entry = this.entries[index];
-    if (!entry) throw new Error(`画像 ${index} は存在しません`);
+    if (!entry) throw new Error(`Image ${index} does not exist`);
     let image: AcsImage;
     switch (this.kind(entry.at)) {
       case "MNAK":
@@ -258,7 +273,8 @@ export class ActCharacter implements Character {
   /** 画像データの終わり (次の画像の始まり。圧縮データの長さを知るため) */
   private nextImageStart(at: number): number {
     // 二分探索で、at より後ろの最初の始まり
-    let lo = 0, hi = this.imageStarts.length;
+    let lo = 0,
+      hi = this.imageStarts.length;
     while (lo < hi) {
       const mid = (lo + hi) >> 1;
       if (this.imageStarts[mid]! <= at) lo = mid + 1;
@@ -284,9 +300,11 @@ export class ActCharacter implements Character {
     // 各枚: 幅・高さ・(1) の DWORD 3 つ、そのあとランレングス (n < 0x80: 次の 1 バイトを n 個 / それ以外: 下位 7 ビット個の生バイト)。下から上へ
     const o = offsets[part] ?? 0;
     const d = new DataView(out.buffer, out.byteOffset, out.byteLength);
-    const width = d.getUint32(o, true), height = d.getUint32(o + 4, true);
+    const width = d.getUint32(o, true),
+      height = d.getUint32(o + 4, true);
     const indices = new Uint8Array(width * height);
-    let s = o + 12, n = 0;
+    let s = o + 12,
+      n = 0;
     while (n < indices.length && s < out.length) {
       const t = out[s++]!;
       if (t < 0x80) {
@@ -318,7 +336,13 @@ export class ActCharacter implements Character {
     const layers: Layer[] = [];
     for (let k = 0; k < count; k++) {
       const o = at + 4 + k * 10;
-      layers.push({ id: v.getUint16(o, true), left: v.getInt16(o + 2, true), top: v.getInt16(o + 4, true), right: v.getInt16(o + 6, true), bottom: v.getInt16(o + 8, true) });
+      layers.push({
+        id: v.getUint16(o, true),
+        left: v.getInt16(o + 2, true),
+        top: v.getInt16(o + 4, true),
+        right: v.getInt16(o + 6, true),
+        bottom: v.getInt16(o + 8, true),
+      });
     }
     return layers;
   }
@@ -332,10 +356,13 @@ export class ActCharacter implements Character {
     return this.layers(entry.at)
       .reverse()
       .map((l) => {
-        const x = Math.round(l.left * this.scale), y = Math.round(l.top * this.scale);
-        const width = Math.round((l.right - l.left) * this.scale), height = Math.round((l.bottom - l.top) * this.scale);
+        const x = Math.round(l.left * this.scale),
+          y = Math.round(l.top * this.scale);
+        const width = Math.round((l.right - l.left) * this.scale),
+          height = Math.round((l.bottom - l.top) * this.scale);
         const layerEntry = this.entries[l.id];
-        if (layerEntry && this.kind(layerEntry.at) === "WMF" && !this.wmfDrawSize.has(l.id)) this.wmfDrawSize.set(l.id, { width, height });
+        if (layerEntry && this.kind(layerEntry.at) === "WMF" && !this.wmfDrawSize.has(l.id))
+          this.wmfDrawSize.set(l.id, { width, height });
         return { imageIndex: l.id, x, y, width, height };
       });
   }
@@ -348,7 +375,14 @@ export class ActCharacter implements Character {
    */
   private toAnimation(name: string, ops: [number, number, number][]): Animation {
     const frames: Frame[] = ops.map(([op, a, b], i) => {
-      const frame: Frame = { images: [], soundIndex: -1, duration: 0, exitFrame: ops.length, branches: [], overlays: [] };
+      const frame: Frame = {
+        images: [],
+        soundIndex: -1,
+        duration: 0,
+        exitFrame: ops.length,
+        branches: [],
+        overlays: [],
+      };
       if (op === OP_IMAGE) {
         if (a !== NO_IMAGE) {
           frame.images = this.frameImages(a);
@@ -381,7 +415,8 @@ export class ActCharacter implements Character {
       if (v.getUint32(at, true) !== 0 || len0 === 0 || v.getUint32(at + 6, true) !== len0) continue;
       const texts: string[] = [];
       for (let q = at; q + 6 <= tableEnd; q += 6) {
-        const off = v.getUint32(q, true), len = v.getUint16(q + 4, true);
+        const off = v.getUint32(q, true),
+          len = v.getUint16(q + 4, true);
         if (off + len > textBytes || len % 2) break;
         texts.push(new TextDecoder("utf-16le").decode(this.bytes.subarray(textStart + off, textStart + off + len)));
       }

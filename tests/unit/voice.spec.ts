@@ -2,7 +2,8 @@ import { expect, test } from "@playwright/test";
 import { MOUTH_CLOSED, mouthForLevel, mouthSteps, stepsDuration } from "../../src/mouth";
 import { findVoice, pickVoice, voiceParams } from "../../src/voice";
 
-const voice = (name: string, lang: string, isDefault = false) => ({ name, lang, default: isDefault }) as SpeechSynthesisVoice;
+const voice = (name: string, lang: string, isDefault = false) =>
+  ({ name, lang, default: isDefault }) as SpeechSynthesisVoice;
 const voices = [
   voice("Microsoft Haruka - Japanese (Japan)", "ja-JP", true),
   voice("Microsoft Ichiro - Japanese (Japan)", "ja-JP"),
@@ -27,9 +28,9 @@ test("声は、言語 → 性別の順に合わせて選ぶ", () => {
 
 test("声の名前の単語の一部 (Germany の man、Denmark の mark) で性別を間違えない", () => {
   expect(pick("de-DE", "male")).toBe("Microsoft Hedda - German (Germany)"); // 男性の声は無いので、その言語の声
-  expect(pickVoice([voice("Microsoft Helle - Danish (Denmark)", "da-DK"), voice("Other", "da-DK")], "da", "female")?.name).toBe(
-    "Microsoft Helle - Danish (Denmark)",
-  );
+  expect(
+    pickVoice([voice("Microsoft Helle - Danish (Denmark)", "da-DK"), voice("Other", "da-DK")], "da", "female")?.name,
+  ).toBe("Microsoft Helle - Danish (Denmark)");
 });
 
 test("ACS の声の設定 (語/分・Hz) を、ブラウザの速さ・高さに直す", () => {
@@ -48,7 +49,11 @@ test("口の形: かなは母音から、ん・っは閉じる、小さいかな
   expect(shapes("mama")).toEqual([MOUTH_CLOSED, 4, MOUTH_CLOSED, 4]);
   expect(stepsDuration(mouthSteps("あい", 100))).toBe(200);
   // 句読点は、閉じた口の間
-  expect(mouthSteps("あ、い", 100, 250)).toEqual([[4, 100], [MOUTH_CLOSED, 250], [1, 100]]);
+  expect(mouthSteps("あ、い", 100, 250)).toEqual([
+    [4, 100],
+    [MOUTH_CLOSED, 250],
+    [1, 100],
+  ]);
 });
 
 test("音の大きさから口の形を決める", () => {

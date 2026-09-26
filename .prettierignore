@@ -1,0 +1,6 @@
+dist/
+standalone/
+test-results/
+playwright-report/
+package-lock.json
+*.tgz

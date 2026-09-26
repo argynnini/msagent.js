@@ -12,7 +12,7 @@ class BitReader {
 
   readBit(): number {
     const byte = this.data[this.pos];
-    if (byte === undefined) throw new Error("圧縮データが途中で終わっています");
+    if (byte === undefined) throw new Error("Compressed data ended unexpectedly");
     const v = (byte >> this.bit) & 1;
     if (++this.bit === 8) {
       this.bit = 0;
@@ -53,7 +53,7 @@ export function decompress(src: Uint8Array, expectedSize: number): Uint8Array {
     // 20 ビットオフセットの一致だけ最小長が 1 大きい
     const length = r.readBits(k) + 2 ** k + (n === 3 ? 2 : 1);
 
-    if (offset > o) throw new Error("圧縮データが不正です (参照位置が範囲外)");
+    if (offset > o) throw new Error("Invalid compressed data (back-reference out of range)");
     for (let i = 0; i < length && o < expectedSize; i++, o++) {
       out[o] = out[o - offset]!;
     }

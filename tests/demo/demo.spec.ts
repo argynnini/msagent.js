@@ -68,7 +68,11 @@ test("移動にかける時間 (ms) の入力が moveTo の duration になる�
     const moveTo = window.agent.moveTo.bind(window.agent);
     window.agent.moveTo = (x, y, d) => (w.durations.push(d!), moveTo(x, y, d));
   });
-  const points: [number, number][] = [[700, 130], [1080, 380], [700, 380]];
+  const points: [number, number][] = [
+    [700, 130],
+    [1080, 380],
+    [700, 380],
+  ];
   for (const [i, v] of ["0", "2500", ""].entries()) {
     await page.fill("#duration", v);
     await page.mouse.click(...points[i]!);

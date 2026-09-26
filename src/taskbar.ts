@@ -1,7 +1,7 @@
-import { imageToDataUrl } from "./acs/icon";
-import { AcsPlayer } from "./acs/player";
-import { restFrame } from "./animations";
-import type { Character } from "./character";
+import { imageToDataUrl } from "./acs/icon.js";
+import { AcsPlayer } from "./acs/player.js";
+import { restFrame } from "./animations.js";
+import type { Character } from "./character.js";
 
 /** アイコンを並べる場所 (画面の右下。アイコンが無くなったら取り除く) */
 let tray: HTMLDivElement | undefined;
