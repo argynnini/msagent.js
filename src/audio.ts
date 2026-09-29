@@ -20,6 +20,24 @@ export interface AudioClient {
 
 const clients = new Set<AudioClient>();
 
+/**
+ * 音を止められている (AudioContext が suspended) とき、鳴らせるようになるのを待つ時間 (ms)。
+ * 自動再生の制限で止められていると、resume() はページが操作されるまで終わらない。待ち続けると、あとで操作したときに
+ * 前の音が遅れて鳴るので、この時間待っても鳴らせなければ、その音はあきらめる
+ */
+const AUDIO_RESUME_WAIT_MS = 100;
+
+/** @internal 音を鳴らせるか。止められていれば resume() して、少しだけ待つ */
+export async function audioReady(context: AudioContext): Promise<boolean> {
+  const running = () => context.state === "running";
+  if (running()) return true;
+  await Promise.race([
+    context.resume().catch(() => undefined),
+    new Promise((resolve) => window.setTimeout(resolve, AUDIO_RESUME_WAIT_MS)),
+  ]);
+  return running();
+}
+
 /** @internal キャラクターを作った・片付けたときに呼ぶ */
 export function registerAudioClient(client: AudioClient): () => void {
   clients.add(client);

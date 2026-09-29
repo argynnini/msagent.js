@@ -186,13 +186,16 @@ test("待機状態: 何もしないと idlestart、次の命令で idlecomplete�
     b.idleOn = false;
     let bIdle = 0;
     b.on("animationstart", (e) => e.detail.idle && bIdle++);
-    a.on("idlestart", () => log.push("idlestart"));
+    a.on("idlestart", () => log.push(`idlestart idling=${a.idling}`));
     a.on("idlecomplete", () => log.push("idlecomplete"));
+    const before = a.idling;
     await sleep(10000);
     await a.play("Wave");
-    return { log, bIdle };
+    return { log, bIdle, before, after: a.idling };
   });
-  expect(r.log).toEqual(["idlestart", "idlecomplete"]);
+  // agent.idling は idlestart から idlecomplete まで true
+  expect(r.log).toEqual(["idlestart idling=true", "idlecomplete"]);
+  expect([r.before, r.after]).toEqual([false, false]);
   expect(r.bIdle).toBe(0);
 });
 

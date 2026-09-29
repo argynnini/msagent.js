@@ -100,18 +100,18 @@ Only the `preload` animations are fetched at load time; the rest are fetched whe
 
 The following methods are queued and run one at a time, each starting after the previous one finishes (just like Microsoft Agent).
 
-| Method                                   | What it does                                                                                     |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `show(fast?)`                            | Appears. With `fast`, appears immediately without animation                                      |
-| `hide(fast?, callback?, { immediate? })` | Disappears. With `immediate: true`, discards the queue and hides right away                      |
-| `play(name, timeout = 5000, callback?)`  | Plays an animation. After `timeout`, lets it finish naturally                                    |
-| `speak(text, options?)`                  | Speaks in a word balloon ([Speaking](#speaking))                                                 |
-| `think(text, options?)`                  | Shows text in a thought balloon ([Speaking](#speaking))                                          |
-| `moveTo(x, y, duration = 1000)`          | Moves. Jumps immediately if `duration` is 0 or while hidden                                      |
-| `gestureAt(x, y)`                        | Gestures toward a point. Holds the pose until the next action                                    |
-| `delay(ms = 250)`                        | Waits before the next request                                                                    |
-| `wait(request)` / `interrupt(request)`   | Waits for / stops another character's request ([Two characters talking](#requests-agentrequest)) |
-| `get(type, name, queue = true)`          | Fetches ahead of time (see below)                                                                |
+| Method                                   | What it does                                                                                                                                   |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `show(fast?)`                            | Appears. With `fast`, appears immediately without animation                                                                                    |
+| `hide(fast?, callback?, { immediate? })` | Disappears. With `immediate: true`, discards the queue and hides right away                                                                    |
+| `play(name, timeout = 5000, callback?)`  | Plays an animation. After `timeout`, lets it finish naturally (`0`: no limit, until the next action or `stop()`)                               |
+| `speak(text, options?)`                  | Speaks in a word balloon ([Speaking](#speaking))                                                                                               |
+| `think(text, options?)`                  | Shows text in a thought balloon ([Speaking](#speaking))                                                                                        |
+| `moveTo(x, y, duration = 1000)`          | Moves. Jumps immediately if `duration` is 0 or while hidden. `{ speed }` (px per second) instead of `duration` sets the time from the distance |
+| `gestureAt(x, y)`                        | Gestures toward a point. Holds the pose until the next action                                                                                  |
+| `delay(ms = 250)`                        | Waits before the next request                                                                                                                  |
+| `wait(request)` / `interrupt(request)`   | Waits for / stops another character's request ([Two characters talking](#requests-agentrequest))                                               |
+| `get(type, name, queue = true)`          | Fetches ahead of time (see below)                                                                                                              |
 
 The following take effect immediately without being queued.
 
@@ -200,13 +200,17 @@ agent.speak("Hold on", { hold: true }); // keep the balloon open until closeBall
 agent.speak("Shh", { voice: false }); // no voice this time only (balloon and mouth movement only)
 agent.speak("", { url: "hello.wav" }); // speak with an audio file
 agent.speak("C:\\temp", { tags: false }); // no tags this time only (\ and <…> are read and shown as-is)
+agent.speak("Mm-hmm", { mouth: false }); // don't move the mouth this time only
+agent.speak("All at once", { pace: false }); // show the whole text at once this time only (think too)
 agent.think("Let me think…"); // thought balloon
+agent.think("Hmm", { animation: false }); // thought balloon without the thinking animation
 ```
 
 - `speak(text, { url })` speaks using an audio file (.wav / .mp3, etc.) and moves the mouth according to the volume (like the original Speak's Url). For .lwv files, the mouth follows the phonemes ([see below](#linguistically-enhanced-sound-files-lwv)).
 - `think()` shows the text in a thought (cloud) balloon. It doesn't speak aloud or move the mouth (same as the original).
 - During `think()`, the thinking animation (`Thinking`, or `Think` if missing) plays, then the character returns to its previous pose (an msagent.js addition).
 - `think(text, { voice: true })` reads the text aloud while keeping the thought balloon (an msagent.js addition).
+- `speak(text, { mouth: false })` speaks without moving the mouth, and `think(text, { animation: false })` thinks without the thinking animation, keeping the current pose (msagent.js additions).
 
 ### Speech output tags
 
@@ -508,6 +512,8 @@ The voice `speed` (words per minute) and `pitch` (Hz) are also used for `speak()
 | `visible`                                               | Whether the character is shown (read-only)                                                                                                                                                                                                                                                                                                                                           |
 | `left` / `top`                                          | Position on screen (px). Assigning moves the character there immediately                                                                                                                                                                                                                                                                                                             |
 | `idleOn`                                                | Whether to play idle animations automatically                                                                                                                                                                                                                                                                                                                                        |
+| `idling`                                                | Whether the character is in the idle state, from `idlestart` until `idlecomplete` (read-only). An idle animation is playing if `player.isPlaying` is also `true`                                                                                                                                                                                                                     |
+| `player.heldAnimation`                                  | Name of the animation held on its last frame (such as the pose after `gestureAt()`), or `undefined`. Its return animation plays before the next animation (read-only)                                                                                                                                                                                                                |
 | `moveCause` / `visibilityCause`                         | Cause of the last move / the last show or hide                                                                                                                                                                                                                                                                                                                                       |
 | `balloonVisible`                                        | Whether the balloon is shown. Assigning `false` closes it (after it finishes reading, if speaking). `true` shows the last text again                                                                                                                                                                                                                                                 |
 | `extraData` / `version` / `guid`                        | Extra text added by the author / file version / GUID                                                                                                                                                                                                                                                                                                                                 |

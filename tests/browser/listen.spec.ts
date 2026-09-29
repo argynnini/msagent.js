@@ -160,6 +160,25 @@ test("聞き取りキー: 押している間聞き (いくつ言ってもよい)
   expect(entries.filter((l) => l.startsWith("anim")).length).toBeGreaterThan(0);
 });
 
+test("聞き終えたら、繰り返す Hearing のアニメーションを終了分岐で終わらせる (止まったまま動き続けない)", async ({
+  harness,
+}) => {
+  await setup(harness, { idle: false });
+  await harness.evaluate(() => {
+    window.a.on("animationend", (e) => window.log.push(`end ${e.detail.name}`));
+    window.a.listen(true);
+  });
+  // 声が聞こえると Hearing。マーリンの Hearing_1〜4 は、コマ 4 からコマ 1 へ戻り続ける
+  await harness.evaluate(() => (window.recs[0] as unknown as { onspeechstart: () => void }).onspeechstart());
+  await harness.waitForFunction(() => window.a.player.currentAnimation?.startsWith("Hearing"));
+  await harness.evaluate(() => window.a.listen(false));
+  // 終了分岐に移るのは、いまのコマを見せ終えてから (Hearing のコマ 1 は 3.5 秒)
+  await harness.waitForFunction(() => window.a.player.currentAnimation === undefined, null, { timeout: 6000 });
+  expect((await log(harness)).filter((l) => l.startsWith("end"))).toEqual([
+    expect.stringMatching(/^end Hearing_[1-4]$/),
+  ]);
+});
+
 test("listeningKeyTimeout: キーを離してもその秒数は聞き、話している途中なら言い終えるまで聞く", async ({ harness }) => {
   await setup(harness, { listeningKey: "F8", listeningKeyTimeout: 0.3 });
   // 離した後に言っても聞き取り、時間が来たらやめる

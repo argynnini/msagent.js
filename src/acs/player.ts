@@ -1,4 +1,4 @@
-import { audioOutput } from "../audio.js";
+import { audioOutput, audioReady } from "../audio.js";
 import { decodeWav } from "./wav.js";
 import type { Character } from "../character.js";
 import type { Animation, Frame } from "./reader.js";
@@ -249,6 +249,14 @@ export class AcsPlayer {
     return this.held !== undefined;
   }
 
+  /**
+   * Name of the animation held on its last frame (such as `"Sleep"` or `"LookLeft"`), or `undefined` if none.
+   * Its return animation plays before the next animation.
+   */
+  get heldAnimation(): string | undefined {
+    return this.held?.name;
+  }
+
   /** Plays only the return animation of a held animation. Resolves right away if nothing is held. */
   playReturn(): Promise<void> {
     const held = this.held;
@@ -362,7 +370,8 @@ export class AcsPlayer {
     if (!this.soundEnabled || !audioOutput.soundEffects) return;
     this.audioCtx ??= new AudioContext();
     const ctx = this.audioCtx;
-    if (ctx.state === "suspended") await ctx.resume().catch(() => undefined);
+    // 音を止められていれば (まだページを操作していない)、その効果音は捨てる (あとで遅れて鳴らさない)
+    if (!(await audioReady(ctx))) return;
     if (token !== this.token) return;
     let decoded = this.buffers.get(index);
     if (decoded === undefined) {

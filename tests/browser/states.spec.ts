@@ -212,6 +212,49 @@ test("hide やほかのアニメーションを始めると、前のアニメー
   expect(r.log).toEqual(["start", "stop", "start"]);
 });
 
+test("音を止められている (まだページを操作していない) 間の効果音は捨て、あとで操作したときに遅れて鳴らさない", async ({
+  harness,
+}) => {
+  requireCharacters(CHARACTERS.merlin);
+  const r = await harness.evaluate(async () => {
+    const log: string[] = [];
+    const start = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (...args) {
+      log.push("start");
+      return start.apply(this, args);
+    };
+    // 自動再生の制限: 操作されるまで suspended のままで、resume() も終わらない
+    let blocked = true;
+    const waiting: (() => void)[] = [];
+    const state = Object.getOwnPropertyDescriptor(BaseAudioContext.prototype, "state")!;
+    Object.defineProperty(BaseAudioContext.prototype, "state", {
+      configurable: true,
+      get() {
+        return blocked ? "suspended" : state.get!.call(this);
+      },
+    });
+    const resume = AudioContext.prototype.resume;
+    AudioContext.prototype.resume = function () {
+      return blocked ? new Promise<void>((res) => waiting.push(res)) : resume.call(this);
+    };
+    const a = await window.loadAgent("Merlin.acs");
+    await a.show(true);
+    const name = [...a.character.animations].find(([, anim]) => anim.frames[0]!.soundIndex >= 0)![0];
+    await a.play(name);
+    const whileBlocked = [...log];
+    // ページを操作して、音を出せるようになる
+    blocked = false;
+    for (const res of waiting) res();
+    await new Promise((res) => setTimeout(res, 300));
+    const afterUnblock = [...log];
+    await a.play(name);
+    return { whileBlocked, afterUnblock, afterPlay: log };
+  });
+  expect(r.whileBlocked).toEqual([]);
+  expect(r.afterUnblock).toEqual([]); // 止められていた間の効果音は、あとから鳴らない
+  expect(r.afterPlay.length).toBeGreaterThan(0); // 出せるようになってからの効果音は鳴る
+});
+
 test("移動の途中で stop() して別の場所へ moveTo すると、前の移動はやめ、新しい移動は歩いて (移動のアニメーションで) 進む", async ({
   harness,
 }) => {
@@ -265,6 +308,60 @@ test("移動の途中で stop() すると、その場で止まり、戻りの動
   expect(r.left).toBeGreaterThan(100);
   expect(r.log).toEqual(["MoveRight", "MoveRightReturn"]);
   expect(r.holding).toBe(false);
+});
+
+test("移動の向きは、今の位置と行き先の位置 (どちらも左上) で決める。横に少し動くときも横向きの動き", async ({
+  harness,
+}) => {
+  requireCharacters(CHARACTERS.finfin);
+  const r = await harness.evaluate(async () => {
+    const a = await window.loadAgent("finfin.acs");
+    a.moveTo(400, 400, 0);
+    await a.show(true);
+    const log: string[] = [];
+    a.on("animationstart", (e) => log.push(e.detail.name));
+    await a.moveTo(420, 400, 100); // 画面の右へ少し = MoveLeft
+    await a.moveTo(400, 400, 100); // 画面の左へ少し = MoveRight
+    await a.moveTo(400, 380, 100); // 上へ少し = MoveUp
+    await a.moveTo(400, 400, 100); // 下へ少し = MoveDown
+    return log.filter((n) => !n.endsWith("Return"));
+  });
+  expect(r).toEqual(["MoveLeft", "MoveRight", "MoveUp", "MoveDown"]);
+});
+
+test("moveTo(x, y, { speed }): 動き始めるときの位置からの距離で、移動の時間を決める", async ({ harness }) => {
+  requireCharacters(CHARACTERS.finfin);
+  const r = await harness.evaluate(async () => {
+    const a = await window.loadAgent("finfin.acs");
+    a.moveTo(100, 400, 0);
+    await a.show(true);
+    const durations: number[] = [];
+    const agent = a as unknown as { slide(x: number, y: number, d: number, ...rest: unknown[]): Promise<void> };
+    const slide = agent.slide.bind(a);
+    agent.slide = (x, y, d, ...rest) => (durations.push(Math.round(d)), slide(x, y, d, ...rest));
+    // 順番待ちの間に位置が変わっても、動き始めるときの位置から測る (400 → 700 の 300px)
+    a.moveTo(400, 400, { duration: 100 });
+    await a.moveTo(700, 400, { speed: 1000 });
+    await a.moveTo(700, 100, 250);
+    return durations;
+  });
+  expect(r).toEqual([100, 300, 250]);
+});
+
+test("heldAnimation: 最後のコマで止めている (次の動きの前に戻る) アニメーションの名前", async ({ harness }) => {
+  requireCharacters(CHARACTERS.finfin);
+  const r = await harness.evaluate(async () => {
+    const a = await window.loadAgent("finfin.acs");
+    a.moveTo(400, 400, 0);
+    await a.show(true);
+    const before = a.player.heldAnimation;
+    await a.gestureAt(1100, 450); // 画面の右 = キャラクターの左
+    const pointing = a.player.heldAnimation;
+    await a.gestureAt(0, 450);
+    const next = a.player.heldAnimation;
+    return { before, pointing, next };
+  });
+  expect(r).toEqual({ before: undefined, pointing: "GestureLeft", next: "GestureRight" });
 });
 
 test("最後のコマの絵が空 (0x0) のアニメーションは、止まっているときの絵で終わる (フィンフィンの MoveLeftReturn)", async ({

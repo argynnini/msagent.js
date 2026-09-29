@@ -3,7 +3,7 @@ import { speakingAnimation } from "./animations.js";
 import type { Balloon } from "./balloon.js";
 import type { BalloonStyle, Character } from "./character.js";
 import type { Emit } from "./events.js";
-import { audioOutput } from "./audio.js";
+import { audioOutput, audioReady } from "./audio.js";
 import { readLwv, type LwvInfo } from "./lwv.js";
 import { MORA_MS, mouthSteps, PAUSE_MS, stepsDuration } from "./mouth.js";
 import { paceText } from "./pace.js";
@@ -40,6 +40,10 @@ export interface TalkOptions {
   thought?: boolean;
   /** 読み上げの制御タグを使うか (既定: true)。false なら、タグも文字としてそのまま */
   tags?: boolean;
+  /** 口を動かすか (既定: true) */
+  mouth?: boolean;
+  /** 文字を少しずつ出すか (省略時は吹き出しの設定 autoPace) */
+  pace?: boolean | undefined;
 }
 
 /** しゃべる・考えるために、キャラクター (Agent) から借りるもの */
@@ -96,7 +100,7 @@ export class Talk {
    */
   async speak(text: string, options: TalkOptions, complete: Complete, isStale: () => boolean) {
     const { player } = this.host;
-    const { hold = false, url, thought = false, tags = true } = options;
+    const { hold = false, url, thought = false, tags = true, mouth = true, pace } = options;
     // 全キャラクターの声を切っていれば (audioOutput.enabled)、声は出さない。
     // 聞き取り中にユーザーの声が聞こえている間も、声は出さない (吹き出しは出す。本家と同じ)
     const aloud = (options.voice ?? this.host.voice()) && audioOutput.enabled && audioOutput.status !== 3;
@@ -117,10 +121,14 @@ export class Talk {
         );
       }
       if (isStale()) return complete();
+      // 音を止められていれば (まだページを操作していない)、音声ファイルは流さず、声なしの speak と同じ時間でしゃべる。
+      // 止められたまま流すと、操作されるまで終わらず、操作したときに遅れて鳴る
+      if (!(await audioReady(player.audioContext()))) audio = lwv = undefined;
+      if (isStale()) return complete();
     }
     // 口の画像が無いコマ (待機動作の終わりなど) では口が動かないので、Microsoft Agent と同じく、
-    // しゃべるとき用のアニメーション (Speaking の状態。多くは RestPose) に切り替えてから
-    if (!player.hasMouth) {
+    // しゃべるとき用のアニメーション (Speaking の状態。多くは RestPose) に切り替えてから (口を動かさないなら、そのまま)
+    if (mouth && !player.hasMouth) {
       const speaking = speakingAnimation(this.host.character);
       if (speaking) await player.play(speaking, { hold: true });
       if (isStale()) return complete();
@@ -142,7 +150,7 @@ export class Talk {
     this.begin(complete, hold);
     this.aloud = aloud;
     emit("speakstart", { text: shown, thought });
-    const style = this.host.balloonStyle();
+    const style = this.style(pace);
     balloon.element.lang = this.host.speechLanguage() ?? "";
     if (style.enabled) {
       balloon.announce(shown, balloon.element.lang);
@@ -165,17 +173,24 @@ export class Talk {
         this.finish();
       },
     };
-    if (audio) this.host.speaker.speakAudio(audio, player.audioContext(), parts, handlers, aloud ? 1 : 0, lwv);
-    else this.host.speaker.speak(parts, handlers, params, aloud);
+    if (audio) this.host.speaker.speakAudio(audio, player.audioContext(), parts, handlers, aloud ? 1 : 0, lwv, mouth);
+    // 音声ファイルを流せなかったときは、読み上げにも切り替えない
+    else this.host.speaker.speak(parts, handlers, params, aloud && url === undefined, mouth);
+  }
+
+  /** 吹き出しの見た目と動き。pace を指定すれば、文字を少しずつ出すか (autoPace) だけ、この 1 回はそれにする */
+  private style(pace: boolean | undefined): BalloonStyle {
+    const style = this.host.balloonStyle();
+    return pace === undefined ? style : { ...style, autoPace: pace };
   }
 
   /**
    * 考えごとの吹き出しに出す (think の命令の中身)。声は出さず、口も動かさない。
    * 声なしの speak と同じく、キャラクターの声の速さで読んだときの時間をかけて文字を出し、出し終えたら complete を呼ぶ
    */
-  think(text: string, complete: Complete, tags = true) {
+  think(text: string, complete: Complete, tags = true, pace?: boolean) {
     // 吹き出しを使わないキャラクターは、何も出さない (本家と同じ)
-    const style = this.host.balloonStyle();
+    const style = this.style(pace);
     if (!style.enabled) return complete();
     // 本家と同じく、\Mrk\ (目印) だけを使い、ほかのタグは取り除く
     const parts = tags ? parseSpeechTags(text, undefined, true) : plainSpeech(text);

@@ -201,6 +201,29 @@ test("口の画像が無いコマ (待機動作の後) でも、しゃべると�
   expect(r.shapes).toBeGreaterThanOrEqual(4);
 });
 
+test("speak(text, { mouth: false }) は口を動かさず、口の画像が無いコマでも Speaking の状態に切り替えない", async ({
+  harness,
+}) => {
+  const r = await harness.evaluate(async () => {
+    const a = await window.loadAgent("Merlin.acs");
+    await a.show(true);
+    await a.play("Idle1_1");
+    let mouths = 0;
+    const setMouth = a.player.setMouth.bind(a.player);
+    a.player.setMouth = (m) => (m !== undefined && mouths++, setMouth(m));
+    const log: string[] = [];
+    a.on("animationstart", (e) => log.push(e.detail.name));
+    a.on("speakend", (e) => log.push(`end ${e.detail.text}`));
+    await a.speak("あいうえお、かきくけこ", { mouth: false });
+    const quiet = mouths;
+    await a.speak("あいうえお");
+    return { quiet, log, mouths };
+  });
+  expect(r.quiet).toBe(0);
+  expect(r.log[0]).toBe("end あいうえお、かきくけこ");
+  expect(r.mouths).toBeGreaterThan(0); // 次の speak は、いつもどおり口を動かす
+});
+
 test.describe("吹き出しの動き", () => {
   test("sizeToText: マーリンは文に合わせて伸び、クリッパーは行数で固定して上へ流す", async ({ harness }) => {
     requireCharacters(CHARACTERS.clippit);
@@ -417,6 +440,75 @@ test("think の間は考える動き (Thinking) を再生し、考え終えた�
   expect(r.log).toContain("think end");
   // 考え終えたら、繰り返しをやめて戻る
   expect(r.holding).toBe(false);
+  expect(r.playing).toBeUndefined();
+});
+
+test("pace: 1 回ごとに、文字を少しずつ出すか (吹き出しの autoPace) を変える", async ({ harness }) => {
+  const r = await harness.evaluate(async () => {
+    const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+    const a = await window.loadAgent("Merlin.acs");
+    await a.show(true);
+    const content = document.querySelector(".msagent-content")!;
+    const text = "Little by little, one word at a time, please.";
+    const shownAfter = async (request: ReturnType<typeof a.speak>) => {
+      await sleep(300);
+      const shown = content.textContent!.length;
+      a.stop(request);
+      return shown;
+    };
+    const speakAll = await shownAfter(a.speak(text, { pace: false }));
+    const speakPaced = await shownAfter(a.speak(text));
+    const thinkAll = await shownAfter(a.think(text, { pace: false }));
+    // 吹き出しの設定が autoPace: false でも、pace: true なら少しずつ
+    a.balloonStyle = { autoPace: false };
+    const speakForced = await shownAfter(a.speak(text, { pace: true }));
+    return { length: text.length, speakAll, speakPaced, thinkAll, speakForced };
+  });
+  expect(r.speakAll).toBe(r.length);
+  expect(r.thinkAll).toBe(r.length);
+  expect(r.speakPaced).toBeLessThan(r.length);
+  expect(r.speakForced).toBeLessThan(r.length);
+});
+
+test("音を止められている (まだページを操作していない) 間の音声ファイルは流さず、声なしと同じ時間でしゃべって終わる", async ({
+  harness,
+}) => {
+  const r = await harness.evaluate(
+    async (wav) => {
+      const started: string[] = [];
+      const start = AudioBufferSourceNode.prototype.start;
+      AudioBufferSourceNode.prototype.start = function (...args) {
+        started.push("start");
+        return start.apply(this, args);
+      };
+      // 自動再生の制限: suspended のままで、resume() も終わらない
+      Object.defineProperty(BaseAudioContext.prototype, "state", { configurable: true, get: () => "suspended" });
+      AudioContext.prototype.resume = () => new Promise<void>(() => {});
+      const a = await window.loadAgent("Merlin.acs", { voice: true });
+      await a.show(true);
+      let shown = "";
+      a.on("speakend", (e) => (shown = e.detail.text));
+      const status = await a.speak("Hello from a sound file.", { url: new Uint8Array(wav).buffer });
+      return { status, shown, started };
+    },
+    makeWav(0.4, 0.8),
+  );
+  expect(r.status).toBe("complete"); // 操作されるまで止まったままにならない
+  expect(r.shown).toBe("Hello from a sound file.");
+  expect(r.started).toEqual([]); // 音は流さない (あとで遅れて鳴らない)
+});
+
+test("think(text, { animation: false }) は考える動きを再生せず、いまの姿勢のまま", async ({ harness }) => {
+  const r = await harness.evaluate(async () => {
+    const log: string[] = [];
+    const a = await window.loadAgent("Merlin.acs");
+    await a.show(true);
+    a.on("animationstart", (e) => log.push(`start ${e.detail.name}`));
+    a.on("speakend", () => log.push("think end"));
+    await a.think("Hmm, let me think.", { animation: false });
+    return { log, playing: a.player.requestedAnimation };
+  });
+  expect(r.log).toEqual(["think end"]);
   expect(r.playing).toBeUndefined();
 });
 

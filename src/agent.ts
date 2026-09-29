@@ -133,6 +133,16 @@ export interface SpeakOptions {
   voice?: boolean;
   /** Interpret speech output tags for this call only. Default: {@link Agent.tags}. */
   tags?: boolean;
+  /**
+   * Move the mouth while speaking. Default: `true`. If `false`, the frames keep their own mouth images
+   * (msagent.js extension).
+   */
+  mouth?: boolean;
+  /**
+   * Reveal the text little by little for this call only. Default: the balloon's `autoPace`
+   * ({@link Agent.balloonStyle}). If `false`, the whole text appears at once (msagent.js extension).
+   */
+  pace?: boolean;
 }
 
 /** The second argument of {@link Agent.think}. */
@@ -144,6 +154,24 @@ export interface ThinkOptions {
   voice?: boolean;
   /** Interpret speech output tags for this call only. Default: {@link Agent.tags}. */
   tags?: boolean;
+  /**
+   * Play the thinking animation (`Thinking`, or `Think`) while thinking. Default: `true`. If `false`, the character
+   * keeps its current pose. Not played with `voice: true` either way (msagent.js extension).
+   */
+  animation?: boolean;
+  /** Reveal the text little by little for this call only. See {@link SpeakOptions.pace}. */
+  pace?: boolean;
+}
+
+/** The third argument of {@link Agent.moveTo}, instead of the duration. */
+export interface MoveOptions {
+  /** Milliseconds the slide takes. `0` moves instantly. Default: `1000`. */
+  duration?: number;
+  /**
+   * Speed in CSS pixels per second, used instead of `duration`. The distance is measured when the move starts (after
+   * the earlier requests), so a queued move takes the right time too (msagent.js extension).
+   */
+  speed?: number;
 }
 
 /** Options for {@link Agent.hide}. */
@@ -302,7 +330,7 @@ export class Agent extends EventTarget {
   private readonly idle: IdleController;
   private idleEnabled: boolean;
   /** 待機状態 (Idling) か */
-  private idling = false;
+  private inIdleState = false;
   private currentScale = 1;
   /** balloonStyle で指定された項目 (キャラクターファイルの設定の上に重ねる) */
   private balloonOverrides: Partial<BalloonStyle> = {};
@@ -386,8 +414,8 @@ export class Agent extends EventTarget {
     this.queue = new RequestQueue(this, {
       beforeStart: async () => {
         // 命令が来たので、待機状態を抜ける。待機動作の途中なら、終了分岐で自然に終わらせてから
-        if (this.idling) {
-          this.idling = false;
+        if (this.inIdleState) {
+          this.inIdleState = false;
           this.emit("idlecomplete", {});
         }
         this.idle.userActivity();
@@ -581,15 +609,17 @@ export class Agent extends EventTarget {
    */
   speak(text: string, options?: boolean | SpeakOptions): AgentRequest {
     text = pickAlternative(text);
-    const { hold, url, voice, tags } =
-      typeof options === "object" ? options : { hold: options, url: undefined, voice: undefined, tags: undefined };
+    const { hold, url, voice, tags, mouth, pace } =
+      typeof options === "object"
+        ? options
+        : { hold: options, url: undefined, voice: undefined, tags: undefined, mouth: undefined, pace: undefined };
     return this.enqueue("speak", (complete) => {
       // 隠れている間は、吹き出しも声も出せない (本家も隠れたキャラクターは音を出せず、失敗になる)
       if (this.hidden) return complete("failed", HIDDEN, RequestError.hidden);
       const gen = this.queue.generation;
       void this.talk.speak(
         text,
-        { hold: !!hold, url, voice, tags: tags ?? this.tags },
+        { hold: !!hold, url, voice, tags: tags ?? this.tags, mouth: mouth ?? true, pace },
         complete,
         () => gen !== this.queue.generation,
       );
@@ -608,10 +638,18 @@ export class Agent extends EventTarget {
     return this.enqueue("think", (complete) => {
       if (this.hidden) return complete("failed", HIDDEN, RequestError.hidden);
       const tags = options.tags ?? this.tags;
-      if (!options.voice) return this.talk.think(text, this.withThinkingPose(complete), tags);
+      if (!options.voice) {
+        const done = options.animation === false ? complete : this.withThinkingPose(complete);
+        return this.talk.think(text, done, tags, options.pace);
+      }
       // 声に出して考える: 考えごとの吹き出しで speak と同じように読む
       const gen = this.queue.generation;
-      void this.talk.speak(text, { voice: true, thought: true, tags }, complete, () => gen !== this.queue.generation);
+      void this.talk.speak(
+        text,
+        { voice: true, thought: true, tags, pace: options.pace },
+        complete,
+        () => gen !== this.queue.generation,
+      );
     });
   }
 
@@ -645,17 +683,24 @@ export class Agent extends EventTarget {
    *
    * @param x - Left in CSS pixels from the viewport's left edge.
    * @param y - Top in CSS pixels from the viewport's top edge.
-   * @param duration - Milliseconds the slide takes. `0` moves instantly.
+   * @param options - Milliseconds the slide takes (`0` moves instantly), or {@link MoveOptions} such as `{ speed }`.
    */
-  moveTo(x: number, y: number, duration = 1000): AgentRequest {
+  moveTo(x: number, y: number, options: number | MoveOptions = 1000): AgentRequest {
+    const { duration: fixed = 1000, speed } = typeof options === "number" ? { duration: options } : options;
     return this.enqueue("moveTo", async (complete, request) => {
+      // 速さの指定なら、動き始めるとき (前の命令が済んだ後) の位置からの距離で時間を決める
+      const duration =
+        speed !== undefined && speed > 0 ? (Math.hypot(x - this.left, y - this.top) / speed) * 1000 : fixed;
       // 隠れている間は、アニメーションなしですぐ移る (本家と同じ)
       if (duration === 0 || this.hidden) {
         this.setPosition(x, y);
         this.emit("move", { ...this.position, by: "moveTo" });
         return complete();
       }
-      const d = this.direction(x, y);
+      // (x, y) は行き先の左上。direction() は真ん中から見るので、行き先も真ん中にして比べる
+      // (左上のままだと、右へ少し動くときに上向きの動きになる)
+      const r = this.element.getBoundingClientRect();
+      const d = this.direction(x + r.width / 2, y + r.height / 2);
       const name = stateAnimation(this.character, `Moving${d}`, [`Move${d}`]);
       // stop() で捨てられたら (request.done)、その場でやめる。続けると、次の命令 (例: 別の場所への moveTo) と
       // 位置を取り合い、着いたときの戻りの動きで次の命令の移動のアニメーションを止めてしまう (歩かずに滑る)
@@ -1064,6 +1109,15 @@ export class Agent extends EventTarget {
    */
   get visibilityCause(): VisibilityCause | "none" {
     return this.lastVisibilityCause;
+  }
+
+  /**
+   * Whether the character is in the idle state: from `idlestart` (an idle animation started while no request was
+   * running) until `idlecomplete` (the next request starts). An idle animation is playing now if `player.isPlaying` is
+   * also `true` (msagent.js extension).
+   */
+  get idling(): boolean {
+    return this.inIdleState;
   }
 
   /**
@@ -1547,8 +1601,8 @@ export class Agent extends EventTarget {
       if (previous) this.emit("animationend", { name: previous, idle: isIdleAnimation(this.character, previous) });
       if (!current) return;
       const idle = isIdleAnimation(this.character, current);
-      if (idle && !this.queue.busy && !this.idling) {
-        this.idling = true;
+      if (idle && !this.queue.busy && !this.inIdleState) {
+        this.inIdleState = true;
         this.emit("idlestart", {});
       }
       this.emit("animationstart", { name: current, idle });
@@ -1670,7 +1724,13 @@ export class Agent extends EventTarget {
   }
 
   private onListenEnd(cause: ListenCause) {
-    if (this.listenAnimation && !this.queue.busy && !this.hidden) void this.player.playReturn();
+    if (this.listenAnimation && !this.queue.busy && !this.hidden) {
+      // 繰り返す動き (Merlin の Hearing は、コマ 4 からコマ 1 へ戻り続ける) は終了分岐で終わらせ、
+      // 最後の姿勢のままなら戻す。playReturn() だけでは、繰り返しの途中で止まらない
+      void this.player.release().then(() => {
+        if (!this.queue.busy && !this.hidden && this.player.isHolding) void this.player.playReturn();
+      });
+    }
     this.listenAnimation = false;
     // 聞こえた文を出している途中なら、それが消えるまで出しておく
     if (this.tipTimer === undefined) this.tip.hide();

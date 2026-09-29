@@ -74,6 +74,8 @@ interface Run {
   gender: SpeakParams["gender"];
   /** 使う声 (voiceURI か名前。見つからなければ言語・性別から選ぶ) */
   voice?: string | undefined;
+  /** 口を動かすか (false なら、口はそのコマの絵のまま) */
+  mouth: boolean;
 }
 
 /**
@@ -117,12 +119,14 @@ export class Speaker {
    * @param params - Rate and pitch (browser values, normal = 1; see {@link voiceParams}), language and voice.
    *   Without `lang`, Japanese is assumed if the text contains kana or kanji, otherwise English.
    * @param aloud - If `false`, no sound is made: the mouth moves and the text is revealed for the estimated time.
+   * @param mouth - If `false`, the mouth does not move (the frames keep their own mouth images).
    */
   speak(
     input: string | readonly SpeechPart[],
     handlers: SpeakHandlers,
     params: SpeakParams = { rate: 1, pitch: 1 },
     aloud = true,
+    mouth = true,
   ) {
     const parts = typeof input === "string" ? parseSpeechTags(input, params) : input;
     const spoken = parts.map((p) => (p.kind === "text" ? p.spoken : "")).join("");
@@ -132,6 +136,7 @@ export class Speaker {
       lang: params.lang ?? (hasJapanese(spoken) ? "ja-JP" : "en-US"),
       gender: params.gender,
       voice: params.voice,
+      mouth,
     });
     this.speakPart(run, parts, 0, "");
   }
@@ -144,6 +149,7 @@ export class Speaker {
    * @param volume - `0` plays no sound but still moves the mouth.
    * @param lwv - Word and phoneme timings from a .lwv file (see {@link readLwv}). If given, the mouth follows the
    *   phonemes (30 times per second, like Microsoft Agent) and the text is revealed word by word.
+   * @param mouth - If `false`, the mouth does not move.
    */
   speakAudio(
     audio: AudioBuffer,
@@ -152,8 +158,9 @@ export class Speaker {
     handlers: SpeakHandlers,
     volume = 1,
     lwv?: LwvInfo,
+    mouth = true,
   ) {
-    const run = this.begin(parts, { handlers, synth: undefined, lang: "", gender: undefined });
+    const run = this.begin(parts, { handlers, synth: undefined, lang: "", gender: undefined, mouth });
     if (context.state === "suspended") void context.resume().catch(() => undefined);
 
     const source = context.createBufferSource();
@@ -180,7 +187,7 @@ export class Speaker {
     // 口: 音素 (.lwv) があればそこから、無ければ音の大きさ (RMS) で開き方を決める
     const phonemes = lwv?.phonemes.length ? lwv.phonemes : undefined;
     const samples = new Float32Array(analyser.fftSize);
-    let mouth: number = MOUTH_CLOSED;
+    let shape: number = MOUTH_CLOSED;
     let startedAt = 0;
     const tick = () => {
       if (this.run !== run) return;
@@ -188,14 +195,14 @@ export class Speaker {
       while (words && wordIndex < words.length && words[wordIndex]!.at <= t) show(words[wordIndex++]!.shown);
       if (phonemes) {
         // 表に無い音は、口の形を変えない
-        mouth = mouthForIpa(ipaAt(phonemes, t)) ?? mouth;
+        shape = mouthForIpa(ipaAt(phonemes, t)) ?? shape;
       } else {
         analyser.getFloatTimeDomainData(samples);
         let sum = 0;
         for (const v of samples) sum += v * v;
-        mouth = mouthForLevel(Math.sqrt(sum / samples.length));
+        shape = mouthForLevel(Math.sqrt(sum / samples.length));
       }
-      this.player()?.setMouth(mouth);
+      this.setMouth(shape);
       this.mouthTimer = window.setTimeout(tick, phonemes ? 1000 / LWV_MOUTH_RATE : LEVEL_TICK_MS);
     };
     source.onended = () => {
@@ -240,7 +247,7 @@ export class Speaker {
     }
     if (part.kind === "pause") {
       this.mouthToken++;
-      this.player()?.setMouth(MOUTH_CLOSED);
+      this.setMouth(MOUTH_CLOSED);
       this.partTimer = window.setTimeout(() => next(shownBefore), part.ms);
       return;
     }
@@ -303,7 +310,7 @@ export class Speaker {
       this.utterance = undefined;
       window.clearTimeout(this.fallbackTimer);
       this.mouthToken++;
-      this.player()?.setMouth(MOUTH_CLOSED);
+      this.setMouth(MOUTH_CLOSED);
       next(after);
     };
     this.utterance = u;
@@ -322,14 +329,20 @@ export class Speaker {
       if (token !== this.mouthToken || !this.speaking) return;
       const step = steps[i++];
       if (!step && keepTalking) {
-        this.player()?.setMouth(randomVowelMouth());
+        this.setMouth(randomVowelMouth());
         this.mouthTimer = window.setTimeout(next, MORA_MS);
         return;
       }
-      this.player()?.setMouth(step ? step[0] : MOUTH_CLOSED);
+      this.setMouth(step ? step[0] : MOUTH_CLOSED);
       if (step) this.mouthTimer = window.setTimeout(next, step[1]);
     };
     next();
+  }
+
+  /** 口の形を変える。口を動かさないしゃべり方 (mouth: false) なら変えない (undefined で元の絵に戻すのはそのまま) */
+  private setMouth(mouth: number | undefined) {
+    if (mouth !== undefined && this.run?.mouth === false) return;
+    this.player()?.setMouth(mouth);
   }
 
   private finish() {
@@ -350,7 +363,7 @@ export class Speaker {
     this.stopPace?.();
     for (const t of [this.mouthTimer, this.fallbackTimer, this.partTimer]) window.clearTimeout(t);
     this.mouthTimer = this.fallbackTimer = this.partTimer = this.stopPace = undefined;
-    this.player()?.setMouth(undefined);
+    this.setMouth(undefined);
     run.handlers.onProgress(this.text);
     run.handlers.onEnd();
   }

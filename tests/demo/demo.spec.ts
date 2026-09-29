@@ -63,10 +63,10 @@ test("移動にかける時間 (ms) の入力が moveTo の duration になる�
   requireCharacters(CHARACTERS.merlin);
   await openDemo(page, CHARACTERS.merlin);
   await page.evaluate(() => {
-    const w = window as unknown as { durations: number[] };
+    const w = window as unknown as { durations: unknown[] };
     w.durations = [];
     const moveTo = window.agent.moveTo.bind(window.agent);
-    window.agent.moveTo = (x, y, d) => (w.durations.push(d!), moveTo(x, y, d));
+    window.agent.moveTo = (x, y, d) => (w.durations.push(d), moveTo(x, y, d));
   });
   const points: [number, number][] = [
     [700, 130],

@@ -100,18 +100,18 @@ msagent.load({ name, scale: 2 }, successCb, failCb);
 
 次の命令は順番待ちに入り、前のものが終わってから 1 つずつ実行されます (Microsoft Agent と同じ)。
 
-| 命令                                     | 動き                                                                          |
-| ---------------------------------------- | ----------------------------------------------------------------------------- |
-| `show(fast?)`                            | 登場する。`fast` なら、アニメーションなしですぐ出す                           |
-| `hide(fast?, callback?, { immediate? })` | 退場する。`immediate: true` なら、順番待ちを捨ててすぐ隠れる                  |
-| `play(name, timeout = 5000, callback?)`  | アニメーションを再生する。`timeout` を過ぎたら、自然に終わらせる              |
-| `speak(text, options?)`                  | 吹き出しでしゃべる ([しゃべる](#しゃべる))                                    |
-| `think(text, options?)`                  | 考えごとの吹き出しに出す ([しゃべる](#しゃべる))                              |
-| `moveTo(x, y, duration = 1000)`          | 移動する。`duration` が 0 か、隠れている間は、すぐ移る                        |
-| `gestureAt(x, y)`                        | その方向を指す。指した姿勢は次の動きまで保つ                                  |
-| `delay(ms = 250)`                        | 次の命令まで待つ                                                              |
-| `wait(request)` / `interrupt(request)`   | 別のキャラクターの命令を待つ / 止める ([2 体の掛け合い](#命令を待つ-request)) |
-| `get(type, name, queue = true)`          | 先に取り寄せる (下を参照)                                                     |
+| 命令                                     | 動き                                                                                                                                 |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `show(fast?)`                            | 登場する。`fast` なら、アニメーションなしですぐ出す                                                                                  |
+| `hide(fast?, callback?, { immediate? })` | 退場する。`immediate: true` なら、順番待ちを捨ててすぐ隠れる                                                                         |
+| `play(name, timeout = 5000, callback?)`  | アニメーションを再生する。`timeout` を過ぎたら、自然に終わらせる (`0` なら、次の動きか `stop()` まで)                                |
+| `speak(text, options?)`                  | 吹き出しでしゃべる ([しゃべる](#しゃべる))                                                                                           |
+| `think(text, options?)`                  | 考えごとの吹き出しに出す ([しゃべる](#しゃべる))                                                                                     |
+| `moveTo(x, y, duration = 1000)`          | 移動する。`duration` が 0 か、隠れている間は、すぐ移る。`duration` の代わりに `{ speed }` (1 秒あたりの px) なら、距離で時間を決める |
+| `gestureAt(x, y)`                        | その方向を指す。指した姿勢は次の動きまで保つ                                                                                         |
+| `delay(ms = 250)`                        | 次の命令まで待つ                                                                                                                     |
+| `wait(request)` / `interrupt(request)`   | 別のキャラクターの命令を待つ / 止める ([2 体の掛け合い](#命令を待つ-request))                                                        |
+| `get(type, name, queue = true)`          | 先に取り寄せる (下を参照)                                                                                                            |
 
 次のものは、順番待ちに入らず、すぐ効きます。
 
@@ -200,13 +200,17 @@ agent.speak("待ってね", { hold: true }); // closeBalloon() まで吹き出�
 agent.speak("しーっ", { voice: false }); // この 1 回だけ声を出さない (吹き出しと口の動きだけ)
 agent.speak("", { url: "hello.wav" }); // 音声ファイルでしゃべる
 agent.speak("C:\\temp", { tags: false }); // この 1 回だけ、タグを使わない (\ や <…> もそのまま読んで出す)
+agent.speak("うんうん", { mouth: false }); // この 1 回だけ口を動かさない
+agent.speak("一度に出す", { pace: false }); // この 1 回だけ、文を最初から全部出す (think も同じ)
 agent.think("どうしようかな"); // 考えごとの吹き出し
+agent.think("うーん", { animation: false }); // 考える動きなしで、考えごとの吹き出しだけ
 ```
 
 - `speak(text, { url })` は、音声ファイル (.wav / .mp3 など) でしゃべり、音の大きさに合わせて口を動かします (本家の Speak の Url と同じ)。.lwv なら音素で口を動かします ([下を参照](#言語情報つきの音声ファイル-lwv))。
 - `think()` は、考えごとの吹き出し (雲形) に出します。声は出さず、口も動かしません (本家と同じ)。
 - `think()` の間は考える動き (`Thinking`、無ければ `Think`) を再生し、終わったら元の姿勢に戻します (msagent.js で足したもの)。
 - `think(text, { voice: true })` なら、考えごとの吹き出しのまま声に出して読みます (msagent.js で足したもの)。
+- `speak(text, { mouth: false })` なら口を動かさずにしゃべり、`think(text, { animation: false })` なら考える動きをせず、いまの姿勢のまま考えます (msagent.js で足したもの)。
 
 ### 読み上げの制御タグ
 
@@ -508,6 +512,8 @@ agent.character.balloon; // { background: "#ffffe1", foreground: "#000000", bord
 | `visible`                                               | 出ているか (読むだけ)                                                                                                                                                                                                                                          |
 | `left` / `top`                                          | 画面上の位置 (px)。代入すると、すぐそこへ移る                                                                                                                                                                                                                  |
 | `idleOn`                                                | 待機動作を自動で再生するか                                                                                                                                                                                                                                     |
+| `idling`                                                | 待機状態か。`idlestart` から `idlecomplete` まで (読むだけ)。`player.isPlaying` も `true` なら、待機動作を再生している                                                                                                                                         |
+| `player.heldAnimation`                                  | 最後のコマで止めているアニメーションの名前 (`gestureAt()` で指した姿勢など)。無ければ `undefined`。次の動きの前に、その戻りの動きを再生する (読むだけ)                                                                                                         |
 | `moveCause` / `visibilityCause`                         | 最後に動いた / 出た・消えた原因                                                                                                                                                                                                                                |
 | `balloonVisible`                                        | 吹き出しが出ているか。`false` を代入すると閉じる (しゃべっている途中なら読み終えてから)。`true` なら最後の文をもう一度出す                                                                                                                                     |
 | `extraData` / `version` / `guid`                        | 作者が入れたおまけの文字 / ファイルの版 / GUID                                                                                                                                                                                                                 |

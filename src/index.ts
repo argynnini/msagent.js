@@ -22,6 +22,7 @@ export type {
   ListenCause,
   ListenMode,
   MoveCause,
+  MoveOptions,
   PointerDetail,
   SpeakOptions,
   SrStatus,
