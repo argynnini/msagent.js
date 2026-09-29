@@ -16,7 +16,7 @@ import {
   type MoveCause,
   type VisibilityCause,
 } from "./events.js";
-import { IdleController, isIdleAnimation } from "./idle.js";
+import { IdleController, isIdleAnimation, type IdleTiming } from "./idle.js";
 import { languageTag, type Language } from "./language.js";
 import {
   Listener,
@@ -69,6 +69,11 @@ export interface AgentOptions {
   tags?: boolean;
   /** Play idle animations from time to time while the character is doing nothing. Default: `true`. */
   idle?: boolean;
+  /**
+   * How often idle animations play: the wait before each one and how fast they get deeper. Same as
+   * {@link Agent.idleTiming}. (msagent.js extension)
+   */
+  idleTiming?: IdleTiming;
   /**
    * Language for `name` / `description` and speech: a BCP 47 tag (`"ja"`, `"en-US"`) or a Windows language ID
    * (`0x0411`). A list is tried in order. Default: the browser's languages.
@@ -428,11 +433,14 @@ export class Agent extends EventTarget {
       },
       onSettle: (request) => this.emit("requestcomplete", { request }),
     });
-    this.idle = new IdleController({
-      player: () => this.player,
-      character: () => this.character,
-      busy: () => this.hidden || this.queue.busy || this.speaking || this.player.isPaused || this.listener.listening,
-    });
+    this.idle = new IdleController(
+      {
+        player: () => this.player,
+        character: () => this.character,
+        busy: () => this.hidden || this.queue.busy || this.speaking || this.player.isPaused || this.listener.listening,
+      },
+      options.idleTiming,
+    );
     this.listener = new Listener({
       lang: () => this.recognitionLanguage,
       onStart: (mode) => this.onListenStart(mode),
@@ -1136,6 +1144,19 @@ export class Agent extends EventTarget {
       this.idle.stop();
       void this.idle.interrupt();
     }
+  }
+
+  /**
+   * How often idle animations play (`delay`: wait in ms before each one, `levelUp`: ms left alone per deeper level).
+   * Assigning takes effect from the next idle animation; omitted properties go back to their defaults.
+   * (msagent.js extension)
+   */
+  get idleTiming(): Required<IdleTiming> {
+    return this.idle.timing;
+  }
+
+  set idleTiming(timing: IdleTiming) {
+    this.idle.timing = timing;
   }
 
   /**

@@ -62,4 +62,4 @@ export type { SpeakParams } from "./voice.js";
 export { parseSpeechTags, shownText } from "./tags.js";
 export type { Bookmark, SpeechPart, SpeechText } from "./tags.js";
 export { IdleController, idleLevel, isIdleAnimation, pickIdle, pickIdleFor } from "./idle.js";
-export type { IdleDeps } from "./idle.js";
+export type { IdleDeps, IdleTiming } from "./idle.js";

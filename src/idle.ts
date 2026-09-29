@@ -4,10 +4,6 @@ import type { Character } from "./character.js";
 /** 待機中 (放置中) に再生する動きの名前。Merlin: Idle1_1 など / クリッピー: IdleSnooze など / イルカ: Idle(3), DeepIdle1 */
 const IDLE_NAME = /^(Idle|DeepIdle)/i;
 
-const FIRST_IDLE_MIN_MS = 4_000;
-const FIRST_IDLE_SPAN_MS = 4_000;
-/** 放置がこの時間ごとに、より深い (大きな) 待機動作が出るようになる。3 段階なので放置 30 秒で最深に達する */
-const ESCALATE_MS = 15_000;
 const MAX_LEVEL = 3;
 /** 浅い待機動作がだらだら続かないよう、この時間で終わらせる (居眠りなど最深の動きは触られるまで続ける) */
 const MAX_SHALLOW_IDLE_MS = 25_000;
@@ -92,6 +88,31 @@ export function pickIdleFor(
   return name === undefined ? undefined : { name, level: idleLevel(name) };
 }
 
+/** How often idle animations play (msagent.js extension). Omitted properties use their defaults. */
+export interface IdleTiming {
+  /**
+   * Wait (ms) after activity or after the previous animation ends before the next idle animation starts: a fixed time,
+   * or `[min, max]` for a random time in between. Default: `[4000, 8000]`.
+   */
+  delay?: number | readonly [min: number, max: number];
+  /**
+   * Time left alone (ms) for each step to a deeper idle level. There are 3 levels, so with the default the deepest
+   * (such as dozing off) comes after 30 seconds. Default: `15000`.
+   */
+  levelUp?: number;
+}
+
+/** 既定の頻度 (4〜8 秒ごと、放置 15 秒ごとに 1 段深くなる) */
+const DEFAULT_TIMING = { delay: [4_000, 8_000], levelUp: 15_000 } as const satisfies Required<IdleTiming>;
+
+/** 待ち時間の [最短, 最長] に直す。負の値は 0、逆順なら入れ替える。数でないものは既定に戻す */
+function delayRange(delay: IdleTiming["delay"]): [number, number] {
+  const [a, b] = typeof delay === "number" ? [delay, delay] : (delay ?? DEFAULT_TIMING.delay);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return [...DEFAULT_TIMING.delay];
+  const min = Math.max(0, Math.min(a, b));
+  return [min, Math.max(min, a, b)];
+}
+
 /** What {@link IdleController} needs. */
 export interface IdleDeps {
   /** The player to play idle animations on. */
@@ -114,8 +135,29 @@ export class IdleController {
   private lastName: string | undefined;
   private playId = 0;
   private interval: number | undefined;
+  private delay: [number, number] = [...DEFAULT_TIMING.delay];
+  private levelUp: number = DEFAULT_TIMING.levelUp;
 
-  constructor(private readonly deps: IdleDeps) {
+  constructor(
+    private readonly deps: IdleDeps,
+    timing?: IdleTiming,
+  ) {
+    this.timing = timing ?? {};
+  }
+
+  /**
+   * How often idle animations play. Assigning takes effect from the next idle animation (one already playing is not
+   * stopped); omitted properties go back to their defaults.
+   */
+  get timing(): Required<IdleTiming> {
+    return { delay: [...this.delay], levelUp: this.levelUp };
+  }
+
+  set timing(timing: IdleTiming) {
+    this.delay = delayRange(timing.delay);
+    const levelUp = timing.levelUp ?? DEFAULT_TIMING.levelUp;
+    // 0 以下なら、放置してすぐ最深になる
+    this.levelUp = Number.isFinite(levelUp) ? Math.max(0, levelUp) : DEFAULT_TIMING.levelUp;
     this.reschedule();
   }
 
@@ -163,7 +205,8 @@ export class IdleController {
   }
 
   private reschedule() {
-    this.nextAt = Date.now() + FIRST_IDLE_MIN_MS + Math.random() * FIRST_IDLE_SPAN_MS;
+    const [min, max] = this.delay;
+    this.nextAt = Date.now() + min + Math.random() * (max - min);
   }
 
   private tick() {
@@ -178,7 +221,8 @@ export class IdleController {
     }
     if (this.idlePlaying || player.isPlaying || this.deps.busy() || now < this.nextAt) return;
 
-    const level = Math.min(MAX_LEVEL, 1 + Math.floor((now - this.lastActivity) / ESCALATE_MS));
+    const idleFor = now - this.lastActivity;
+    const level = this.levelUp > 0 ? Math.min(MAX_LEVEL, 1 + Math.floor(idleFor / this.levelUp)) : MAX_LEVEL;
     const picked = pickIdleFor(character, level, this.lastName);
     if (!picked) {
       this.reschedule();

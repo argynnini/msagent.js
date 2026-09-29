@@ -199,6 +199,34 @@ test("待機状態: 何もしないと idlestart、次の命令で idlecomplete�
   expect(r.bIdle).toBe(0);
 });
 
+test("idleTiming: 待ち時間を変えると、待機動作の始まる早さが変わる。値は直して持ち、省いたものは既定に戻す", async ({
+  harness,
+}) => {
+  const r = await harness.evaluate(async () => {
+    const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+    const fast = await window.loadAgent("Merlin.acs", { idle: true, idleTiming: { delay: 0 } });
+    const slow = await window.loadAgent("Merlin.acs", { idle: true, idleTiming: { delay: 60_000 } });
+    fast.moveTo(100, 300, 0);
+    slow.moveTo(600, 300, 0);
+    await Promise.all([fast.show(true), slow.show(true)]);
+    const idles = { fast: 0, slow: 0 };
+    fast.on("animationstart", (e) => e.detail.idle && idles.fast++);
+    slow.on("animationstart", (e) => e.detail.idle && idles.slow++);
+    await sleep(3000);
+    const initial = slow.idleTiming;
+    slow.idleTiming = { delay: [5000, -1], levelUp: 1000 };
+    const swapped = slow.idleTiming;
+    slow.idleTiming = {};
+    return { idles, initial, swapped, reset: slow.idleTiming };
+  });
+  expect(r.idles.fast).toBeGreaterThan(0);
+  expect(r.idles.slow).toBe(0);
+  expect(r.initial).toEqual({ delay: [60000, 60000], levelUp: 15000 });
+  // 負の値は 0 にし、逆順なら入れ替える
+  expect(r.swapped).toEqual({ delay: [0, 5000], levelUp: 1000 });
+  expect(r.reset).toEqual({ delay: [4000, 8000], levelUp: 15000 });
+});
+
 test("load: 設定をまとめて渡したときも、後ろの引数のコールバックを呼ぶ", async ({ harness }) => {
   const r = await harness.evaluate(
     () =>

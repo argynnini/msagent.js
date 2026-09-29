@@ -81,6 +81,7 @@ Only the `preload` animations are fetched at load time; the rest are fetched whe
 | `voice`                | Whether `speak()` reads text aloud (`false` shows the balloon and moves the mouth only)                                 | `true`                                                               |
 | `tags`                 | Whether to process speech output tags (`false` shows tags as plain text; see [Speech output tags](#speech-output-tags)) | `true`                                                               |
 | `idle`                 | Whether to play idle animations                                                                                         | `true`                                                               |
+| `idleTiming`           | How often idle animations play (see `idleTiming` under [Properties](#properties))                                       | `{ delay: [4000, 8000], levelUp: 15000 }`                            |
 | `language`             | Language for the name, description, and speech ([Language](#language))                                                  | Browser language                                                     |
 | `scale`                | Display scale                                                                                                           | `1`                                                                  |
 | `balloon`              | Word balloon style ([Word balloon](#word-balloon); layered on top of the file's settings)                               | None                                                                 |
@@ -186,7 +187,7 @@ Showing, hiding, moving, gesturing, speaking, and idling use the animations the 
 - When a state has several animations, one is picked at random each time.
 - Directions (Left / Right) are from the character's point of view. Moving toward the left of the screen uses MovingRight.
 - `moveTo()` plays the move-start animation → moves while holding the last frame → plays the return animation.
-- Idle animations start after a short period of inactivity, and become deeper (such as dozing off) the longer the character is left alone.
+- Idle animations start after a short period of inactivity (4–8 seconds by default), and become deeper (such as dozing off) the longer the character is left alone (one level per 15 seconds by default). Change this with `idleTiming`.
 - The queue keeps running while hidden: `play` finishes immediately without drawing, `moveTo` jumps immediately, and `speak` / `think` show nothing (in the original, too, hidden characters can't produce sound).
 
 ## Speaking
@@ -535,18 +536,19 @@ The voice `speed` (words per minute) and `pitch` (Hz) are also used for `speak()
 
 **Added by msagent.js**
 
-| Property                     | Description                                                                       |
-| ---------------------------- | --------------------------------------------------------------------------------- |
-| `language`                   | Language for the name, description, and speech ([Language](#language))            |
-| `scale` / `width` / `height` | Size ([Size](#size))                                                              |
-| `balloonStyle`               | Word balloon style ([Word balloon](#word-balloon))                                |
-| `speaking`                   | Whether currently speaking                                                        |
-| `sound` / `voice`            | Whether to play sound effects / whether `speak()` reads aloud                     |
-| `tags`                       | Whether to process speech output tags ([Speech output tags](#speech-output-tags)) |
-| `on()` / `off()`             | Adds / removes an event listener                                                  |
-| `hitTest(clientX, clientY)`  | Whether a point is over the character's image                                     |
-| `element` / `canvas`         | The character element (`div.msagent`) / the canvas it's drawn on                  |
-| `character` / `player`       | The parsed character file / the animation player                                  |
+| Property                     | Description                                                                                                                                                                                                                                                                            |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `language`                   | Language for the name, description, and speech ([Language](#language))                                                                                                                                                                                                                 |
+| `scale` / `width` / `height` | Size ([Size](#size))                                                                                                                                                                                                                                                                   |
+| `balloonStyle`               | Word balloon style ([Word balloon](#word-balloon))                                                                                                                                                                                                                                     |
+| `speaking`                   | Whether currently speaking                                                                                                                                                                                                                                                             |
+| `sound` / `voice`            | Whether to play sound effects / whether `speak()` reads aloud                                                                                                                                                                                                                          |
+| `tags`                       | Whether to process speech output tags ([Speech output tags](#speech-output-tags))                                                                                                                                                                                                      |
+| `idleTiming`                 | How often idle animations play: `delay` is the wait (ms) before each one (a number, or `[min, max]` for a random wait), `levelUp` is the time left alone (ms) for each step to a deeper level. Takes effect from the next idle animation; omitted properties go back to their defaults |
+| `on()` / `off()`             | Adds / removes an event listener                                                                                                                                                                                                                                                       |
+| `hitTest(clientX, clientY)`  | Whether a point is over the character's image                                                                                                                                                                                                                                          |
+| `element` / `canvas`         | The character element (`div.msagent`) / the canvas it's drawn on                                                                                                                                                                                                                       |
+| `character` / `player`       | The parsed character file / the animation player                                                                                                                                                                                                                                       |
 
 ## Notes
 
